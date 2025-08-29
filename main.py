@@ -16,5 +16,9 @@ def mp4_to_mp3(filename):
   video = VideoFileClip(filename)
   video.audio.write_audiofile("example.mp3")
 
-mp4_to_mp3("SampleVideo.mp4")
-transcribe_audio("example.mp3")
+def main():
+  mp4_to_mp3("SampleVideo.mp4")
+  transcribe_audio("example.mp3")
+
+if __name__ == "__main__":
+  main()
