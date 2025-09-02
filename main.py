@@ -16,6 +16,8 @@ def mp4_to_mp3(filename):
   video = VideoFileClip(filename)
   video.audio.write_audiofile("example.mp3")
 
+# def translate_text_gemini()
+
 def main():
   mp4_to_mp3("SampleVideo.mp4")
   transcribe_audio("example.mp3")
