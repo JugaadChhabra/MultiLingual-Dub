@@ -317,12 +317,8 @@
               submitBtn.disabled = false;
               return;
             }
-            // For each language, send the text to /translate and then /tts
+            // For each language, send the text to /translate (which also does TTS)
             for (const lang of selectedLanguages) {
-              // 1. Translate
-              let translated = null;
-              let tts_url = null;
-              let error = null;
               try {
                 const resp = await fetch("/translate", {
                   method: "POST",
@@ -341,34 +337,13 @@
                   continue;
                 }
                 const payload = await resp.json();
-                translated = payload.translated_text || payload.text || "";
-              } catch (e) {
-                results.push({ lang, error: `Translation error: ${e.message}` });
-                continue;
-              }
-              // 2. TTS
-              try {
-                const resp2 = await fetch("/tts", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text: translated, target_language: lang }),
+                results.push({
+                  lang,
+                  translated: payload.translation || payload.translated_text || payload.text || "",
+                  tts_url: payload.tts_url || null,
                 });
-                if (!resp2.ok) {
-                  let errorMessage = `TTS failed for ${lang}`;
-                  try {
-                    const payload = await resp2.json();
-                    errorMessage = payload.detail || errorMessage;
-                  } catch (e) {
-                    errorMessage = resp2.statusText || errorMessage;
-                  }
-                  results.push({ lang, translated, error: errorMessage });
-                  continue;
-                }
-                const payload2 = await resp2.json();
-                tts_url = payload2.tts_url;
-                results.push({ lang, translated, tts_url });
               } catch (e) {
-                results.push({ lang, translated, error: `TTS error: ${e.message}` });
+                results.push({ lang, error: `Translation/TTS error: ${e.message}` });
               }
             }
           }

@@ -1,3 +1,5 @@
+from fastapi import Body
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -19,6 +21,49 @@ OUTPUT_DIR = Path("./output")
 
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
+class TranslateRequest(BaseModel):
+    text: str
+    target_language: str = "hi-IN"
+
+@app.post("/translate")
+async def translate_pipeline(request: TranslateRequest):
+    transcript = request.text
+    target_language = request.target_language
+    try:
+        translated = translate_text(
+            transcript,
+            target_language_code=target_language,
+            source_language_code="auto",
+        )
+    except Exception as exc:
+        if "Source and target languages must be different" in str(exc):
+            translated = transcript
+        else:
+            raise
+
+    output_path = OUTPUT_DIR / f"translated-{uuid.uuid4().hex}.{target_language}"
+    tts_result = text_to_speech(
+        translated,
+        target_language_code=target_language,
+        output_path=str(output_path),
+        speaker="shubh",
+    )
+
+    tts_url = None
+    tts_path = Path(tts_result)
+    try:
+        rel_path = tts_path.resolve().relative_to(OUTPUT_DIR.resolve())
+        if tts_path.exists():
+            tts_url = f"/output/{rel_path.as_posix()}"
+    except ValueError:
+        pass
+
+    return {
+        "input_text": transcript,
+        "translation": translated,
+        "tts_output": tts_result,
+        "tts_url": tts_url,
+    }
 
 @app.get("/")
 def index() -> FileResponse:
