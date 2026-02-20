@@ -121,30 +121,71 @@
   </head>
   <body>
     <div class="wrap">
-      <h1>Upload MP3 for Translation + TTS</h1>
+      <h1>Upload MP3</h1>
       <p>Select an mp3, choose a target language, and run the pipeline.</p>
 
       <form id="uploadForm">
-        <label for="audio">MP3 File</label>
-        <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" required />
-        <div class="status" id="fileStatus"></div>
+        <label>Input Type</label>
+        <div class="row">
+          <div>
+            <input type="radio" id="inputAudio" name="inputType" value="audio" checked />
+            <label for="inputAudio" style="display:inline;font-weight:400;">Upload MP3</label>
+          </div>
+          <div>
+            <input type="radio" id="inputText" name="inputType" value="text" />
+            <label for="inputText" style="display:inline;font-weight:400;">Paste Text</label>
+          </div>
+        </div>
+
+        <div id="audioInputSection">
+          <label for="audio">MP3 File</label>
+          <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" />
+          <div class="status" id="fileStatus"></div>
+        </div>
+
+        <div id="textInputSection" style="display:none;">
+          <label for="textInput">Text Input</label>
+          <textarea id="textInput" name="textInput" rows="4" style="width:100%;padding:10px 12px;font-size:15px;"></textarea>
+        </div>
 
         <div class="row">
           <div>
-            <label for="target_language">Target Language</label>
-            <select id="target_language" name="target_language">
-              <option value="bn-IN">Bengali</option>
-              <option value="en-IN">English</option>
-              <option value="gu-IN">Gujarati</option>
-              <option value="hi-IN" selected>Hindi</option>
-              <option value="kn-IN">Kannada</option>
-              <option value="ml-IN">Malayalam</option>
-              <option value="mr-IN">Marathi</option>
-              <option value="od-IN">Odia</option>
-              <option value="pa-IN">Punjabi</option>
-              <option value="ta-IN">Tamil</option>
-              <option value="te-IN">Telugu</option>
-            </select>
+            <label>Target Languages</label>
+            <div id="languageCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px 24px;">
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="bn-IN"> Bengali
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="en-IN"> English
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="gu-IN"> Gujarati
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="hi-IN" checked> Hindi
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="kn-IN"> Kannada
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="ml-IN"> Malayalam
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="mr-IN"> Marathi
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="od-IN"> Odia
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="pa-IN"> Punjabi
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="ta-IN"> Tamil
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" name="target_language" value="te-IN"> Telugu
+              </label>
+            </div>
           </div>
         </div>
 
@@ -155,10 +196,7 @@
       </form>
 
       <div class="result" id="result" hidden></div>
-      <div class="player" id="player" hidden>
-        <label>Audio Output</label>
-        <audio id="audioPlayer" controls preload="none"></audio>
-      </div>
+      <div id="multiResults"></div>
     </div>
 
     <script>
@@ -170,27 +208,43 @@
       const player = document.getElementById("player");
       const audioPlayer = document.getElementById("audioPlayer");
       const submitBtn = document.getElementById("submitBtn");
+      const inputAudioRadio = document.getElementById("inputAudio");
+      const inputTextRadio = document.getElementById("inputText");
+      const audioInputSection = document.getElementById("audioInputSection");
+      const textInputSection = document.getElementById("textInputSection");
+      const textInput = document.getElementById("textInput");
 
       function setStatus(el, message, isError = false) {
         el.textContent = message;
         el.className = "status" + (isError ? " error" : "");
       }
 
+      // Toggle input sections
+      inputAudioRadio.addEventListener("change", () => {
+        if (inputAudioRadio.checked) {
+          audioInputSection.style.display = "block";
+          textInputSection.style.display = "none";
+        }
+      });
+      inputTextRadio.addEventListener("change", () => {
+        if (inputTextRadio.checked) {
+          audioInputSection.style.display = "none";
+          textInputSection.style.display = "block";
+        }
+      });
+
       audioInput.addEventListener("change", () => {
         const file = audioInput.files[0];
         result.hidden = true;
-
         if (!file) {
           setStatus(fileStatus, "");
           return;
         }
-
         if (!file.name.toLowerCase().endsWith(".mp3")) {
           setStatus(fileStatus, "Only .mp3 files are allowed.", true);
           audioInput.value = "";
           return;
         }
-
         const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
         setStatus(fileStatus, `Selected: ${file.name} (${sizeMb} MB)`);
       });
@@ -198,43 +252,160 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const file = audioInput.files[0];
-        if (!file) {
-          setStatus(fileStatus, "Please select an mp3 file.", true);
+        // Get selected languages from checkboxes
+        const selectedLanguages = Array.from(document.querySelectorAll('input[name="target_language"]:checked')).map(cb => cb.value);
+        if (selectedLanguages.length === 0) {
+          setStatus(submitStatus, "Please select at least one target language.", true);
           return;
         }
 
-        if (!file.name.toLowerCase().endsWith(".mp3")) {
-          setStatus(fileStatus, "Only .mp3 files are allowed.", true);
-          return;
-        }
-
-        const formData = new FormData(form);
+        // Determine input type
+        const isAudio = inputAudioRadio.checked;
+        const isText = inputTextRadio.checked;
 
         submitBtn.disabled = true;
         setStatus(submitStatus, "Processing...");
         result.hidden = true;
-        player.hidden = true;
-        audioPlayer.removeAttribute("src");
+        if (typeof player !== 'undefined' && player) player.hidden = true;
+        if (typeof audioPlayer !== 'undefined' && audioPlayer) audioPlayer.removeAttribute("src");
+        result.textContent = "";
+        const multiResultsDiv = document.getElementById("multiResults");
+        if (multiResultsDiv) multiResultsDiv.innerHTML = "";
+
+        let results = [];
 
         try {
-          const response = await fetch("/stt", {
-            method: "POST",
-            body: formData,
-          });
-
-          const payload = await response.json();
-          if (!response.ok) {
-            throw new Error(payload.detail || "Request failed");
+          if (isAudio) {
+            const file = audioInput.files[0];
+            if (!file) {
+              setStatus(fileStatus, "Please select an mp3 file.", true);
+              submitBtn.disabled = false;
+              return;
+            }
+            if (!file.name.toLowerCase().endsWith(".mp3")) {
+              setStatus(fileStatus, "Only .mp3 files are allowed.", true);
+              submitBtn.disabled = false;
+              return;
+            }
+            // For each language, send the file to /stt with the language
+            for (const lang of selectedLanguages) {
+              const formData = new FormData();
+              formData.append("audio", file);
+              formData.append("target_language", lang);
+              const response = await fetch("/stt", {
+                method: "POST",
+                body: formData,
+              });
+              if (!response.ok) {
+                let errorMessage = `Request failed for ${lang}`;
+                try {
+                  const payload = await response.json();
+                  errorMessage = payload.detail || errorMessage;
+                } catch (e) {
+                  errorMessage = response.statusText || errorMessage;
+                }
+                results.push({ lang, error: errorMessage });
+                continue;
+              }
+              const payload = await response.json();
+              results.push({ lang, ...payload });
+            }
+          } else if (isText) {
+            const text = textInput.value.trim();
+            if (!text) {
+              setStatus(submitStatus, "Please enter text to translate.", true);
+              submitBtn.disabled = false;
+              return;
+            }
+            // For each language, send the text to /translate and then /tts
+            for (const lang of selectedLanguages) {
+              // 1. Translate
+              let translated = null;
+              let tts_url = null;
+              let error = null;
+              try {
+                const resp = await fetch("/translate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text, target_language: lang }),
+                });
+                if (!resp.ok) {
+                  let errorMessage = `Translation failed for ${lang}`;
+                  try {
+                    const payload = await resp.json();
+                    errorMessage = payload.detail || errorMessage;
+                  } catch (e) {
+                    errorMessage = resp.statusText || errorMessage;
+                  }
+                  results.push({ lang, error: errorMessage });
+                  continue;
+                }
+                const payload = await resp.json();
+                translated = payload.translated_text || payload.text || "";
+              } catch (e) {
+                results.push({ lang, error: `Translation error: ${e.message}` });
+                continue;
+              }
+              // 2. TTS
+              try {
+                const resp2 = await fetch("/tts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text: translated, target_language: lang }),
+                });
+                if (!resp2.ok) {
+                  let errorMessage = `TTS failed for ${lang}`;
+                  try {
+                    const payload = await resp2.json();
+                    errorMessage = payload.detail || errorMessage;
+                  } catch (e) {
+                    errorMessage = resp2.statusText || errorMessage;
+                  }
+                  results.push({ lang, translated, error: errorMessage });
+                  continue;
+                }
+                const payload2 = await resp2.json();
+                tts_url = payload2.tts_url;
+                results.push({ lang, translated, tts_url });
+              } catch (e) {
+                results.push({ lang, translated, error: `TTS error: ${e.message}` });
+              }
+            }
           }
 
-          result.textContent = JSON.stringify(payload, null, 2);
+          // Show all results
+          let output = "";
+          let html = "";
+          for (const r of results) {
+            output += `Language: ${r.lang}\n`;
+            html += `<div class='player' style='margin-bottom:18px;'>`;
+            html += `<div style='font-weight:600;'>${r.lang}</div>`;
+            if (r.error) {
+              output += `  Error: ${r.error}\n\n`;
+              html += `<div class='error'>${r.error}</div>`;
+              html += `</div>`;
+              continue;
+            }
+            if (r.translated) {
+              output += `  Translated Text: ${r.translated}\n`;
+              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.translated}</span></div>`;
+            } else if (r.translation) {
+              output += `  Translated Text: ${r.translation}\n`;
+              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.translation}</span></div>`;
+            } else if (r.text) {
+              output += `  Text: ${r.text}\n`;
+              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.text}</span></div>`;
+            }
+            if (r.tts_url) {
+              output += `  Audio: ${r.tts_url}\n`;
+              html += `<audio controls preload='none' src='${r.tts_url}' style='width:100%;margin-top:8px;'></audio>`;
+            }
+            html += `</div>`;
+            output += "\n";
+          }
+          result.textContent = output;
           result.hidden = false;
-
-          if (payload.tts_url) {
-            audioPlayer.src = payload.tts_url;
-            player.hidden = false;
-          }
+          document.getElementById("multiResults").innerHTML = html;
           setStatus(submitStatus, "Done.");
         } catch (error) {
           setStatus(submitStatus, error.message || "Request failed", true);
