@@ -1,4 +1,3 @@
-#sym:output/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -36,6 +35,10 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+#audio folders
+output/
+/Users/jugaadchhabra/Documents/Github/MutiLingual-Dub/uploads/
 
 # Unit test / coverage reports
 htmlcov/
