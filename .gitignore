@@ -38,7 +38,6 @@ pip-delete-this-directory.txt
 
 #audio stuff
 *.mp3
-output/
 /Users/jugaadchhabra/Documents/Github/MutiLingual-Dub/uploads/
 
 # Unit test / coverage reports
