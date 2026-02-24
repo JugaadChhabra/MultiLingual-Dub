@@ -122,28 +122,28 @@
   <body>
     <div class="wrap">
       <h1>Upload MP3</h1>
-      <p>Select an mp3, choose a target language, and run the pipeline.</p>
+      <p>Select an mp3/script, pick the target language, and run the pipeline.</p>
 
       <form id="uploadForm">
         <label>Input Type</label>
         <div class="row">
           <div>
-            <input type="radio" id="inputAudio" name="inputType" value="audio" checked />
-            <label for="inputAudio" style="display:inline;font-weight:400;">Upload MP3</label>
+            <input type="radio" id="inputText" name="inputType" value="text" checked />
+            <label for="inputText" style="display:inline;font-weight:400;">Paste Script</label>
           </div>
           <div>
-            <input type="radio" id="inputText" name="inputType" value="text" />
-            <label for="inputText" style="display:inline;font-weight:400;">Paste Text</label>
+            <input type="radio" id="inputAudio" name="inputType" value="audio" />
+            <label for="inputAudio" style="display:inline;font-weight:400;">Upload MP3</label>
           </div>
         </div>
 
-        <div id="audioInputSection">
+        <div id="audioInputSection" style="display:none;">
           <label for="audio">MP3 File</label>
           <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" />
           <div class="status" id="fileStatus"></div>
         </div>
 
-        <div id="textInputSection" style="display:none;">
+        <div id="textInputSection" style="display:block;">
           <label for="textInput">Text Input</label>
           <textarea id="textInput" name="textInput" rows="4" style="width:100%;padding:10px 12px;font-size:15px;"></textarea>
         </div>
@@ -219,19 +219,18 @@
         el.className = "status" + (isError ? " error" : "");
       }
 
-      // Toggle input sections
-      inputAudioRadio.addEventListener("change", () => {
+      function updateInputSections() {
         if (inputAudioRadio.checked) {
           audioInputSection.style.display = "block";
           textInputSection.style.display = "none";
-        }
-      });
-      inputTextRadio.addEventListener("change", () => {
-        if (inputTextRadio.checked) {
+        } else if (inputTextRadio.checked) {
           audioInputSection.style.display = "none";
           textInputSection.style.display = "block";
         }
-      });
+      }
+      inputAudioRadio.addEventListener("change", updateInputSections);
+      inputTextRadio.addEventListener("change", updateInputSections);
+      window.addEventListener("DOMContentLoaded", updateInputSections);
 
       audioInput.addEventListener("change", () => {
         const file = audioInput.files[0];
@@ -272,122 +271,148 @@
         const multiResultsDiv = document.getElementById("multiResults");
         if (multiResultsDiv) multiResultsDiv.innerHTML = "";
 
-        let results = [];
-
         try {
-          if (isAudio) {
-            const file = audioInput.files[0];
-            if (!file) {
-              setStatus(fileStatus, "Please select an mp3 file.", true);
-              submitBtn.disabled = false;
-              return;
-            }
-            if (!file.name.toLowerCase().endsWith(".mp3")) {
-              setStatus(fileStatus, "Only .mp3 files are allowed.", true);
-              submitBtn.disabled = false;
-              return;
-            }
-            // For each language, send the file to /stt with the language
-            for (const lang of selectedLanguages) {
-              const formData = new FormData();
-              formData.append("audio", file);
-              formData.append("target_language", lang);
-              const response = await fetch("/stt", {
-                method: "POST",
-                body: formData,
-              });
-              if (!response.ok) {
-                let errorMessage = `Request failed for ${lang}`;
-                try {
-                  const payload = await response.json();
-                  errorMessage = payload.detail || errorMessage;
-                } catch (e) {
-                  errorMessage = response.statusText || errorMessage;
-                }
-                results.push({ lang, error: errorMessage });
-                continue;
-              }
-              const payload = await response.json();
-              results.push({ lang, ...payload });
-            }
-          } else if (isText) {
+          if (isText) {
             const text = textInput.value.trim();
             if (!text) {
               setStatus(submitStatus, "Please enter text to translate.", true);
               submitBtn.disabled = false;
               return;
             }
-            // For each language, send the text to /translate (which also does TTS)
-            for (const lang of selectedLanguages) {
+            // Send all selected languages to /translate at once
+            const resp = await fetch("/translate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text, target_languages: selectedLanguages }),
+            });
+            if (!resp.ok) {
+              let errorMessage = `Translation failed.`;
               try {
-                const resp = await fetch("/translate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text, target_language: lang }),
-                });
-                if (!resp.ok) {
-                  let errorMessage = `Translation failed for ${lang}`;
-                  try {
-                    const payload = await resp.json();
-                    errorMessage = payload.detail || errorMessage;
-                  } catch (e) {
-                    errorMessage = resp.statusText || errorMessage;
-                  }
-                  results.push({ lang, error: errorMessage });
-                  continue;
-                }
                 const payload = await resp.json();
-                results.push({
-                  lang,
-                  translated: payload.translation || payload.translated_text || payload.text || "",
-                  tts_url: payload.tts_url || null,
-                });
+                errorMessage = payload.detail || errorMessage;
               } catch (e) {
-                results.push({ lang, error: `Translation/TTS error: ${e.message}` });
+                errorMessage = resp.statusText || errorMessage;
               }
+              setStatus(submitStatus, errorMessage, true);
+              submitBtn.disabled = false;
+              return;
             }
-          }
-
-          // Show all results
-          let output = "";
-          let html = "";
-          for (const r of results) {
-            output += `Language: ${r.lang}\n`;
-            html += `<div class='player' style='margin-bottom:18px;'>`;
-            html += `<div style='font-weight:600;'>${r.lang}</div>`;
-            if (r.error) {
-              output += `  Error: ${r.error}\n\n`;
-              html += `<div class='error'>${r.error}</div>`;
+            const payload = await resp.json();
+            // Render editable fields for each translation
+            let html = "";
+            for (const lang of selectedLanguages) {
+              const translation = payload.translations[lang] || "";
+              html += `<div class='player' style='margin-bottom:18px;'>`;
+              html += `<div style='font-weight:600;'>${lang}</div>`;
+              html += `<textarea id="edit-translation-${lang}" rows="3" style="width:100%;margin:8px 0 8px 0;">${translation}</textarea>`;
+              html += `<select id="voiceSelect-${lang}" name="voiceSelect-${lang}" style="margin-right:8px;padding:6px 10px;font-size:15px;">
+                <option value="S1JBcZECEJJlf7lEDTbN">bhojpuri_ai_studio</option>
+                <option value="dffT29nmBclERTsFHmHg">dv_nisha</option>
+              </select>`;
+              html += `<button type="button" onclick="ttsElevenLabs('${lang}')">Generate Audio (ElevenLabs)</button>`;
+              html += `<span id="tts-status-${lang}" class="status"></span>`;
+              html += `<audio id="audio-${lang}" controls style="display:none;width:100%;margin-top:8px;"></audio>`;
               html += `</div>`;
-              continue;
             }
-            if (r.translated) {
-              output += `  Translated Text: ${r.translated}\n`;
-              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.translated}</span></div>`;
-            } else if (r.translation) {
-              output += `  Translated Text: ${r.translation}\n`;
-              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.translation}</span></div>`;
-            } else if (r.text) {
-              output += `  Text: ${r.text}\n`;
-              html += `<div style='margin:8px 0 8px 0;'><span style='font-weight:500;'>Text:</span> <span>${r.text}</span></div>`;
-            }
-            if (r.tts_url) {
-              output += `  Audio: ${r.tts_url}\n`;
-              html += `<audio controls preload='none' src='${r.tts_url}' style='width:100%;margin-top:8px;'></audio>`;
-            }
-            html += `</div>`;
-            output += "\n";
+                  // Generate audio using ElevenLabs endpoint
+                  window.ttsElevenLabs = async function(lang) {
+                    const textarea = document.getElementById(`edit-translation-${lang}`);
+                    const statusSpan = document.getElementById(`tts-status-${lang}`);
+                    const audioElem = document.getElementById(`audio-${lang}`);
+                    const voiceSelect = document.getElementById(`voiceSelect-${lang}`);
+                    if (!textarea || !voiceSelect) return;
+                    const text = textarea.value.trim();
+                    const voice_id = voiceSelect.value;
+                    if (!text) {
+                      statusSpan.textContent = "Text is empty.";
+                      statusSpan.className = "status error";
+                      return;
+                    }
+                    statusSpan.textContent = "Generating audio...";
+                    statusSpan.className = "status";
+                    try {
+                      const resp = await fetch("/tts-elevenlabs", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text, voice_id }),
+                      });
+                      if (!resp.ok) {
+                        let errorMessage = `TTS failed for ${lang}`;
+                        try {
+                          const payload = await resp.json();
+                          errorMessage = payload.detail || errorMessage;
+                        } catch (e) {
+                          errorMessage = resp.statusText || errorMessage;
+                        }
+                        statusSpan.textContent = errorMessage;
+                        statusSpan.className = "status error";
+                        return;
+                      }
+                      const payload = await resp.json();
+                      if (payload.tts_url) {
+                        audioElem.src = payload.tts_url;
+                        audioElem.style.display = "block";
+                        statusSpan.textContent = "Audio generated!";
+                        statusSpan.className = "status";
+                      } else {
+                        statusSpan.textContent = "No audio URL returned.";
+                        statusSpan.className = "status error";
+                      }
+                    } catch (e) {
+                      statusSpan.textContent = `Error: ${e.message}`;
+                      statusSpan.className = "status error";
+                    }
+                  }
+            document.getElementById("multiResults").innerHTML = html;
+            setStatus(submitStatus, "Translations ready. Edit and finalize as needed.");
+          } else {
+            setStatus(submitStatus, "Audio upload flow not implemented for new translation UI.", true);
           }
-          result.textContent = output;
-          result.hidden = false;
-          document.getElementById("multiResults").innerHTML = html;
-          setStatus(submitStatus, "Done.");
         } catch (error) {
           setStatus(submitStatus, error.message || "Request failed", true);
         } finally {
           submitBtn.disabled = false;
         }
       });
+
+      // Finalize text for a language (send to backend for logging)
+      window.finalizeText = async function(lang) {
+        const textarea = document.getElementById(`edit-translation-${lang}`);
+        const statusSpan = document.getElementById(`finalize-status-${lang}`);
+        if (!textarea) return;
+        const text = textarea.value.trim();
+        if (!text) {
+          statusSpan.textContent = "Text is empty.";
+          statusSpan.className = "status error";
+          return;
+        }
+        statusSpan.textContent = "Sending...";
+        statusSpan.className = "status";
+        try {
+          const resp = await fetch("/finalize-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, language: lang }),
+          });
+          if (!resp.ok) {
+            let errorMessage = `Failed to finalize for ${lang}`;
+            try {
+              const payload = await resp.json();
+              errorMessage = payload.detail || errorMessage;
+            } catch (e) {
+              errorMessage = resp.statusText || errorMessage;
+            }
+            statusSpan.textContent = errorMessage;
+            statusSpan.className = "status error";
+            return;
+          }
+          statusSpan.textContent = "Finalized and logged!";
+          statusSpan.className = "status";
+        } catch (e) {
+          statusSpan.textContent = `Error: ${e.message}`;
+          statusSpan.className = "status error";
+        }
+      }
     </script>
   </body>
 </html>

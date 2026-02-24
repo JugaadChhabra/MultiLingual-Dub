@@ -36,7 +36,8 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-#audio folders
+#audio stuff
+*.mp3
 output/
 /Users/jugaadchhabra/Documents/Github/MutiLingual-Dub/uploads/
 
