@@ -22,7 +22,7 @@ app = FastAPI()
 
 UPLOAD_DIR = Path("./uploads")
 OUTPUT_DIR = Path("./output")
-
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
 
