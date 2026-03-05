@@ -4,7 +4,7 @@ from openpyxl import load_workbook
 from batch.models import ExcelRow
 
 
-REQUIRED_HEADERS = ["voiceover_text", "emotion", "activity_name", "audio_type"]
+REQUIRED_HEADERS = ["voiceover_text", "emotion", "activity_name", "voiceover_title"]
 
 
 class ExcelReaderError(ValueError):
@@ -50,7 +50,7 @@ def read_excel_rows(path: str | Path) -> list[ExcelRow]:
             if len(row) > header_positions["activity_name"]
             else ""
         )
-        audio_type = _normalize_cell(row[header_positions["audio_type"]]) if len(row) > header_positions["audio_type"] else ""
+        voiceover_title = _normalize_cell(row[header_positions["voiceover_title"]]) if len(row) > header_positions["voiceover_title"] else ""
 
         parsed_rows.append(
             ExcelRow(
@@ -58,7 +58,7 @@ def read_excel_rows(path: str | Path) -> list[ExcelRow]:
                 voiceover_text=voiceover_text,
                 emotion=emotion,
                 activity_name=activity_name,
-                audio_type=audio_type,
+                voiceover_title=voiceover_title,
             )
         )
 
