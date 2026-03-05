@@ -1,419 +1,714 @@
-<!doctype html>
+<!doctype html>`
 <html lang="en">
   <head>
-    <link rel="icon" type="image/png" href="favicon.png"/>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoDub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@1&display=swap"
       rel="stylesheet"
     />
     <style>
+      /* ─── Variables ─────────────────────────────────────────────── */
       :root {
-        --bg: #f7f4ef;
-        --ink: #1a1a1a;
-        --accent: #0c6b5f;
-        --muted: #6b6b6b;
+        --bg:          #ece7df;
+        --surface:     #ffffff;
+        --surface-2:   #f7f3ee;
+        --border:      rgba(0, 0, 0, 0.11);
+        --border-focus:rgba(0, 0, 0, 0.35);
+        --accent:      #d9533f;
+        --accent-dark: #be3f2d;
+        --text:        #1a1a1a;
+        --text-muted:  #888077;
+        --success:     #2e7d4f;
+        --error:       #c0392b;
+        --radius:      12px;
+        --radius-sm:   8px;
+        --shadow-sm:   0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
+        --shadow-md:   0 4px 12px rgba(0,0,0,0.09);
       }
+
+      /* ─── Reset & Base ──────────────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
-        margin: 0;
-        font-family: "Poppins", "Helvetica Neue", Arial, sans-serif;
-        background: radial-gradient(circle at 20% 10%, #f3eee6, #f7f4ef);
-        color: var(--ink);
+        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
       }
 
-      .wrap {
+      /* ─── Layout ────────────────────────────────────────────────── */
+      .page {
         max-width: 760px;
-        margin: 40px auto;
-        padding: 24px;
-        background: #fffdf8;
-        border: 1px solid #eee3d6;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+        margin: 0 auto;
+        padding: 56px 24px 80px;
       }
 
-      h1 {
-        margin: 0 0 8px;
-        font-size: 28px;
-        letter-spacing: 0.4px;
+      /* ─── Header ────────────────────────────────────────────────── */
+      .header {
+        text-align: center;
+        margin-bottom: 44px;
+      }
+      .header h1 {
+        font-family: "Inter", sans-serif;
+        font-size: clamp(34px, 5.5vw, 52px);
+        font-weight: 700;
+        letter-spacing: -1.5px;
+        line-height: 1.1;
+        color: var(--text);
+        margin-bottom: 14px;
+      }
+      .header h1 em {
+        font-family: "Instrument Serif", serif;
+        font-style: italic;
+        font-weight: 400;
+        letter-spacing: -0.5px;
+      }
+      .header p {
+        color: var(--text-muted);
+        font-size: 15px;
+        font-weight: 400;
+        line-height: 1.7;
+        max-width: 460px;
+        margin: 0 auto;
       }
 
-      p {
-        margin: 0 0 16px;
-        color: var(--muted);
+      /* ─── Card ──────────────────────────────────────────────────── */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px 24px 20px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow-sm);
       }
 
-      label {
-        display: block;
-        margin: 14px 0 6px;
+      /* ─── Section Labels ────────────────────────────────────────── */
+      .section-label {
+        font-size: 11px;
         font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .section-label::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+
+      /* ─── Radio Toggle Tabs ─────────────────────────────────────── */
+      .tab-group {
+        display: flex;
+        gap: 0;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        background: var(--surface-2);
+      }
+      .tab-group input[type="radio"] { display: none; }
+      .tab-group label {
+        flex: 1;
+        text-align: center;
+        padding: 10px 14px;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: background 0.18s, color 0.18s;
+        user-select: none;
+        display: block;
+        margin: 0;
+        border-right: 1px solid var(--border);
+      }
+      .tab-group label:last-of-type { border-right: none; }
+      .tab-group input[type="radio"]:checked + label {
+        background: var(--surface);
+        color: var(--text);
+        font-weight: 600;
+      }
+      .tab-group label:hover { color: var(--text); background: rgba(255,255,255,0.7); }
+
+      /* ─── Field Labels & Inputs ─────────────────────────────────── */
+      .field-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        margin-bottom: 7px;
+        margin-top: 18px;
+        text-transform: uppercase;
       }
 
       input[type="file"],
-      input[type="text"] {
+      input[type="text"],
+      textarea,
+      select {
         width: 100%;
-        padding: 10px 12px;
-        border: 1px solid #ddd3c7;
-        background: #fff;
-        font-size: 15px;
+        padding: 10px 13px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        font-family: "Inter", inherit;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.18s, box-shadow 0.18s;
+        appearance: none;
+        -webkit-appearance: none;
       }
-
-      .row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
+      input[type="file"] { background: var(--surface-2); }
+      input[type="file"]::file-selector-button {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        color: var(--text);
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        margin-right: 10px;
+        transition: background 0.15s;
       }
-
-      .actions {
-        margin-top: 18px;
-        display: flex;
-        gap: 12px;
-        align-items: center;
+      input[type="file"]::file-selector-button:hover { background: var(--surface-2); }
+      input[type="text"]:focus,
+      textarea:focus,
+      select:focus,
+      input[type="file"]:focus {
+        border-color: var(--border-focus);
+        box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
       }
-
-      button {
-        border: none;
-        background: var(--accent);
-        color: #fff;
-        padding: 12px 18px;
-        font-size: 15px;
+      textarea {
+        resize: vertical;
+        min-height: 110px;
+        line-height: 1.6;
+      }
+      select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 12 12'%3E%3Cpath fill='%23888077' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 34px;
         cursor: pointer;
       }
+      select option { background: #fff; color: var(--text); }
 
-      button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+      /* ─── Language Chips ────────────────────────────────────────── */
+      .lang-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 4px;
+      }
+      .lang-chip input[type="checkbox"] { display: none; }
+      .lang-chip label {
+        display: block;
+        padding: 6px 14px;
+        border-radius: 100px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.15s;
+        user-select: none;
+        margin: 0;
+      }
+      .lang-chip input[type="checkbox"]:checked + label {
+        background: var(--text);
+        border-color: var(--text);
+        color: #fff;
+      }
+      .lang-chip label:hover {
+        border-color: var(--text-muted);
+        color: var(--text);
       }
 
+      /* ─── Actions & Run Button ──────────────────────────────────── */
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .btn-run {
+        padding: 12px 30px;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: var(--accent);
+        color: #fff;
+        font-family: "Inter", sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        cursor: pointer;
+        transition: background 0.18s, transform 0.12s;
+        flex-shrink: 0;
+      }
+      .btn-run:hover:not(:disabled) { background: var(--accent-dark); transform: translateY(-1px); }
+      .btn-run:active:not(:disabled) { transform: translateY(0); }
+      .btn-run:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      /* ─── Status ────────────────────────────────────────────────── */
       .status {
-        margin-top: 16px;
-        font-size: 14px;
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.5;
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
+      .status.error   { color: var(--error); }
+      .status.success { color: var(--success); }
 
-      .error {
-        color: #a12a2a;
+      .spinner {
+        display: none;
+        width: 14px; height: 14px;
+        border: 2px solid rgba(0,0,0,0.12);
+        border-top-color: var(--text);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
       }
+      .spinner.active { display: block; }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
+      /* ─── Result / Player Cards ─────────────────────────────────── */
       .result {
-        margin-top: 18px;
-        background: #faf6ef;
-        border: 1px dashed #e2d7c9;
-        padding: 12px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 14px 16px;
         white-space: pre-wrap;
-        font-size: 14px;
-      }
-
-      .player {
+        font-size: 13px;
+        color: var(--text-muted);
         margin-top: 16px;
-        padding: 12px;
-        border: 1px solid #e2d7c9;
-        background: #fffaf2;
+        box-shadow: var(--shadow-sm);
       }
 
-      @media (max-width: 720px) {
-        .row {
-          grid-template-columns: 1fr;
-        }
+      .player-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 12px;
+        box-shadow: var(--shadow-sm);
+        transition: box-shadow 0.2s;
+      }
+      .player-card:hover { box-shadow: var(--shadow-md); }
+      .player-card-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-bottom: 12px;
+      }
+      .player-card textarea { margin-bottom: 12px; }
+      .player-card-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .player-card select { flex: 1; min-width: 180px; }
+      .btn-gen {
+        padding: 9px 18px;
+        border: none;
+        border-radius: var(--radius-sm);
+        background: var(--accent);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+      }
+      .btn-gen:hover { background: var(--accent-dark); }
+      .player-card audio {
+        width: 100%;
+        margin-top: 12px;
+        border-radius: 6px;
+      }
+
+      /* ─── Batch Summary ─────────────────────────────────────────── */
+      .batch-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .batch-stat {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 12px 14px;
+      }
+      .batch-stat .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
+      .batch-stat .value { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+
+      /* ─── Divider ───────────────────────────────────────────────── */
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 20px 0;
+      }
+
+      /* ─── Responsive ────────────────────────────────────────────── */
+      @media (max-width: 600px) {
+        .page { padding: 32px 16px 60px; }
+        .tab-group { flex-direction: column; }
+        .batch-grid { grid-template-columns: 1fr; }
+        .player-card-row { flex-direction: column; align-items: stretch; }
+        .player-card select { min-width: unset; }
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>Upload MP3</h1>
-      <p>Select an mp3/script, pick the target language, and run the pipeline.</p>
+    <div class="page">
+      <!-- Header -->
+      <header class="header">
+        <h1>Auto<em>Dub</em></h1>
+        <p>Translate &amp; voice content into multiple Indian languages — instantly.</p>
+      </header>
 
-      <form id="uploadForm">
-        <label>Input Type</label>
-        <div class="row">
-          <div>
-            <input type="radio" id="inputText" name="inputType" value="text" checked />
-            <label for="inputText" style="display:inline;font-weight:400;">Paste Script</label>
+      <!-- Main card -->
+      <div class="card">
+        <form id="uploadForm">
+
+          <!-- Input type selector -->
+          <div class="section-label">Input Mode</div>
+          <div class="tab-group">
+            <input type="radio" id="inputText"  name="inputType" value="text"  checked /><label for="inputText">Paste Script</label>
+            <input type="radio" id="inputAudio" name="inputType" value="audio"        /><label for="inputAudio">Upload MP3</label>
+            <input type="radio" id="inputExcel" name="inputType" value="excel"        /><label for="inputExcel">Excel Batch</label>
           </div>
-          <div>
-            <input type="radio" id="inputAudio" name="inputType" value="audio" />
-            <label for="inputAudio" style="display:inline;font-weight:400;">Upload MP3</label>
+
+          <!-- Text input -->
+          <div id="textInputSection">
+            <label class="field-label" for="textInput">Script / Text</label>
+            <textarea id="textInput" name="textInput" placeholder="Paste or type your script here…"></textarea>
           </div>
-        </div>
 
-        <div id="audioInputSection" style="display:none;">
-          <label for="audio">MP3 File</label>
-          <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" />
-          <div class="status" id="fileStatus"></div>
-        </div>
+          <!-- Audio input -->
+          <div id="audioInputSection" style="display:none;">
+            <label class="field-label" for="audio">MP3 Audio File</label>
+            <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" />
+            <div class="status" id="fileStatus" style="margin-top:8px;"></div>
+          </div>
 
-        <div id="textInputSection" style="display:block;">
-          <label for="textInput">Text Input</label>
-          <textarea id="textInput" name="textInput" rows="4" style="width:100%;padding:10px 12px;font-size:15px;"></textarea>
-        </div>
+          <!-- Excel input -->
+          <div id="excelInputSection" style="display:none;">
+            <label class="field-label" for="excelFile">Excel File (.xlsx)</label>
+            <input id="excelFile" name="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+            <div class="status" id="excelStatus" style="margin-top:8px;"></div>
+          </div>
 
-        <div class="row">
-          <div>
-            <label>Target Languages</label>
-            <div id="languageCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px 24px;">
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="bn-IN"> Bengali
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="en-IN"> English
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="gu-IN"> Gujarati
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="hi-IN" checked> Hindi
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="kn-IN"> Kannada
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="ml-IN"> Malayalam
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="mr-IN"> Marathi
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="od-IN"> Odia
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="pa-IN"> Punjabi
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="ta-IN"> Tamil
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="target_language" value="te-IN"> Telugu
-              </label>
+          <div class="divider"></div>
+
+          <!-- Language selector -->
+          <div class="section-label">Target Languages</div>
+          <div class="lang-grid" id="languageCheckboxes">
+            <div class="lang-chip"><input type="checkbox" id="lang-bn" name="target_language" value="bn-IN"><label for="lang-bn">Bengali</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-en" name="target_language" value="en-IN"><label for="lang-en">English</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-gu" name="target_language" value="gu-IN"><label for="lang-gu">Gujarati</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-hi" name="target_language" value="hi-IN" checked><label for="lang-hi">Hindi</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-kn" name="target_language" value="kn-IN"><label for="lang-kn">Kannada</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-ml" name="target_language" value="ml-IN"><label for="lang-ml">Malayalam</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-mr" name="target_language" value="mr-IN"><label for="lang-mr">Marathi</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-od" name="target_language" value="od-IN"><label for="lang-od">Odia</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-pa" name="target_language" value="pa-IN"><label for="lang-pa">Punjabi</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-ta" name="target_language" value="ta-IN"><label for="lang-ta">Tamil</label></div>
+            <div class="lang-chip"><input type="checkbox" id="lang-te" name="target_language" value="te-IN"><label for="lang-te">Telugu</label></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="actions">
+            <button class="btn-run" id="submitBtn" type="submit">Run Pipeline</button>
+            <div class="status" id="submitStatus">
+              <div class="spinner" id="spinner"></div>
+              <span id="submitStatusText"></span>
             </div>
           </div>
-        </div>
 
-        <div class="actions">
-          <button id="submitBtn" type="submit">Run</button>
-          <span class="status" id="submitStatus"></span>
-        </div>
-      </form>
+        </form>
+      </div>
 
+      <!-- Results -->
       <div class="result" id="result" hidden></div>
       <div id="multiResults"></div>
     </div>
 
     <script>
-      const form = document.getElementById("uploadForm");
-      const audioInput = document.getElementById("audio");
-      const fileStatus = document.getElementById("fileStatus");
-      const submitStatus = document.getElementById("submitStatus");
-      const result = document.getElementById("result");
-      const player = document.getElementById("player");
-      const audioPlayer = document.getElementById("audioPlayer");
-      const submitBtn = document.getElementById("submitBtn");
-      const inputAudioRadio = document.getElementById("inputAudio");
-      const inputTextRadio = document.getElementById("inputText");
+      /* ── DOM refs ─────────────────────────────────────────────── */
+      const form             = document.getElementById("uploadForm");
+      const audioInput       = document.getElementById("audio");
+      const fileStatus       = document.getElementById("fileStatus");
+      const submitStatusWrap = document.getElementById("submitStatus");
+      const submitStatusText = document.getElementById("submitStatusText");
+      const spinner          = document.getElementById("spinner");
+      const result           = document.getElementById("result");
+      const submitBtn        = document.getElementById("submitBtn");
+      const inputAudioRadio  = document.getElementById("inputAudio");
+      const inputTextRadio   = document.getElementById("inputText");
+      const inputExcelRadio  = document.getElementById("inputExcel");
       const audioInputSection = document.getElementById("audioInputSection");
-      const textInputSection = document.getElementById("textInputSection");
-      const textInput = document.getElementById("textInput");
+      const textInputSection  = document.getElementById("textInputSection");
+      const excelInputSection = document.getElementById("excelInputSection");
+      const textInput         = document.getElementById("textInput");
+      const excelFile         = document.getElementById("excelFile");
+      const excelStatus       = document.getElementById("excelStatus");
 
-      function setStatus(el, message, isError = false) {
-        el.textContent = message;
-        el.className = "status" + (isError ? " error" : "");
-      }
-
-      function updateInputSections() {
-        if (inputAudioRadio.checked) {
-          audioInputSection.style.display = "block";
-          textInputSection.style.display = "none";
-        } else if (inputTextRadio.checked) {
-          audioInputSection.style.display = "none";
-          textInputSection.style.display = "block";
+      /* ── Helpers ──────────────────────────────────────────────── */
+      function setStatus(el, message, isError = false, isSuccess = false) {
+        if (el === submitStatusWrap) {
+          submitStatusText.textContent = message;
+          submitStatusWrap.className = "status" + (isError ? " error" : isSuccess ? " success" : "");
+          spinner.classList.toggle("active", !isError && !isSuccess && message !== "");
+        } else {
+          el.textContent = message;
+          el.className = "status" + (isError ? " error" : isSuccess ? " success" : "");
         }
       }
-      inputAudioRadio.addEventListener("change", updateInputSections);
-      inputTextRadio.addEventListener("change", updateInputSections);
+
+      function stopSpinner() { spinner.classList.remove("active"); }
+
+      /* ── Input section switching ──────────────────────────────── */
+      function updateInputSections() {
+        audioInputSection.style.display = inputAudioRadio.checked ? "block" : "none";
+        textInputSection.style.display  = inputTextRadio.checked  ? "block" : "none";
+        excelInputSection.style.display = inputExcelRadio.checked ? "block" : "none";
+      }
+      [inputAudioRadio, inputTextRadio, inputExcelRadio].forEach(r =>
+        r.addEventListener("change", updateInputSections)
+      );
       window.addEventListener("DOMContentLoaded", updateInputSections);
 
+      /* ── File validation ──────────────────────────────────────── */
       audioInput.addEventListener("change", () => {
         const file = audioInput.files[0];
         result.hidden = true;
-        if (!file) {
-          setStatus(fileStatus, "");
-          return;
-        }
+        if (!file) { setStatus(fileStatus, ""); return; }
         if (!file.name.toLowerCase().endsWith(".mp3")) {
           setStatus(fileStatus, "Only .mp3 files are allowed.", true);
-          audioInput.value = "";
-          return;
+          audioInput.value = ""; return;
         }
-        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-        setStatus(fileStatus, `Selected: ${file.name} (${sizeMb} MB)`);
+        setStatus(fileStatus, `✓ ${file.name} (${(file.size/1048576).toFixed(2)} MB)`, false, true);
       });
 
+      excelFile.addEventListener("change", () => {
+        const file = excelFile.files[0];
+        if (!file) { setStatus(excelStatus, ""); return; }
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+          setStatus(excelStatus, "Only .xlsx files are allowed.", true);
+          excelFile.value = ""; return;
+        }
+        setStatus(excelStatus, `✓ ${file.name} (${(file.size/1048576).toFixed(2)} MB)`, false, true);
+      });
+
+      /* ── Batch summary renderer ───────────────────────────────── */
+      function renderBatchSummary(summary, jobId, status) {
+        const s = summary || {};
+        const statusColor = status === "completed" ? "var(--success)" : status === "failed" ? "var(--error)" : "var(--accent)";
+        const html = `
+          <div class="card">
+            <div class="section-label">Batch Job — ${jobId}</div>
+            <div style="margin-bottom:14px;font-size:13px;color:${statusColor};font-weight:600;text-transform:uppercase;letter-spacing:.06em;">${status}</div>
+            <div class="batch-grid">
+              <div class="batch-stat"><div class="label">Total Rows</div><div class="value">${s.total_rows ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Rows Processed</div><div class="value">${s.rows_processed ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Succeeded</div><div class="value" style="color:var(--success)">${s.rows_succeeded ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Failed</div><div class="value" style="color:var(--error)">${s.rows_failed ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Lang Tasks</div><div class="value">${s.language_tasks_total ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Tasks OK</div><div class="value" style="color:var(--success)">${s.language_tasks_succeeded ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Uploads OK</div><div class="value" style="color:var(--success)">${s.uploads_succeeded ?? 0}</div></div>
+              <div class="batch-stat"><div class="label">Duration</div><div class="value">${s.duration_ms != null ? (s.duration_ms/1000).toFixed(1)+"s" : "—"}</div></div>
+            </div>
+          </div>`;
+        document.getElementById("multiResults").innerHTML = html;
+      }
+
+      /* ── Batch poll ───────────────────────────────────────────── */
+      async function pollBatchJob(jobId) {
+        const terminalStates = new Set(["completed", "failed"]);
+        for (let i = 0; i < 120; i++) {
+          const resp = await fetch(`/batch/excel-jobs/${jobId}`);
+          if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId}`);
+          const payload = await resp.json();
+          renderBatchSummary(payload.summary, payload.job_id, payload.status);
+          setStatus(submitStatusWrap, `Polling… (${payload.status})`);
+          if (terminalStates.has(payload.status)) return payload;
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        throw new Error("Polling timeout");
+      }
+
+      /* ── Form submit ──────────────────────────────────────────── */
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        // Get selected languages from checkboxes
-        const selectedLanguages = Array.from(document.querySelectorAll('input[name="target_language"]:checked')).map(cb => cb.value);
+        const selectedLanguages = Array.from(
+          document.querySelectorAll('input[name="target_language"]:checked')
+        ).map(cb => cb.value);
+
         if (selectedLanguages.length === 0) {
-          setStatus(submitStatus, "Please select at least one target language.", true);
+          setStatus(submitStatusWrap, "Please select at least one target language.", true);
           return;
         }
 
-        // Determine input type
         const isAudio = inputAudioRadio.checked;
-        const isText = inputTextRadio.checked;
+        const isText  = inputTextRadio.checked;
+        const isExcel = inputExcelRadio.checked;
 
         submitBtn.disabled = true;
-        setStatus(submitStatus, "Processing...");
+        setStatus(submitStatusWrap, "Processing…");
         result.hidden = true;
-        if (typeof player !== 'undefined' && player) player.hidden = true;
-        if (typeof audioPlayer !== 'undefined' && audioPlayer) audioPlayer.removeAttribute("src");
         result.textContent = "";
-        const multiResultsDiv = document.getElementById("multiResults");
-        if (multiResultsDiv) multiResultsDiv.innerHTML = "";
+        document.getElementById("multiResults").innerHTML = "";
 
         try {
-          if (isText) {
-            const text = textInput.value.trim();
-            if (!text) {
-              setStatus(submitStatus, "Please enter text to translate.", true);
-              submitBtn.disabled = false;
-              return;
+          /* ── Excel Batch ── */
+          if (isExcel) {
+            const file = excelFile.files[0];
+            if (!file) { setStatus(submitStatusWrap, "Please upload an .xlsx file.", true); return; }
+            if (!file.name.toLowerCase().endsWith(".xlsx")) { setStatus(submitStatusWrap, "Only .xlsx files are allowed.", true); return; }
+
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("max_language_parallelism", "3");
+            selectedLanguages.forEach(l => fd.append("target_languages", l));
+
+            const createResp = await fetch("/batch/excel-jobs", { method: "POST", body: fd });
+            if (!createResp.ok) {
+              let msg = "Failed to create batch job.";
+              try { msg = (await createResp.json()).detail || msg; } catch {}
+              setStatus(submitStatusWrap, msg, true); return;
             }
-            // Send all selected languages to /translate at once
+            const { job_id } = await createResp.json();
+            setStatus(submitStatusWrap, `Job ${job_id} started…`);
+            const final = await pollBatchJob(job_id);
+            stopSpinner();
+            final.status === "completed"
+              ? setStatus(submitStatusWrap, `Job ${job_id} completed.`, false, true)
+              : setStatus(submitStatusWrap, final.error || `Job ${job_id} failed.`, true);
+
+          /* ── Text ── */
+          } else if (isText) {
+            const text = textInput.value.trim();
+            if (!text) { setStatus(submitStatusWrap, "Please enter text to translate.", true); return; }
+
             const resp = await fetch("/translate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ text, target_languages: selectedLanguages }),
             });
             if (!resp.ok) {
-              let errorMessage = `Translation failed.`;
-              try {
-                const payload = await resp.json();
-                errorMessage = payload.detail || errorMessage;
-              } catch (e) {
-                errorMessage = resp.statusText || errorMessage;
-              }
-              setStatus(submitStatus, errorMessage, true);
-              submitBtn.disabled = false;
-              return;
+              let msg = "Translation failed.";
+              try { msg = (await resp.json()).detail || msg; } catch {}
+              setStatus(submitStatusWrap, msg, true); return;
             }
-            const payload = await resp.json();
-            // Render editable fields for each translation
+            const { translations } = await resp.json();
+
+            window.ttsElevenLabs = async function(lang) {
+              const ta      = document.getElementById(`edit-translation-${lang}`);
+              const st      = document.getElementById(`tts-status-${lang}`);
+              const audioEl = document.getElementById(`audio-${lang}`);
+              const vs      = document.getElementById(`voiceSelect-${lang}`);
+              if (!ta || !vs) return;
+              const txt = ta.value.trim();
+              const vid = vs.value;
+              if (!txt) { st.textContent = "Text is empty."; st.className = "status error"; return; }
+              st.textContent = "Generating…"; st.className = "status";
+              try {
+                const r = await fetch("/tts-elevenlabs", {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text: txt, voice_id: vid }),
+                });
+                if (!r.ok) {
+                  let em = `TTS failed for ${lang}`;
+                  try { em = (await r.json()).detail || em; } catch {}
+                  st.textContent = em; st.className = "status error"; return;
+                }
+                const p = await r.json();
+                if (p.tts_url) {
+                  audioEl.src = p.tts_url; audioEl.style.display = "block";
+                  st.textContent = "Audio ready!"; st.className = "status success";
+                } else { st.textContent = "No audio URL returned."; st.className = "status error"; }
+              } catch (e) { st.textContent = `Error: ${e.message}`; st.className = "status error"; }
+            };
+
+            const langNames = {
+              "bn-IN":"Bengali","en-IN":"English","gu-IN":"Gujarati","hi-IN":"Hindi",
+              "kn-IN":"Kannada","ml-IN":"Malayalam","mr-IN":"Marathi","od-IN":"Odia",
+              "pa-IN":"Punjabi","ta-IN":"Tamil","te-IN":"Telugu"
+            };
+
             let html = "";
             for (const lang of selectedLanguages) {
-              const translation = payload.translations[lang] || "";
-              html += `<div class='player' style='margin-bottom:18px;'>`;
-              html += `<div style='font-weight:600;'>${lang}</div>`;
-              html += `<textarea id="edit-translation-${lang}" rows="3" style="width:100%;margin:8px 0 8px 0;">${translation}</textarea>`;
-              html += `<select id="voiceSelect-${lang}" name="voiceSelect-${lang}" style="margin-right:8px;padding:6px 10px;font-size:15px;">
-                <option value="S1JBcZECEJJlf7lEDTbN">bhojpuri_ai_studio</option>
-                <option value="dffT29nmBclERTsFHmHg">dv_nisha</option>
-              </select>`;
-              html += `<button type="button" onclick="ttsElevenLabs('${lang}')">Generate Audio (ElevenLabs)</button>`;
-              html += `<span id="tts-status-${lang}" class="status"></span>`;
-              html += `<audio id="audio-${lang}" controls style="display:none;width:100%;margin-top:8px;"></audio>`;
-              html += `</div>`;
+              const t = translations[lang] || "";
+              html += `
+              <div class="player-card">
+                <div class="player-card-title">${langNames[lang] || lang}</div>
+                <textarea id="edit-translation-${lang}" rows="3">${t}</textarea>
+                <div class="player-card-row">
+                  <select id="voiceSelect-${lang}">
+                    <option value="7mUyuKgfXYrwZ6GFZoAa">bhojpuri_ai_studio</option>
+                    <option value="JDfEfmBscH7TaMosfJep">dv_nisha</option>
+                  </select>
+                  <button class="btn-gen" type="button" onclick="ttsElevenLabs('${lang}')">▶ Generate Audio</button>
+                  <span id="tts-status-${lang}" class="status"></span>
+                </div>
+                <audio id="audio-${lang}" controls style="display:none;"></audio>
+              </div>`;
             }
-                  // Generate audio using ElevenLabs endpoint
-                  window.ttsElevenLabs = async function(lang) {
-                    const textarea = document.getElementById(`edit-translation-${lang}`);
-                    const statusSpan = document.getElementById(`tts-status-${lang}`);
-                    const audioElem = document.getElementById(`audio-${lang}`);
-                    const voiceSelect = document.getElementById(`voiceSelect-${lang}`);
-                    if (!textarea || !voiceSelect) return;
-                    const text = textarea.value.trim();
-                    const voice_id = voiceSelect.value;
-                    if (!text) {
-                      statusSpan.textContent = "Text is empty.";
-                      statusSpan.className = "status error";
-                      return;
-                    }
-                    statusSpan.textContent = "Generating audio...";
-                    statusSpan.className = "status";
-                    try {
-                      const resp = await fetch("/tts-elevenlabs", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text, voice_id }),
-                      });
-                      if (!resp.ok) {
-                        let errorMessage = `TTS failed for ${lang}`;
-                        try {
-                          const payload = await resp.json();
-                          errorMessage = payload.detail || errorMessage;
-                        } catch (e) {
-                          errorMessage = resp.statusText || errorMessage;
-                        }
-                        statusSpan.textContent = errorMessage;
-                        statusSpan.className = "status error";
-                        return;
-                      }
-                      const payload = await resp.json();
-                      if (payload.tts_url) {
-                        audioElem.src = payload.tts_url;
-                        audioElem.style.display = "block";
-                        statusSpan.textContent = "Audio generated!";
-                        statusSpan.className = "status";
-                      } else {
-                        statusSpan.textContent = "No audio URL returned.";
-                        statusSpan.className = "status error";
-                      }
-                    } catch (e) {
-                      statusSpan.textContent = `Error: ${e.message}`;
-                      statusSpan.className = "status error";
-                    }
-                  }
             document.getElementById("multiResults").innerHTML = html;
-            setStatus(submitStatus, "Translations ready. Edit and finalize as needed.");
+            stopSpinner();
+            setStatus(submitStatusWrap, "Translations ready — edit &amp; generate audio.", false, true);
+
           } else {
-            setStatus(submitStatus, "Audio upload flow not implemented for new translation UI.", true);
+            setStatus(submitStatusWrap, "Audio upload flow not yet supported in this UI.", true);
           }
-        } catch (error) {
-          setStatus(submitStatus, error.message || "Request failed", true);
+        } catch (err) {
+          stopSpinner();
+          setStatus(submitStatusWrap, err.message || "Request failed.", true);
         } finally {
           submitBtn.disabled = false;
         }
       });
 
-      // Finalize text for a language (send to backend for logging)
+      /* ── Finalize helper ──────────────────────────────────────── */
       window.finalizeText = async function(lang) {
-        const textarea = document.getElementById(`edit-translation-${lang}`);
-        const statusSpan = document.getElementById(`finalize-status-${lang}`);
-        if (!textarea) return;
-        const text = textarea.value.trim();
-        if (!text) {
-          statusSpan.textContent = "Text is empty.";
-          statusSpan.className = "status error";
-          return;
-        }
-        statusSpan.textContent = "Sending...";
-        statusSpan.className = "status";
+        const ta = document.getElementById(`edit-translation-${lang}`);
+        const st = document.getElementById(`finalize-status-${lang}`);
+        if (!ta) return;
+        const text = ta.value.trim();
+        if (!text) { st.textContent = "Text is empty."; st.className = "status error"; return; }
+        st.textContent = "Sending…"; st.className = "status";
         try {
           const resp = await fetch("/finalize-text", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text, language: lang }),
           });
           if (!resp.ok) {
-            let errorMessage = `Failed to finalize for ${lang}`;
-            try {
-              const payload = await resp.json();
-              errorMessage = payload.detail || errorMessage;
-            } catch (e) {
-              errorMessage = resp.statusText || errorMessage;
-            }
-            statusSpan.textContent = errorMessage;
-            statusSpan.className = "status error";
-            return;
+            let msg = `Failed to finalize for ${lang}`;
+            try { msg = (await resp.json()).detail || msg; } catch {}
+            st.textContent = msg; st.className = "status error"; return;
           }
-          statusSpan.textContent = "Finalized and logged!";
-          statusSpan.className = "status";
-        } catch (e) {
-          statusSpan.textContent = `Error: ${e.message}`;
-          statusSpan.className = "status error";
-        }
-      }
+          st.textContent = "Finalized!"; st.className = "status success";
+        } catch (e) { st.textContent = `Error: ${e.message}`; st.className = "status error"; }
+      };
     </script>
   </body>
 </html>

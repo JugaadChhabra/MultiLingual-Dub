@@ -1,11 +1,12 @@
 
 from dotenv import load_dotenv
 import argparse
+import logging
 from pathlib import Path
 
-from stt import transcribe_audio
-from translate import translate_text
-from tts import text_to_speech
+from services.stt import transcribe_audio
+from services.translation import translate_with_fallback
+from services.tts import text_to_speech
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +47,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
 	load_dotenv()
+	logging.basicConfig(
+		level=logging.INFO,
+		format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+	)
 	args = parse_args()
 
 	transcripts = transcribe_audio(
@@ -56,7 +61,7 @@ def main() -> None:
 
 	output_dir = Path(args.output_dir)
 	for file_name, transcript in transcripts.items():
-		translated = translate_text(
+		translated = translate_with_fallback(
 			transcript,
 			target_language_code=args.target_language,
 			source_language_code=args.source_language,

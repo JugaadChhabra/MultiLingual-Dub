@@ -1,16 +1,4 @@
-from sarvamai import SarvamAI
-from dotenv import load_dotenv
-import os
-
-
-load_dotenv()
-
-
-def _get_client() -> SarvamAI:
-    api_key = os.getenv("SARVAM_API")
-    if not api_key:
-        raise ValueError("Missing SARVAM_API environment variable.")
-    return SarvamAI(api_subscription_key=api_key)
+from services.sarvam import get_sarvam_client
 
 
 def _extract_translated_text(response) -> str:
@@ -48,7 +36,7 @@ def translate_text(
     model: str = "mayura:v1",
     numerals_format: str = "native",
 ) -> str:
-    client = _get_client()
+    client = get_sarvam_client()
     response = client.text.translate(
         input=text,
         source_language_code=source_language_code,

@@ -1,20 +1,8 @@
-from sarvamai import SarvamAI
-from dotenv import load_dotenv
 import base64
 import binascii
-import os
 from pathlib import Path
 import re
-
-
-load_dotenv()
-
-
-def _get_client() -> SarvamAI:
-    api_key = os.getenv("SARVAM_API")
-    if not api_key:
-        raise ValueError("Missing SARVAM_API environment variable.")
-    return SarvamAI(api_subscription_key=api_key)
+from services.sarvam import get_sarvam_client
 
 
 def _extract_audio_bytes(response) -> bytes | None:
@@ -101,7 +89,7 @@ def text_to_speech(
     speech_sample_rate: int = 22050,
     model: str = "bulbul:v3",
 ) -> str:
-    client = _get_client()
+    client = get_sarvam_client()
     response = client.text_to_speech.convert(
         text=text,
         target_language_code=target_language_code,

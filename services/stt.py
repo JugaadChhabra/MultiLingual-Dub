@@ -1,18 +1,6 @@
-from sarvamai import SarvamAI
-from dotenv import load_dotenv
 import json
-import os
 from pathlib import Path
-
-
-load_dotenv()
-
-
-def _get_client() -> SarvamAI:
-    api_key = os.getenv("SARVAM_API")
-    if not api_key:
-        raise ValueError("Missing SARVAM_API environment variable.")
-    return SarvamAI(api_subscription_key=api_key)
+from services.sarvam import get_sarvam_client
 
 
 def _extract_transcript_from_result(result: dict) -> str | None:
@@ -54,7 +42,7 @@ def transcribe_audio(
     with_diarization: bool = True,
     num_speakers: int = 2,
 ) -> dict[str, str]:
-    client = _get_client()
+    client = get_sarvam_client()
 
     job = client.speech_to_text_job.create_job(
         model=model,
