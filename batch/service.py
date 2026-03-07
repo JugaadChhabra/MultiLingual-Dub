@@ -124,7 +124,14 @@ async def run_excel_batch_job(
                 logger.info("Job %s | row %d | lang %s: TTS start", job_id, row.row_index, language)
                 try:
                     audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, translated_text)
-                    local_file = row_output_base / f"{language}-{uuid.uuid4().hex}.mp3"
+                    
+                    # New naming convention: activity_name-audio_type-language-uuid.mp3
+                    # Sanitizing names to ensure valid filenames
+                    safe_activity = "".join(c for c in row.activity_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+                    safe_audio_type = "".join(c for c in row.audio_type if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+                    filename = f"{safe_activity}-{safe_audio_type}-{language}.mp3"
+                    
+                    local_file = row_output_base / filename
                     local_file.write_bytes(audio_bytes)
 
                     if wasabi_client is None:

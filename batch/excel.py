@@ -55,10 +55,10 @@ def read_excel_rows(path: str | Path) -> list[ExcelRow]:
         parsed_rows.append(
             ExcelRow(
                 row_index=idx,
-                voiceover_text=voiceover_text,
+                text=voiceover_text,
                 emotion=emotion,
                 activity_name=activity_name,
-                voiceover_title=voiceover_title,
+                audio_type=voiceover_title,
             )
         )
 

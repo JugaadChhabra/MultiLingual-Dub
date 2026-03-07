@@ -9,7 +9,6 @@ def translate_with_fallback(
     target_language_code: str,
     source_language_code: str = "auto",
 ) -> str:
-    """Translate text and keep original when provider reports source==target."""
     try:
         return translate_text(
             text,
