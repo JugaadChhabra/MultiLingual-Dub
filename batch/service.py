@@ -12,12 +12,17 @@ from batch.excel import read_excel_rows
 from batch.store import JobsStore
 from services.translation import translate_with_fallback
 from services.wasabi import WasabiClient, WasabiConfigError, get_wasabi_config
+from services.qc import qc_translations_batch, QCError
 
 logger = logging.getLogger(__name__)
 
 
 def _should_upload_to_wasabi() -> bool:
     return os.getenv("BATCH_ENABLE_WASABI_UPLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _should_enable_qc() -> bool:
+    return os.getenv("BATCH_ENABLE_QC", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _sanitize_for_key(raw: str) -> str:
@@ -95,6 +100,12 @@ async def run_excel_batch_job(
     row_output_base = Path("./output") / "batch" / job_id
     row_output_base.mkdir(parents=True, exist_ok=True)
 
+    # Extract activity_name from first row for Wasabi folder naming
+    activity_name = _sanitize_for_key(rows[0].activity_name) if rows else "batch"
+    
+    # Collect audio files by language for zip upload
+    language_audio_files: dict[str, dict[str, bytes]] = {lang: {} for lang in target_languages}
+
     try:
         for row in rows:
             logger.info(
@@ -106,6 +117,44 @@ async def run_excel_batch_job(
             translation_results: list[tuple[str, str | None, str | None]] = await asyncio.gather(
                 *[_translate_language_async(row.text, lang) for lang in target_languages]
             )
+
+            # Phase 1.5 — QC all translations (optional)
+            if _should_enable_qc():
+                # Collect successful translations
+                translations_to_qc = {
+                    lang: text for lang, text, error in translation_results if error is None and text
+                }
+                
+                if translations_to_qc:
+                    try:
+                        logger.info(
+                            "Job %s | row %d: QC start for %d languages",
+                            job_id, row.row_index, len(translations_to_qc),
+                        )
+                        qc_results = await asyncio.to_thread(
+                            qc_translations_batch,
+                            row.text,
+                            translations_to_qc,
+                            list(translations_to_qc.keys()),
+                        )
+                        
+                        # Update translation_results with QC'd texts
+                        translation_results = [
+                            (lang, qc_results.get(lang, text), error)
+                            if error is None and text
+                            else (lang, text, error)
+                            for lang, text, error in translation_results
+                        ]
+                        logger.info(
+                            "Job %s | row %d: QC complete",
+                            job_id, row.row_index,
+                        )
+                    except QCError as exc:
+                        logger.warning(
+                            "Job %s | row %d: QC failed, using original translations: %s",
+                            job_id, row.row_index, exc,
+                        )
+                        # translation_results stays unchanged, continue with originals
 
             # Phase 2 — TTS sequentially, one language at a time
             row_ok = True
@@ -125,33 +174,31 @@ async def run_excel_batch_job(
                 try:
                     audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, translated_text)
                     
-                    # New naming convention: activity_name-audio_type-language-uuid.mp3
-                    # Sanitizing names to ensure valid filenames
+                    # Generate filename
                     safe_activity = "".join(c for c in row.activity_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
                     safe_audio_type = "".join(c for c in row.audio_type if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
                     filename = f"{safe_activity}-{safe_audio_type}-{language}.mp3"
                     
-                    local_file = row_output_base / filename
-                    local_file.write_bytes(audio_bytes)
-
                     if wasabi_client is None:
+                        # No Wasabi upload: save locally only
+                        local_file = row_output_base / filename
+                        local_file.write_bytes(audio_bytes)
                         summary.language_tasks_succeeded += 1
                         logger.info(
                             "Job %s | row %d | lang %s: done (no upload)",
                             job_id, row.row_index, language,
                         )
                     else:
-                        s3_key = _build_s3_key(job_id=job_id, target_language=language, audio_type=row.audio_type)
-                        await asyncio.to_thread(wasabi_client.upload_file, local_file, s3_key)
+                        # Collect for zip upload
+                        language_audio_files[language][filename] = audio_bytes
                         summary.language_tasks_succeeded += 1
-                        summary.uploads_succeeded += 1
                         logger.info(
-                            "Job %s | row %d | lang %s: done + uploaded → %s",
-                            job_id, row.row_index, language, s3_key,
+                            "Job %s | row %d | lang %s: ready for zip → %s",
+                            job_id, row.row_index, language, filename,
                         )
                 except Exception as exc:
                     logger.error(
-                        "Job %s | row %d | lang %s: TTS/upload failed: %s",
+                        "Job %s | row %d | lang %s: TTS failed: %s",
                         job_id, row.row_index, language, exc,
                     )
                     summary.language_tasks_failed += 1
@@ -170,6 +217,35 @@ async def run_excel_batch_job(
                 job_id, row.row_index, summary.language_tasks_succeeded, summary.language_tasks_failed,
             )
             await jobs_store.update_summary(job_id, summary)
+
+        # Step 3 — Upload zip files for each language
+        if wasabi_client is not None:
+            logger.info("Job %s | uploading zip files for %d languages under %s", job_id, len(target_languages), activity_name)
+            
+            for language in target_languages:
+                audio_files = language_audio_files[language]
+                if not audio_files:
+                    logger.info("Job %s | lang %s: no files to zip", job_id, language)
+                    continue
+                
+                try:
+                    result = await asyncio.to_thread(
+                        wasabi_client.upload_language_zip,
+                        language,
+                        audio_files,
+                        activity_name
+                    )
+                    summary.uploads_succeeded += 1
+                    logger.info(
+                        "Job %s | lang %s: uploaded zip with %d files → %s",
+                        job_id, language, len(audio_files), result["key"]
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Job %s | lang %s: zip upload failed: %s",
+                        job_id, language, exc,
+                    )
+                    summary.uploads_failed += 1
 
         await jobs_store.complete(job_id, summary)
     except Exception as exc:

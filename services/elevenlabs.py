@@ -6,11 +6,17 @@ from elevenlabs.types import VoiceSettings
 
 
 DEFAULT_MODEL_ID = "eleven_v3"
-DEFAULT_VOICE_ID = "JDfEfmBscH7TaMosfJep"
 DEFAULT_STABILITY = 0.5
 DEFAULT_SIMILARITY_BOOST = 0.75
 DEFAULT_STYLE = 0.0
 DEFAULT_USE_SPEAKER_BOOST = True
+
+
+def get_voice_id(voice_name: str = "desi") -> str:
+    """Get voice ID from environment variables. voice_name can be 'desi' or 'studio'."""
+    if voice_name == "studio":
+        return os.getenv("AI_STUDIO_VOICE", "S1JBcZECEJJlf7lEDTbN")
+    return os.getenv("DESI_VOCAL_VOICE", "dffT29nmBclERTsFHmHg")
 
 
 @dataclass(frozen=True)
@@ -32,7 +38,7 @@ def get_elevenlabs_api_key() -> str:
 
 def get_batch_default_config() -> ElevenLabsTTSConfig:
     return ElevenLabsTTSConfig(
-        voice_id=DEFAULT_VOICE_ID,
+        voice_id=get_voice_id("desi"),
         model_id=DEFAULT_MODEL_ID,
         stability=DEFAULT_STABILITY,
         similarity_boost=DEFAULT_SIMILARITY_BOOST,

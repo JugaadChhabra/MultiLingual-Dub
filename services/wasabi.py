@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import os
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,7 +65,25 @@ class WasabiClient:
             region_name=config.region,
         )
 
+    def _ensure_folder(self, folder_key: str) -> None:
+        """Create folder if it doesn't exist by checking and creating folder marker."""
+        try:
+            self._client.head_object(Bucket=self._config.bucket, Key=folder_key)
+        except Exception:
+            # Folder doesn't exist, create it
+            self._client.put_object(Bucket=self._config.bucket, Key=folder_key)
+
+    def _ensure_folder_for_key(self, key: str) -> None:
+        """Ensure all parent folders for the given key exist."""
+        # Extract folder path (everything before the last /)
+        parts = key.rsplit("/", 1)
+        if len(parts) > 1:
+            folder_key = parts[0] + "/"
+            self._ensure_folder(folder_key)
+
     def upload_file(self, file_path: str | Path, key: str) -> dict[str, str]:
+        """Upload file from disk to S3."""
+        self._ensure_folder_for_key(key)
         path = Path(file_path)
         with path.open("rb") as handle:
             response = self._client.put_object(
@@ -74,3 +94,49 @@ class WasabiClient:
             )
         etag = str(response.get("ETag", "")).strip('"')
         return {"bucket": self._config.bucket, "key": key, "etag": etag}
+
+    def upload_bytes(self, audio_bytes: bytes, key: str) -> dict[str, str]:
+        """Upload audio bytes directly to S3 without saving to disk."""
+        self._ensure_folder_for_key(key)
+        response = self._client.put_object(
+            Bucket=self._config.bucket,
+            Key=key,
+            Body=audio_bytes,
+            ContentType="audio/mpeg",
+        )
+        etag = str(response.get("ETag", "")).strip('"')
+        return {"bucket": self._config.bucket, "key": key, "etag": etag}
+
+    def upload_language_zip(
+        self, language: str, audio_files: dict[str, bytes], folder_name: str
+    ) -> dict[str, str]:
+        """
+        Create and upload a zip file containing all audio files for a language.
+        
+        :param language: Language code (e.g., "hi-IN", "en-IN")
+        :param audio_files: Dict of {filename: audio_bytes}
+        :param folder_name: Folder path in S3 (e.g., "batch/job_id")
+        :return: Dict with bucket, key, and etag
+        """
+        # Create zip file in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for filename, audio_bytes in audio_files.items():
+                zf.writestr(filename, audio_bytes)
+        
+        zip_buffer.seek(0)
+        zip_filename = f"{language}.zip"
+        s3_key = f"{folder_name}/{zip_filename}"
+        
+        # Ensure folder exists
+        self._ensure_folder_for_key(s3_key)
+        
+        # Upload zip file
+        response = self._client.put_object(
+            Bucket=self._config.bucket,
+            Key=s3_key,
+            Body=zip_buffer.getvalue(),
+            ContentType="application/zip",
+        )
+        etag = str(response.get("ETag", "")).strip('"')
+        return {"bucket": self._config.bucket, "key": s3_key, "etag": etag}

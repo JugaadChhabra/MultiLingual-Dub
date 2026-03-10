@@ -10,8 +10,8 @@ wasabi_endpoint = "https://s3.ap-southeast-1.wasabisys.com"
 s3_client = boto3.client(
     "s3",
     endpoint_url=wasabi_endpoint,
-    aws_access_key_id="DNZD4UYK5TR7LXH21O9S",
-    aws_secret_access_key="OeAPjZdkS7KikH5lPzfjXZAcXOFH7lJa18HDHtvh",
+    aws_access_key_id="",
+    aws_secret_access_key="",
     region_name="ap-southeast-1",
 )
 
