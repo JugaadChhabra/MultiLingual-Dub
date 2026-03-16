@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 import uuid
+import tempfile
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -20,7 +21,7 @@ from batch.store import JobsStore
 from services.stt import transcribe_audio
 from services.tts import text_to_speech
 from services.translation import translate_with_fallback
-from services.wasabi import validate_wasabi_env
+from services.wasabi import validate_s3_env
 
 
 load_dotenv()
@@ -32,8 +33,8 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _, wasabi_error = validate_wasabi_env()
-    app.state.wasabi_config_error = wasabi_error
+    _, s3_error = validate_s3_env()
+    app.state.s3_config_error = s3_error
     yield
 
 
@@ -41,7 +42,6 @@ app = FastAPI(lifespan=lifespan)
 
 UPLOAD_DIR = Path("./uploads")
 OUTPUT_DIR = Path("./output")
-BATCH_UPLOAD_DIR = UPLOAD_DIR / "batch"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
@@ -87,10 +87,9 @@ async def create_excel_job(
 
     parsed_languages = parse_target_languages(target_languages, target_languages_json)
 
-    BATCH_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-    safe_name = safe_stem(filename)
-    saved_path = BATCH_UPLOAD_DIR / f"{safe_name}-{uuid.uuid4().hex}.xlsx"
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    saved_path = Path(temp_file.name)
+    temp_file.close()
 
     await save_upload_file(file, saved_path)
 

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from elevenlabs.client import ElevenLabs
 from elevenlabs.types import VoiceSettings
 
+from services.retry import retry_call
+
 
 DEFAULT_MODEL_ID = "eleven_v3"
 DEFAULT_STABILITY = 0.5
@@ -47,7 +49,7 @@ def get_batch_default_config() -> ElevenLabsTTSConfig:
     )
 
 
-def synthesize_speech_bytes(text: str, *, api_key: str, config: ElevenLabsTTSConfig) -> bytes:
+def _synthesize_once(text: str, *, api_key: str, config: ElevenLabsTTSConfig) -> bytes:
     client = ElevenLabs(api_key=api_key)
     audio_stream = client.text_to_speech.convert(
         voice_id=config.voice_id,
@@ -68,3 +70,10 @@ def synthesize_speech_bytes(text: str, *, api_key: str, config: ElevenLabsTTSCon
     if not output:
         raise RuntimeError("ElevenLabs returned empty audio")
     return bytes(output)
+
+
+def synthesize_speech_bytes(text: str, *, api_key: str, config: ElevenLabsTTSConfig) -> bytes:
+    return retry_call(
+        lambda: _synthesize_once(text, api_key=api_key, config=config),
+        operation="ElevenLabs TTS",
+    )

@@ -8,16 +8,17 @@ import uuid
 
 from batch.models import JobSummary
 from services.elevenlabs import get_batch_default_config, get_elevenlabs_api_key, synthesize_speech_bytes
+from services.audio_compress import compress_mp3_bytes
 from batch.excel import read_excel_rows
 from batch.store import JobsStore
 from services.translation import translate_with_fallback
-from services.wasabi import WasabiClient, WasabiConfigError, get_wasabi_config
-from services.qc import qc_translations_batch, QCError
+from services.wasabi import S3Client, S3ConfigError, get_s3_config
+from services.qc import qc_translations_batch, QCError, LANGUAGE_NAMES
 
 logger = logging.getLogger(__name__)
 
 
-def _should_upload_to_wasabi() -> bool:
+def _should_upload_to_s3() -> bool:
     return os.getenv("BATCH_ENABLE_WASABI_UPLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -72,13 +73,26 @@ async def run_excel_batch_job(
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
 
     try:
-        upload_to_wasabi = _should_upload_to_wasabi()
-        wasabi_client: WasabiClient | None = None
-        if upload_to_wasabi:
-            config = await asyncio.to_thread(get_wasabi_config)
-            wasabi_client = WasabiClient(config)
+        upload_to_s3 = _should_upload_to_s3()
+        s3_client: S3Client | None = None
+        if upload_to_s3:
+            config = await asyncio.to_thread(get_s3_config)
+            s3_client = S3Client(config)
 
-        rows = await asyncio.to_thread(read_excel_rows, excel_path)
+        try:
+            rows = await asyncio.to_thread(read_excel_rows, excel_path)
+        finally:
+            excel_file = Path(excel_path)
+            if excel_file.exists():
+                try:
+                    excel_file.unlink()
+                except OSError as exc:
+                    logger.warning(
+                        "Job %s: failed to delete temp excel file %s: %s",
+                        job_id,
+                        excel_path,
+                        exc,
+                    )
         summary.total_rows = len(rows)
         summary.language_tasks_total = len(rows) * len(target_languages)
         await jobs_store.update_summary(job_id, summary)
@@ -86,8 +100,8 @@ async def run_excel_batch_job(
             "Job %s | %d rows × %d languages = %d tasks",
             job_id, len(rows), len(target_languages), summary.language_tasks_total,
         )
-    except WasabiConfigError as exc:
-        await jobs_store.fail(job_id, f"Wasabi config error: {exc}", summary)
+    except S3ConfigError as exc:
+        await jobs_store.fail(job_id, f"AWS S3 config error: {exc}", summary)
         return
     except Exception as exc:
         await jobs_store.fail(job_id, f"Batch setup failed: {exc}", summary)
@@ -97,14 +111,13 @@ async def run_excel_batch_job(
         await jobs_store.complete(job_id, summary)
         return
 
-    row_output_base = Path("./output") / "batch" / job_id
-    row_output_base.mkdir(parents=True, exist_ok=True)
-
-    # Extract activity_name from first row for Wasabi folder naming
+    # Extract activity_name from first row for S3 folder naming
     activity_name = _sanitize_for_key(rows[0].activity_name) if rows else "batch"
     
     # Collect audio files by language for zip upload
-    language_audio_files: dict[str, dict[str, bytes]] = {lang: {} for lang in target_languages}
+    language_audio_files: dict[str, dict[str, bytes]] | None = (
+        {lang: {} for lang in target_languages} if s3_client else None
+    )
 
     try:
         for row in rows:
@@ -136,6 +149,12 @@ async def run_excel_batch_job(
                             row.text,
                             translations_to_qc,
                             list(translations_to_qc.keys()),
+                            metadata={
+                                "job_id": job_id,
+                                "row_index": row.row_index,
+                                "activity_name": row.activity_name,
+                                "voiceover_title": row.audio_type,
+                            },
                         )
                         
                         # Update translation_results with QC'd texts
@@ -165,46 +184,60 @@ async def run_excel_batch_job(
                         job_id, row.row_index, language, translation_error,
                     )
                     summary.language_tasks_failed += 1
-                    if wasabi_client:
+                    if s3_client:
                         summary.uploads_failed += 1
                     row_ok = False
+                    await jobs_store.update_summary(job_id, summary)
                     continue
 
                 logger.info("Job %s | row %d | lang %s: TTS start", job_id, row.row_index, language)
                 try:
-                    audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, translated_text)
-                    
-                    # Generate filename
-                    safe_activity = "".join(c for c in row.activity_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-                    safe_audio_type = "".join(c for c in row.audio_type if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-                    filename = f"{safe_activity}-{safe_audio_type}-{language}.mp3"
-                    
-                    if wasabi_client is None:
-                        # No Wasabi upload: save locally only
-                        local_file = row_output_base / filename
-                        local_file.write_bytes(audio_bytes)
+                    tts_text = (
+                        f"[{row.emotion}] {translated_text}"
+                        if row.emotion
+                        else translated_text
+                    )
+                    audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, tts_text)
+                    if s3_client is not None:
+                        audio_bytes = compress_mp3_bytes(audio_bytes)
+
+                    filename = row.audio_type
+                    if not filename:
+                        logger.warning(
+                            "Job %s | row %d | lang %s: empty voiceover_title; using .mp3",
+                            job_id,
+                            row.row_index,
+                            language,
+                        )
+                    if not filename.lower().endswith(".mp3"):
+                        filename = f"{filename}.mp3"
+
+                    if s3_client is None:
                         summary.language_tasks_succeeded += 1
                         logger.info(
-                            "Job %s | row %d | lang %s: done (no upload)",
+                            "Job %s | row %d | lang %s: done (discarded audio; no upload)",
                             job_id, row.row_index, language,
                         )
                     else:
                         # Collect for zip upload
-                        language_audio_files[language][filename] = audio_bytes
+                        if language_audio_files is not None:
+                            language_audio_files[language][filename] = audio_bytes
                         summary.language_tasks_succeeded += 1
                         logger.info(
                             "Job %s | row %d | lang %s: ready for zip → %s",
                             job_id, row.row_index, language, filename,
                         )
+                    await jobs_store.update_summary(job_id, summary)
                 except Exception as exc:
                     logger.error(
                         "Job %s | row %d | lang %s: TTS failed: %s",
                         job_id, row.row_index, language, exc,
                     )
                     summary.language_tasks_failed += 1
-                    if wasabi_client:
+                    if s3_client:
                         summary.uploads_failed += 1
                     row_ok = False
+                    await jobs_store.update_summary(job_id, summary)
 
             summary.rows_processed += 1
             if row_ok:
@@ -219,7 +252,7 @@ async def run_excel_batch_job(
             await jobs_store.update_summary(job_id, summary)
 
         # Step 3 — Upload zip files for each language
-        if wasabi_client is not None:
+        if s3_client is not None and language_audio_files is not None:
             logger.info("Job %s | uploading zip files for %d languages under %s", job_id, len(target_languages), activity_name)
             
             for language in target_languages:
@@ -229,16 +262,17 @@ async def run_excel_batch_job(
                     continue
                 
                 try:
+                    language_label = LANGUAGE_NAMES.get(language, language)
                     result = await asyncio.to_thread(
-                        wasabi_client.upload_language_zip,
-                        language,
+                        s3_client.upload_language_zip,
+                        language_label,
                         audio_files,
                         activity_name
                     )
                     summary.uploads_succeeded += 1
                     logger.info(
                         "Job %s | lang %s: uploaded zip with %d files → %s",
-                        job_id, language, len(audio_files), result["key"]
+                        job_id, language_label, len(audio_files), result["key"]
                     )
                 except Exception as exc:
                     logger.error(

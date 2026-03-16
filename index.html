@@ -543,7 +543,7 @@
       /* ── Batch poll ───────────────────────────────────────────── */
       async function pollBatchJob(jobId) {
         const terminalStates = new Set(["completed", "failed"]);
-        for (let i = 0; i < 120; i++) {
+        while (true) {
           const resp = await fetch(`/batch/excel-jobs/${jobId}`);
           if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId}`);
           const payload = await resp.json();
@@ -552,7 +552,6 @@
           if (terminalStates.has(payload.status)) return payload;
           await new Promise(r => setTimeout(r, 2000));
         }
-        throw new Error("Polling timeout");
       }
 
       /* ── Form submit ──────────────────────────────────────────── */

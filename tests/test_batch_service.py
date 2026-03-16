@@ -25,7 +25,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setattr("batch.service._should_upload_to_wasabi", lambda: False)
+    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
 
     store = JobsStore()
     job_id = "job-seq-test"
@@ -49,12 +49,136 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     assert state.summary.language_tasks_succeeded == 4
 
 
-def test_run_excel_batch_job_sets_failed_when_wasabi_missing(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
-    monkeypatch.setattr("batch.service.get_wasabi_config", lambda: (_ for _ in ()).throw(RuntimeError("missing config")))
+def test_run_excel_batch_job_skips_local_output_when_no_s3(monkeypatch, tmp_path) -> None:
+    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="", audio_type="a")]
+
+    async def fake_translate_async(text: str, language: str):
+        return language, f"translated:{text}:{language}", None
+
+    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
+    monkeypatch.chdir(tmp_path)
 
     store = JobsStore()
-    job_id = "job-missing-wasabi"
+    job_id = "job-no-output"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path=str(tmp_path / "unused.xlsx"),
+            target_languages=["hi-IN"],
+            jobs_store=store,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert not (tmp_path / "output").exists()
+
+
+def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> None:
+    rows = [
+        ExcelRow(
+            row_index=2,
+            text="row1",
+            emotion="excited",
+            activity_name="Act",
+            audio_type="My File",
+        )
+    ]
+
+    captured_texts: list[str] = []
+
+    async def fake_translate_async(text: str, language: str):
+        return language, f"translated:{text}:{language}", None
+
+    def fake_tts(text: str) -> bytes:
+        captured_texts.append(text)
+        return b"fake-audio"
+
+    class FakeS3Client:
+        last_instance: "FakeS3Client | None" = None
+
+        def __init__(self, _config):
+            self.uploads: list[tuple[str, dict[str, bytes], str]] = []
+            FakeS3Client.last_instance = self
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            self.uploads.append((language, audio_files, folder_name))
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: True)
+    monkeypatch.setattr("batch.service.get_s3_config", lambda: object())
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
+
+    store = JobsStore()
+    job_id = "job-filename-emotion"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["hi-IN"],
+            jobs_store=store,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert captured_texts == ["[excited] translated:row1:hi-IN"]
+    assert FakeS3Client.last_instance is not None
+    assert FakeS3Client.last_instance.uploads
+    language_label, audio_files, _ = FakeS3Client.last_instance.uploads[0]
+    assert language_label == "Hindi"
+    assert list(audio_files.keys()) == ["My File.mp3"]
+
+
+def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
+    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="", audio_type="a")]
+    excel_path = tmp_path / "input.xlsx"
+    excel_path.write_text("placeholder", encoding="utf-8")
+
+    async def fake_translate_async(text: str, language: str):
+        return language, f"translated:{text}:{language}", None
+
+    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
+
+    store = JobsStore()
+    job_id = "job-delete-excel"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path=str(excel_path),
+            target_languages=["hi-IN"],
+            jobs_store=store,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert not excel_path.exists()
+
+def test_run_excel_batch_job_sets_failed_when_s3_missing(monkeypatch) -> None:
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda: (_ for _ in ()).throw(RuntimeError("missing config")))
+
+    store = JobsStore()
+    job_id = "job-missing-s3"
 
     async def _run():
         await store.create(job_id)
