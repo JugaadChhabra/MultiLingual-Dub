@@ -4,7 +4,9 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
+import boto3
 import google.genai as genai
 
 from services.retry import retry_call
@@ -26,6 +28,7 @@ LANGUAGE_NAMES = {
 }
 
 DEFAULT_QC_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+DEFAULT_QC_LOG_S3_PREFIX = "qc/"
 
 
 class QCError(Exception):
@@ -53,6 +56,202 @@ def _get_qc_log_path() -> Path:
     return Path(raw)
 
 
+def _get_qc_train_log_path() -> Path:
+    raw_path = _get_qc_log_path()
+    if raw_path.suffix:
+        return raw_path.with_name(f"{raw_path.stem}-train{raw_path.suffix}")
+    return raw_path.with_name(f"{raw_path.name}-train.jsonl")
+
+
+def _get_qc_log_sink() -> str:
+    raw = os.getenv("QC_LOG_SINK", "file").strip().lower()
+    if raw in {"file", "s3"}:
+        return raw
+    logger.warning("QC: invalid QC_LOG_SINK=%s, defaulting to file", raw)
+    return "file"
+
+
+def _get_qc_s3_bucket() -> str | None:
+    raw = os.getenv("QC_LOG_S3_BUCKET", "").strip()
+    if raw:
+        return raw
+    raw = os.getenv("WASABI_BUCKET", "").strip()
+    return raw or None
+
+
+def _get_qc_s3_prefix() -> str:
+    raw = os.getenv("QC_LOG_S3_PREFIX", DEFAULT_QC_LOG_S3_PREFIX).strip()
+    if raw and not raw.endswith("/"):
+        raw = raw + "/"
+    return raw
+
+
+def _get_qc_s3_endpoint() -> str | None:
+    raw = os.getenv("QC_LOG_S3_ENDPOINT", "").strip()
+    if raw:
+        return raw
+    raw = os.getenv("WASABI_ENDPOINT_URL", "").strip()
+    return raw or None
+
+
+def _get_qc_s3_region() -> str | None:
+    raw = os.getenv("WASABI_REGION", "").strip()
+    return raw or None
+
+
+def _get_qc_s3_credentials() -> tuple[str, str] | None:
+    access_key = os.getenv("WASABI_ACCESS_KEY", "").strip()
+    secret_key = os.getenv("WASABI_SECRET_KEY", "").strip()
+    if access_key or secret_key:
+        if not access_key or not secret_key:
+            logger.warning("QC: incomplete WASABI credentials; relying on default boto3 credential chain")
+            return None
+        return access_key, secret_key
+    return None
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _is_train_log_enabled() -> bool:
+    return _env_bool("QC_TRAIN_LOG_ENABLED", True)
+
+
+def _build_raw_payload(
+    *,
+    timestamp: str,
+    model: str,
+    original_text: str,
+    input_translations: dict[str, str],
+    output_translations: dict[str, str],
+    target_languages: list[str],
+    metadata: dict[str, object] | None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "timestamp": timestamp,
+        "model": model,
+        "original_text": original_text,
+        "input_translations": input_translations,
+        "output_translations": output_translations,
+        "target_languages": target_languages,
+    }
+    if metadata:
+        payload["metadata"] = metadata
+    return payload
+
+
+def _build_training_records(
+    *,
+    timestamp: str,
+    model: str,
+    original_text: str,
+    input_translations: dict[str, str],
+    output_translations: dict[str, str],
+    target_languages: list[str],
+    metadata: dict[str, object] | None,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for lang_code in target_languages:
+        input_text = input_translations.get(lang_code, "")
+        output_text = output_translations.get(lang_code, "")
+        language_name = LANGUAGE_NAMES.get(lang_code, lang_code)
+        record: dict[str, object] = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"You are a QC expert for {language_name}.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f'Original English: "{original_text}"\n'
+                        f'Translation ({lang_code}): "{input_text}"\n'
+                        "Fix any errors in the translation and return only the corrected translation."
+                    ),
+                },
+                {"role": "assistant", "content": output_text},
+            ],
+            "lang_code": lang_code,
+            "timestamp": timestamp,
+            "model": model,
+        }
+        if metadata:
+            record["metadata"] = metadata
+        records.append(record)
+    return records
+
+
+def _write_jsonl_file(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for line in lines:
+            handle.write(line + "\n")
+
+
+def _build_s3_key(prefix: str, stream: str, timestamp: datetime, key_suffix: str) -> str:
+    date_part = timestamp.strftime("%Y/%m/%d")
+    time_part = timestamp.strftime("%H%M%S")
+    return f"{prefix}{stream}/{date_part}/{time_part}-{key_suffix}.jsonl"
+
+
+def _log_qc_sample_file(
+    *,
+    raw_payload: dict[str, object],
+    train_records: list[dict[str, object]],
+) -> None:
+    raw_path = _get_qc_log_path()
+    raw_line = json.dumps(raw_payload, ensure_ascii=False)
+    _write_jsonl_file(raw_path, [raw_line])
+
+    if _is_train_log_enabled() and train_records:
+        train_path = _get_qc_train_log_path()
+        train_lines = [
+            json.dumps(record, ensure_ascii=False) for record in train_records
+        ]
+        _write_jsonl_file(train_path, train_lines)
+
+
+def _log_qc_sample_s3(
+    *,
+    raw_payload: dict[str, object],
+    train_records: list[dict[str, object]],
+    timestamp: datetime,
+) -> None:
+    bucket = _get_qc_s3_bucket()
+    if not bucket:
+        logger.warning("QC: QC_LOG_S3_BUCKET is missing; skipping S3 log")
+        return
+    prefix = _get_qc_s3_prefix()
+    endpoint = _get_qc_s3_endpoint()
+    region = _get_qc_s3_region()
+    credentials = _get_qc_s3_credentials()
+    client_kwargs: dict[str, object] = {"endpoint_url": endpoint, "region_name": region}
+    if credentials:
+        client_kwargs["aws_access_key_id"] = credentials[0]
+        client_kwargs["aws_secret_access_key"] = credentials[1]
+    client = boto3.client("s3", **client_kwargs)
+
+    key_suffix = uuid4().hex
+    raw_key = _build_s3_key(prefix, "raw", timestamp, key_suffix)
+    raw_body = json.dumps(raw_payload, ensure_ascii=False) + "\n"
+    client.put_object(Bucket=bucket, Key=raw_key, Body=raw_body.encode("utf-8"))
+
+    if _is_train_log_enabled() and train_records:
+        train_key = _build_s3_key(prefix, "train", timestamp, key_suffix)
+        train_body = "\n".join(
+            json.dumps(record, ensure_ascii=False) for record in train_records
+        )
+        client.put_object(
+            Bucket=bucket,
+            Key=train_key,
+            Body=(train_body + "\n").encode("utf-8"),
+        )
+
+
 def _log_qc_sample(
     *,
     model: str,
@@ -62,24 +261,43 @@ def _log_qc_sample(
     target_languages: list[str],
     metadata: dict[str, object] | None,
 ) -> None:
-    payload = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "model": model,
-        "original_text": original_text,
-        "input_translations": input_translations,
-        "output_translations": output_translations,
-        "target_languages": target_languages,
-    }
-    if metadata:
-        payload["metadata"] = metadata
-
-    path = _get_qc_log_path()
+    now = datetime.utcnow()
+    timestamp = now.isoformat() + "Z"
+    raw_payload = _build_raw_payload(
+        timestamp=timestamp,
+        model=model,
+        original_text=original_text,
+        input_translations=input_translations,
+        output_translations=output_translations,
+        target_languages=target_languages,
+        metadata=metadata,
+    )
+    train_records = _build_training_records(
+        timestamp=timestamp,
+        model=model,
+        original_text=original_text,
+        input_translations=input_translations,
+        output_translations=output_translations,
+        target_languages=target_languages,
+        metadata=metadata,
+    )
+    sink = _get_qc_log_sink()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        if sink == "s3":
+            _log_qc_sample_s3(
+                raw_payload=raw_payload,
+                train_records=train_records,
+                timestamp=now,
+            )
+        else:
+            _log_qc_sample_file(
+                raw_payload=raw_payload,
+                train_records=train_records,
+            )
     except OSError as exc:
-        logger.warning("QC: failed to write log sample to %s: %s", path, exc)
+        logger.warning("QC: failed to write log sample: %s", exc)
+    except Exception as exc:
+        logger.warning("QC: failed to write log sample to %s sink: %s", sink, exc)
 
 
 def _parse_response_json(response_text: str) -> dict[str, str]:

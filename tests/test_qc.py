@@ -1,4 +1,5 @@
 import json
+import re
 
 from services import qc
 
@@ -53,3 +54,75 @@ def test_qc_model_fallback_and_logging(monkeypatch, tmp_path) -> None:
     assert payload["output_translations"]["hi-IN"] == "namaste"
     assert payload["target_languages"] == ["hi-IN"]
     assert payload["metadata"]["row_index"] == 2
+
+    train_path = qc._get_qc_train_log_path()
+    train_lines = train_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(train_lines) == 1
+    train_payload = json.loads(train_lines[0])
+    assert train_payload["lang_code"] == "hi-IN"
+    assert train_payload["model"] == "model-b"
+    assert train_payload["messages"][0]["role"] == "system"
+    assert "Hindi" in train_payload["messages"][0]["content"]
+    assert train_payload["messages"][1]["role"] == "user"
+    assert "Original English" in train_payload["messages"][1]["content"]
+    assert train_payload["messages"][2]["role"] == "assistant"
+    assert train_payload["messages"][2]["content"] == "namaste"
+
+
+def test_qc_s3_logging(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_QC_MODELS", "model-a")
+    monkeypatch.setenv("QC_LOG_SINK", "s3")
+    monkeypatch.setenv("QC_LOG_S3_BUCKET", "test-bucket")
+    monkeypatch.setenv("QC_LOG_S3_PREFIX", "qc/")
+    monkeypatch.setenv("API_RETRY_MAX_ATTEMPTS", "1")
+
+    class FakeResponse:
+        def __init__(self, text: str):
+            self.text = text
+
+    class FakeModels:
+        def generate_content(self, model: str, contents: str):
+            return FakeResponse('{"hi-IN": "namaste"}')
+
+    class FakeClient:
+        def __init__(self, api_key: str):
+            self.models = FakeModels()
+
+    monkeypatch.setattr("services.qc.genai.Client", FakeClient)
+
+    class FakeS3:
+        def __init__(self):
+            self.put_calls: list[dict[str, object]] = []
+
+        def put_object(self, **kwargs):
+            self.put_calls.append(kwargs)
+
+    fake_s3 = FakeS3()
+    client_args: dict[str, object] = {}
+
+    def fake_boto3_client(service_name: str, **kwargs):
+        assert service_name == "s3"
+        client_args.update(kwargs)
+        return fake_s3
+
+    monkeypatch.setattr("services.qc.boto3.client", fake_boto3_client)
+
+    qc.qc_translations_batch(
+        "hello",
+        {"hi-IN": "namaste"},
+        ["hi-IN"],
+        metadata={"row_index": 2},
+    )
+
+    assert len(fake_s3.put_calls) == 2
+    raw_call = fake_s3.put_calls[0]
+    train_call = fake_s3.put_calls[1]
+    assert raw_call["Bucket"] == "test-bucket"
+    assert train_call["Bucket"] == "test-bucket"
+    assert re.match(r"^qc/raw/\d{4}/\d{2}/\d{2}/\d{6}-[0-9a-f]{32}\.jsonl$", raw_call["Key"])
+    assert re.match(r"^qc/train/\d{4}/\d{2}/\d{2}/\d{6}-[0-9a-f]{32}\.jsonl$", train_call["Key"])
+    raw_body = raw_call["Body"].decode("utf-8").strip()
+    train_body = train_call["Body"].decode("utf-8").strip().splitlines()
+    assert json.loads(raw_body)["model"] == "model-a"
+    assert json.loads(train_body[0])["lang_code"] == "hi-IN"

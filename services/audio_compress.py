@@ -25,7 +25,14 @@ def compress_mp3_bytes(audio_bytes: bytes) -> bytes:
         logger.warning("Audio compression skipped: pydub not available (%s)", exc)
         return audio_bytes
 
-    ffmpeg_path = which("ffmpeg") or which("avconv")
+    ffmpeg_path = os.getenv("AUDIO_COMPRESS_FFMPEG_PATH", "").strip() or os.getenv(
+        "FFMPEG_PATH", ""
+    ).strip()
+    if ffmpeg_path:
+        AudioSegment.converter = ffmpeg_path
+        logger.info("Using ffmpeg from env at %s", ffmpeg_path)
+    else:
+        ffmpeg_path = which("ffmpeg") or which("avconv")
     if not ffmpeg_path:
         try:
             import imageio_ffmpeg
