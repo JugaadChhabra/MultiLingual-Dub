@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -10,6 +9,7 @@ import boto3
 import google.genai as genai
 
 from services.retry import retry_call
+from services.runtime_config import RuntimeConfig, get_config_value
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,22 @@ class QCError(Exception):
     pass
 
 
-def get_gemini_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+def _cfg(name: str, runtime_config: RuntimeConfig | None = None, default: str = "") -> str:
+    value = get_config_value(name, runtime_config=runtime_config)
+    if value:
+        return value
+    return default
+
+
+def get_gemini_api_key(runtime_config: RuntimeConfig | None = None) -> str:
+    api_key = _cfg("GEMINI_API_KEY", runtime_config=runtime_config)
     if not api_key:
         raise ValueError("Missing GEMINI_API_KEY environment variable")
     return api_key
 
 
-def _get_qc_models() -> list[str]:
-    raw = os.getenv("GEMINI_QC_MODELS", "").strip()
+def _get_qc_models(runtime_config: RuntimeConfig | None = None) -> list[str]:
+    raw = _cfg("GEMINI_QC_MODELS", runtime_config=runtime_config).strip()
     if raw:
         models = [item.strip() for item in raw.split(",") if item.strip()]
         if models:
@@ -51,57 +58,51 @@ def _get_qc_models() -> list[str]:
     return DEFAULT_QC_MODELS
 
 
-def _get_qc_log_path() -> Path:
-    raw = os.getenv("QC_LOG_PATH", "data/qc/qc-log.jsonl").strip()
+def _get_qc_log_path(runtime_config: RuntimeConfig | None = None) -> Path:
+    raw = _cfg("QC_LOG_PATH", runtime_config=runtime_config, default="data/qc/qc-log.jsonl").strip()
     return Path(raw)
 
 
-def _get_qc_train_log_path() -> Path:
-    raw_path = _get_qc_log_path()
+def _get_qc_train_log_path(runtime_config: RuntimeConfig | None = None) -> Path:
+    raw_path = _get_qc_log_path(runtime_config=runtime_config)
     if raw_path.suffix:
         return raw_path.with_name(f"{raw_path.stem}-train{raw_path.suffix}")
     return raw_path.with_name(f"{raw_path.name}-train.jsonl")
 
 
-def _get_qc_log_sink() -> str:
-    raw = os.getenv("QC_LOG_SINK", "file").strip().lower()
+def _get_qc_log_sink(runtime_config: RuntimeConfig | None = None) -> str:
+    raw = _cfg("QC_LOG_SINK", runtime_config=runtime_config, default="s3").strip().lower()
     if raw in {"file", "s3"}:
         return raw
     logger.warning("QC: invalid QC_LOG_SINK=%s, defaulting to file", raw)
     return "file"
 
 
-def _get_qc_s3_bucket() -> str | None:
-    raw = os.getenv("QC_LOG_S3_BUCKET", "").strip()
-    if raw:
-        return raw
-    raw = os.getenv("WASABI_BUCKET", "").strip()
+def _get_qc_s3_bucket(runtime_config: RuntimeConfig | None = None) -> str | None:
+    raw = _cfg("WASABI_BUCKET", runtime_config=runtime_config).strip()
     return raw or None
 
 
-def _get_qc_s3_prefix() -> str:
-    raw = os.getenv("QC_LOG_S3_PREFIX", DEFAULT_QC_LOG_S3_PREFIX).strip()
+def _get_qc_s3_prefix(runtime_config: RuntimeConfig | None = None) -> str:
+    raw = _cfg("QC_LOG_S3_PREFIX", runtime_config=runtime_config, default=DEFAULT_QC_LOG_S3_PREFIX).strip()
     if raw and not raw.endswith("/"):
         raw = raw + "/"
     return raw
 
 
-def _get_qc_s3_endpoint() -> str | None:
-    raw = os.getenv("QC_LOG_S3_ENDPOINT", "").strip()
-    if raw:
-        return raw
-    raw = os.getenv("WASABI_ENDPOINT_URL", "").strip()
+def _get_qc_s3_endpoint(runtime_config: RuntimeConfig | None = None) -> str | None:
+    raw = _cfg("WASABI_ENDPOINT_URL", runtime_config=runtime_config).strip()
     return raw or None
 
 
-def _get_qc_s3_region() -> str | None:
-    raw = os.getenv("WASABI_REGION", "").strip()
+def _get_qc_s3_region(runtime_config: RuntimeConfig | None = None) -> str | None:
+    raw = _cfg("WASABI_REGION", runtime_config=runtime_config).strip()
     return raw or None
 
 
-def _get_qc_s3_credentials() -> tuple[str, str] | None:
-    access_key = os.getenv("WASABI_ACCESS_KEY", "").strip()
-    secret_key = os.getenv("WASABI_SECRET_KEY", "").strip()
+def _get_qc_s3_credentials(runtime_config: RuntimeConfig | None = None) -> tuple[str, str] | None:
+    access_key = _cfg("WASABI_ACCESS_KEY", runtime_config=runtime_config).strip()
+    secret_key = _cfg("WASABI_SECRET_KEY", runtime_config=runtime_config).strip()
     if access_key or secret_key:
         if not access_key or not secret_key:
             logger.warning("QC: incomplete WASABI credentials; relying on default boto3 credential chain")
@@ -110,15 +111,15 @@ def _get_qc_s3_credentials() -> tuple[str, str] | None:
     return None
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
+def _env_bool(name: str, default: bool, runtime_config: RuntimeConfig | None = None) -> bool:
+    raw = _cfg(name, runtime_config=runtime_config)
     if raw is None or raw.strip() == "":
         return default
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def _is_train_log_enabled() -> bool:
-    return _env_bool("QC_TRAIN_LOG_ENABLED", True)
+def _is_train_log_enabled(runtime_config: RuntimeConfig | None = None) -> bool:
+    return _env_bool("QC_TRAIN_LOG_ENABLED", True, runtime_config=runtime_config)
 
 
 def _build_raw_payload(
@@ -202,13 +203,14 @@ def _log_qc_sample_file(
     *,
     raw_payload: dict[str, object],
     train_records: list[dict[str, object]],
+    runtime_config: RuntimeConfig | None = None,
 ) -> None:
-    raw_path = _get_qc_log_path()
+    raw_path = _get_qc_log_path(runtime_config=runtime_config)
     raw_line = json.dumps(raw_payload, ensure_ascii=False)
     _write_jsonl_file(raw_path, [raw_line])
 
-    if _is_train_log_enabled() and train_records:
-        train_path = _get_qc_train_log_path()
+    if _is_train_log_enabled(runtime_config=runtime_config) and train_records:
+        train_path = _get_qc_train_log_path(runtime_config=runtime_config)
         train_lines = [
             json.dumps(record, ensure_ascii=False) for record in train_records
         ]
@@ -220,15 +222,16 @@ def _log_qc_sample_s3(
     raw_payload: dict[str, object],
     train_records: list[dict[str, object]],
     timestamp: datetime,
+    runtime_config: RuntimeConfig | None = None,
 ) -> None:
-    bucket = _get_qc_s3_bucket()
+    bucket = _get_qc_s3_bucket(runtime_config=runtime_config)
     if not bucket:
-        logger.warning("QC: QC_LOG_S3_BUCKET is missing; skipping S3 log")
+        logger.warning("QC: WASABI_BUCKET is missing; skipping S3 log")
         return
-    prefix = _get_qc_s3_prefix()
-    endpoint = _get_qc_s3_endpoint()
-    region = _get_qc_s3_region()
-    credentials = _get_qc_s3_credentials()
+    prefix = _get_qc_s3_prefix(runtime_config=runtime_config)
+    endpoint = _get_qc_s3_endpoint(runtime_config=runtime_config)
+    region = _get_qc_s3_region(runtime_config=runtime_config)
+    credentials = _get_qc_s3_credentials(runtime_config=runtime_config)
     client_kwargs: dict[str, object] = {"endpoint_url": endpoint, "region_name": region}
     if credentials:
         client_kwargs["aws_access_key_id"] = credentials[0]
@@ -240,7 +243,7 @@ def _log_qc_sample_s3(
     raw_body = json.dumps(raw_payload, ensure_ascii=False) + "\n"
     client.put_object(Bucket=bucket, Key=raw_key, Body=raw_body.encode("utf-8"))
 
-    if _is_train_log_enabled() and train_records:
+    if _is_train_log_enabled(runtime_config=runtime_config) and train_records:
         train_key = _build_s3_key(prefix, "train", timestamp, key_suffix)
         train_body = "\n".join(
             json.dumps(record, ensure_ascii=False) for record in train_records
@@ -260,6 +263,7 @@ def _log_qc_sample(
     output_translations: dict[str, str],
     target_languages: list[str],
     metadata: dict[str, object] | None,
+    runtime_config: RuntimeConfig | None = None,
 ) -> None:
     now = datetime.utcnow()
     timestamp = now.isoformat() + "Z"
@@ -281,18 +285,20 @@ def _log_qc_sample(
         target_languages=target_languages,
         metadata=metadata,
     )
-    sink = _get_qc_log_sink()
+    sink = _get_qc_log_sink(runtime_config=runtime_config)
     try:
         if sink == "s3":
             _log_qc_sample_s3(
                 raw_payload=raw_payload,
                 train_records=train_records,
                 timestamp=now,
+                runtime_config=runtime_config,
             )
         else:
             _log_qc_sample_file(
                 raw_payload=raw_payload,
                 train_records=train_records,
+                runtime_config=runtime_config,
             )
     except OSError as exc:
         logger.warning("QC: failed to write log sample: %s", exc)
@@ -315,6 +321,7 @@ def qc_translations_batch(
     target_languages: list[str],
     *,
     metadata: dict[str, object] | None = None,
+    runtime_config: RuntimeConfig | None = None,
 ) -> dict[str, str]:
     """
     QC multiple translations at once using Gemini.
@@ -329,9 +336,9 @@ def qc_translations_batch(
         return translations
 
     try:
-        api_key = get_gemini_api_key()
+        api_key = get_gemini_api_key(runtime_config=runtime_config)
         client = genai.Client(api_key=api_key)
-        models = _get_qc_models()
+        models = _get_qc_models(runtime_config=runtime_config)
         
         # Build language descriptions
         lang_descs = ", ".join(
@@ -394,6 +401,7 @@ Return valid JSON only, no other text:"""
                     output_translations=corrected,
                     target_languages=target_languages,
                     metadata=metadata,
+                    runtime_config=runtime_config,
                 )
                 return corrected
             except Exception as exc:

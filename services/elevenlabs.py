@@ -1,10 +1,11 @@
 from __future__ import annotations
-import os
 from dataclasses import dataclass
 from elevenlabs.client import ElevenLabs
 from elevenlabs.types import VoiceSettings
+import httpx
 
 from services.retry import retry_call
+from services.runtime_config import RuntimeConfig, get_config_value
 
 
 DEFAULT_MODEL_ID = "eleven_v3"
@@ -14,11 +15,11 @@ DEFAULT_STYLE = 0.0
 DEFAULT_USE_SPEAKER_BOOST = True
 
 
-def get_voice_id(voice_name: str = "desi") -> str:
+def get_voice_id(voice_name: str = "desi", runtime_config: RuntimeConfig | None = None) -> str:
     """Get voice ID from environment variables. voice_name can be 'desi' or 'studio'."""
     if voice_name == "studio":
-        return os.getenv("AI_STUDIO_VOICE", "S1JBcZECEJJlf7lEDTbN")
-    return os.getenv("DESI_VOCAL_VOICE", "dffT29nmBclERTsFHmHg")
+        return get_config_value("AI_STUDIO_VOICE", runtime_config=runtime_config) or "S1JBcZECEJJlf7lEDTbN"
+    return get_config_value("DESI_VOCAL_VOICE", runtime_config=runtime_config) or "dffT29nmBclERTsFHmHg"
 
 
 @dataclass(frozen=True)
@@ -31,16 +32,16 @@ class ElevenLabsTTSConfig:
     use_speaker_boost: bool
 
 
-def get_elevenlabs_api_key() -> str:
-    api_key = os.getenv("ELEVEN_LABS", "").strip()
+def get_elevenlabs_api_key(runtime_config: RuntimeConfig | None = None) -> str:
+    api_key = get_config_value("ELEVEN_LABS", runtime_config=runtime_config)
     if not api_key:
         raise ValueError("Missing ELEVEN_LABS API key")
     return api_key
 
 
-def get_batch_default_config() -> ElevenLabsTTSConfig:
+def get_batch_default_config(runtime_config: RuntimeConfig | None = None) -> ElevenLabsTTSConfig:
     return ElevenLabsTTSConfig(
-        voice_id=get_voice_id("desi"),
+        voice_id=get_voice_id("desi", runtime_config=runtime_config),
         model_id=DEFAULT_MODEL_ID,
         stability=DEFAULT_STABILITY,
         similarity_boost=DEFAULT_SIMILARITY_BOOST,
@@ -50,7 +51,11 @@ def get_batch_default_config() -> ElevenLabsTTSConfig:
 
 
 def _synthesize_once(text: str, *, api_key: str, config: ElevenLabsTTSConfig) -> bytes:
-    client = ElevenLabs(api_key=api_key)
+    # Set httpx timeout: 20 second total timeout to prevent indefinite hangs
+    # connect=5.0: time to establish TCP connection
+    # pool=5.0: time to acquire connection from pool
+    timeout = httpx.Timeout(20.0, connect=5.0, pool=5.0)
+    client = ElevenLabs(api_key=api_key, httpx_client=httpx.Client(timeout=timeout))
     audio_stream = client.text_to_speech.convert(
         voice_id=config.voice_id,
         model_id=config.model_id,

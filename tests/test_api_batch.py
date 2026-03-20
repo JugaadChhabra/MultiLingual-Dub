@@ -17,7 +17,7 @@ def _xlsx_bytes() -> bytes:
     return buff.getvalue()
 
 
-async def _fake_job_runner(*, job_id, excel_path, target_languages, jobs_store):
+async def _fake_job_runner(*, job_id, excel_path, target_languages, jobs_store, runtime_config=None):
     """Shared stub: immediately completes a job with 1 row and N language tasks."""
     await jobs_store.start(job_id)
     summary = (await jobs_store.get(job_id)).summary
@@ -110,3 +110,61 @@ def test_get_excel_job_not_found() -> None:
     client = TestClient(api.app)
     response = client.get("/batch/excel-jobs/does-not-exist")
     assert response.status_code == 404
+
+
+def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_runner(*, job_id, excel_path, target_languages, jobs_store, runtime_config=None):
+        captured["runtime_config"] = runtime_config
+        await _fake_job_runner(
+            job_id=job_id,
+            excel_path=excel_path,
+            target_languages=target_languages,
+            jobs_store=jobs_store,
+            runtime_config=runtime_config,
+        )
+
+    monkeypatch.setattr(api, "run_excel_batch_job", fake_runner)
+    client = TestClient(api.app)
+
+    env_text = "\n".join(
+        [
+            "ELEVEN_LABS=test-eleven",
+            "SARVAM_API=test-sarvam",
+            "GEMINI_API_KEY=test-google",
+            "WASABI_ENDPOINT_URL=https://s3.ap-southeast-1.wasabisys.com",
+            "WASABI_REGION=ap-southeast-1",
+            "WASABI_ACCESS_KEY=abc",
+            "WASABI_SECRET_KEY=xyz",
+            "WASABI_BUCKET=test-bucket",
+            "AWS_ACCESS_KEY=abc",
+            "AWS_SECRET_KEY=xyz",
+            "AWS_BUCKET=test-bucket",
+            "AWS_REGION=ap-south-1",
+            "BATCH_ENABLE_WASABI_UPLOAD=true",
+            "BATCH_ENABLE_QC=true",
+            "AI_STUDIO_VOICE=v1",
+            "DESI_VOCAL_VOICE=v2",
+        ]
+    )
+    config_resp = client.post("/config/session-env", json={"env_text": env_text})
+    assert config_resp.status_code == 200
+
+    response = client.post(
+        "/batch/excel-jobs",
+        files={
+            "file": (
+                "input.xlsx",
+                _xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"target_languages_json": '["hi-IN"]'},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    _poll_until_done(client, job_id)
+    runtime_config = captured.get("runtime_config")
+    assert isinstance(runtime_config, dict)
+    assert runtime_config.get("SARVAM_API") == "test-sarvam"

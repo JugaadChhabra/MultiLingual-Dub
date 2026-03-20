@@ -3,6 +3,7 @@ import binascii
 from pathlib import Path
 import re
 from services.sarvam import get_sarvam_client
+from services.runtime_config import RuntimeConfig
 
 
 def _extract_audio_bytes(response) -> bytes | None:
@@ -84,12 +85,13 @@ def text_to_speech(
     text: str,
     target_language_code: str,
     output_path: str,
+    runtime_config: RuntimeConfig | None = None,
     speaker: str = "shubh",
     pace: float = 1.1,
     speech_sample_rate: int = 22050,
     model: str = "bulbul:v3",
 ) -> str:
-    client = get_sarvam_client()
+    client = get_sarvam_client(runtime_config=runtime_config)
     response = client.text_to_speech.convert(
         text=text,
         target_language_code=target_language_code,

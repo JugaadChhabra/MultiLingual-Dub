@@ -21,3 +21,12 @@ class ElevenLabsTTSRequest(BaseModel):
     similarity_boost: float = 0.75
     style: float = 0.0
     use_speaker_boost: bool = True
+
+
+class SessionEnvConfigRequest(BaseModel):
+    env_text: str
+
+
+class SessionEnvConfigResponse(BaseModel):
+    configured: bool
+    missing_keys: list[str]

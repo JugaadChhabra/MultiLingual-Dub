@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from pathlib import Path
 import uuid
 
@@ -14,16 +13,27 @@ from batch.store import JobsStore
 from services.translation import translate_with_fallback
 from services.wasabi import S3Client, S3ConfigError, get_s3_config
 from services.qc import qc_translations_batch, QCError, LANGUAGE_NAMES
+from services.runtime_config import RuntimeConfig, get_config_value
 
 logger = logging.getLogger(__name__)
 
 
-def _should_upload_to_s3() -> bool:
-    return os.getenv("BATCH_ENABLE_WASABI_UPLOAD", "").strip().lower() in {"1", "true", "yes", "on"}
+def _should_upload_to_s3(runtime_config: RuntimeConfig | None = None) -> bool:
+    return get_config_value("BATCH_ENABLE_WASABI_UPLOAD", runtime_config=runtime_config).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
-def _should_enable_qc() -> bool:
-    return os.getenv("BATCH_ENABLE_QC", "").strip().lower() in {"1", "true", "yes", "on"}
+def _should_enable_qc(runtime_config: RuntimeConfig | None = None) -> bool:
+    return get_config_value("BATCH_ENABLE_QC", runtime_config=runtime_config).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _sanitize_for_key(raw: str) -> str:
@@ -37,22 +47,23 @@ def _build_s3_key(job_id: str, target_language: str, audio_type: str) -> str:
     return f"batch/{job_id}/{target_language}/{audio_type_fragment}-{uuid.uuid4().hex}.mp3"
 
 
-def _generate_elevenlabs_audio_bytes(text: str) -> bytes:
+def _generate_elevenlabs_audio_bytes(text: str, runtime_config: RuntimeConfig | None = None) -> bytes:
     return synthesize_speech_bytes(
         text,
-        api_key=get_elevenlabs_api_key(),
-        config=get_batch_default_config(),
+        api_key=get_elevenlabs_api_key(runtime_config=runtime_config),
+        config=get_batch_default_config(runtime_config=runtime_config),
     )
 
 
 async def _translate_language_async(
-    text: str, language: str
+    text: str, language: str, runtime_config: RuntimeConfig | None = None
 ) -> tuple[str, str | None, str | None]:
     """Returns (language, translated_text, error). Exactly one of the last two will be None."""
     try:
         translated = await asyncio.to_thread(
             translate_with_fallback,
             text,
+            runtime_config=runtime_config,
             target_language_code=language,
             source_language_code="auto",
         )
@@ -67,16 +78,48 @@ async def run_excel_batch_job(
     excel_path: str,
     target_languages: list[str],
     jobs_store: JobsStore,
+    runtime_config: RuntimeConfig | None = None,
 ) -> None:
+    """
+    Run a batch job with a 60-minute overall timeout to prevent indefinite hangs.
+    If timeout is exceeded, the job is marked as failed.
+    """
     summary = JobSummary()
+    try:
+        # Wrap entire batch job with 60-minute timeout
+        await asyncio.wait_for(
+            _run_batch_job_impl(
+                job_id,
+                excel_path,
+                target_languages,
+                jobs_store,
+                summary,
+                runtime_config=runtime_config,
+            ),
+            timeout=3600.0  # 3600 seconds = 60 minutes
+        )
+    except asyncio.TimeoutError:
+        logger.error("Job %s exceeded maximum time limit (60 minutes)", job_id)
+        await jobs_store.fail(job_id, "Job terminated: exceeded 60-minute time limit", summary)
+
+
+async def _run_batch_job_impl(
+    job_id: str,
+    excel_path: str,
+    target_languages: list[str],
+    jobs_store: JobsStore,
+    summary: JobSummary,
+    runtime_config: RuntimeConfig | None = None,
+) -> None:
+    """Implementation of batch job processing with per-operation timeouts."""
     summary.started_at = await jobs_store.start(job_id)
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
 
     try:
-        upload_to_s3 = _should_upload_to_s3()
+        upload_to_s3 = _should_upload_to_s3(runtime_config=runtime_config)
         s3_client: S3Client | None = None
         if upload_to_s3:
-            config = await asyncio.to_thread(get_s3_config)
+            config = await asyncio.to_thread(get_s3_config, runtime_config)
             s3_client = S3Client(config)
 
         try:
@@ -101,7 +144,7 @@ async def run_excel_batch_job(
             job_id, len(rows), len(target_languages), summary.language_tasks_total,
         )
     except S3ConfigError as exc:
-        await jobs_store.fail(job_id, f"AWS S3 config error: {exc}", summary)
+        await jobs_store.fail(job_id, f"Wasabi config error: {exc}", summary)
         return
     except Exception as exc:
         await jobs_store.fail(job_id, f"Batch setup failed: {exc}", summary)
@@ -128,11 +171,14 @@ async def run_excel_batch_job(
 
             # Phase 1 — translate all languages concurrently
             translation_results: list[tuple[str, str | None, str | None]] = await asyncio.gather(
-                *[_translate_language_async(row.text, lang) for lang in target_languages]
+                *[
+                    _translate_language_async(row.text, lang, runtime_config=runtime_config)
+                    for lang in target_languages
+                ]
             )
 
             # Phase 1.5 — QC all translations (optional)
-            if _should_enable_qc():
+            if _should_enable_qc(runtime_config=runtime_config):
                 # Collect successful translations
                 translations_to_qc = {
                     lang: text for lang, text, error in translation_results if error is None and text
@@ -155,6 +201,7 @@ async def run_excel_batch_job(
                                 "activity_name": row.activity_name,
                                 "voiceover_title": row.audio_type,
                             },
+                            runtime_config=runtime_config,
                         )
                         
                         # Update translation_results with QC'd texts
@@ -197,7 +244,18 @@ async def run_excel_batch_job(
                         if row.emotion
                         else translated_text
                     )
-                    audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, tts_text)
+                    # Wrap TTS call with 60-second timeout to prevent hanging on slow API
+                    try:
+                        audio_bytes = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                _generate_elevenlabs_audio_bytes,
+                                tts_text,
+                                runtime_config,
+                            ),
+                            timeout=60.0
+                        )
+                    except asyncio.TimeoutError:
+                        raise RuntimeError(f"TTS timeout after 60 seconds for language {language}")
                     if s3_client is not None:
                         audio_bytes = compress_mp3_bytes(audio_bytes)
 
@@ -219,7 +277,6 @@ async def run_excel_batch_job(
                             job_id, row.row_index, language,
                         )
                     else:
-                        # Collect for zip upload
                         if language_audio_files is not None:
                             language_audio_files[language][filename] = audio_bytes
                         summary.language_tasks_succeeded += 1
@@ -253,14 +310,19 @@ async def run_excel_batch_job(
 
         # Step 3 — Upload zip files for each language
         if s3_client is not None and language_audio_files is not None:
-            logger.info("Job %s | uploading zip files for %d languages under %s", job_id, len(target_languages), activity_name)
-            
+            logger.info(
+                "Job %s | uploading zip files for %d languages under %s",
+                job_id,
+                len(target_languages),
+                activity_name,
+            )
+
             for language in target_languages:
                 audio_files = language_audio_files[language]
                 if not audio_files:
                     logger.info("Job %s | lang %s: no files to zip", job_id, language)
                     continue
-                
+
                 try:
                     language_label = LANGUAGE_NAMES.get(language, language)
                     result = await asyncio.to_thread(

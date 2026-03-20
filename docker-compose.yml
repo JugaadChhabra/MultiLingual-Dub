@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  autodub:
+    image: ghcr.io/jugaadchhabra/autodub:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount directories for uploads and outputs
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      ELEVEN_LABS: ${ELEVEN_LABS}
+      AI_STUDIO_VOICE: ${AI_STUDIO_VOICE}
+      DESI_VOCAL_VOICE: ${DESI_VOCAL_VOICE}
+
+      SARVAM_API: ${SARVAM_API}
+
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+
+      WASABI_ENDPOINT_URL: ${WASABI_ENDPOINT_URL}
+      WASABI_REGION: ${WASABI_REGION}
+      WASABI_ACCESS_KEY: ${WASABI_ACCESS_KEY}
+      WASABI_SECRET_KEY: ${WASABI_SECRET_KEY}
+      WASABI_BUCKET: ${WASABI_BUCKET}
+
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
+      AWS_BUCKET: ${AWS_BUCKET}
+      AWS_REGION: ${AWS_REGION}
+
+      BATCH_ENABLE_WASABI_UPLOAD: ${BATCH_ENABLE_WASABI_UPLOAD:-true}
+      BATCH_ENABLE_QC: ${BATCH_ENABLE_QC:-true}
+      QC_LOG_SINK: ${QC_LOG_SINK:-s3}
+
+      API_RETRY_MAX_ATTEMPTS: ${API_RETRY_MAX_ATTEMPTS:-20}
+      API_RETRY_BASE_DELAY_S: ${API_RETRY_BASE_DELAY_S:-1.0}
+      API_RETRY_MAX_DELAY_S: ${API_RETRY_MAX_DELAY_S:-60.0}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+# Usage:
+# 1. docker pull ghcr.io/jugaadchhabra/autodub:latest
+# 2. Create/edit .env and fill all required keys
+# 3. docker compose up -d
+# 4. Access at http://localhost:8080

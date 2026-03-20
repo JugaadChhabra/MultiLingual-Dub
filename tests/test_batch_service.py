@@ -22,10 +22,20 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     async def fake_translate_async(text: str, language: str):
         return language, f"translated:{text}:{language}", None
 
+    class FakeS3Client:
+        def __init__(self, _config):
+            self.uploads: list[tuple[str, dict[str, bytes], str]] = []
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            self.uploads.append((language, audio_files, folder_name))
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
     monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
     store = JobsStore()
     job_id = "job-seq-test"
@@ -49,7 +59,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     assert state.summary.language_tasks_succeeded == 4
 
 
-def test_run_excel_batch_job_skips_local_output_when_no_s3(monkeypatch, tmp_path) -> None:
+def test_run_excel_batch_job_fails_when_s3_config_missing(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="", audio_type="a")]
 
     async def fake_translate_async(text: str, language: str):
@@ -58,17 +68,17 @@ def test_run_excel_batch_job_skips_local_output_when_no_s3(monkeypatch, tmp_path
     monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
 
     store = JobsStore()
-    job_id = "job-no-output"
+    job_id = "job-missing-s3"
 
     async def _run():
         await store.create(job_id)
         await run_excel_batch_job(
             job_id=job_id,
-            excel_path=str(tmp_path / "unused.xlsx"),
+            excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
         )
@@ -76,8 +86,8 @@ def test_run_excel_batch_job_skips_local_output_when_no_s3(monkeypatch, tmp_path
 
     state = asyncio.run(_run())
     assert state is not None
-    assert state.status == "completed"
-    assert not (tmp_path / "output").exists()
+    assert state.status == "failed"
+    assert "Batch setup failed" in (state.error or "")
 
 
 def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> None:
@@ -114,8 +124,8 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
     monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: True)
-    monkeypatch.setattr("batch.service.get_s3_config", lambda: object())
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
     store = JobsStore()
@@ -153,7 +163,17 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", lambda text: b"fake-audio")
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setattr("batch.service._should_upload_to_s3", lambda: False)
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
+
+    class FakeS3Client:
+        def __init__(self, _config):
+            pass
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
     store = JobsStore()
     job_id = "job-delete-excel"
@@ -175,7 +195,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
 
 def test_run_excel_batch_job_sets_failed_when_s3_missing(monkeypatch) -> None:
     monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda: (_ for _ in ()).throw(RuntimeError("missing config")))
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
 
     store = JobsStore()
     job_id = "job-missing-s3"

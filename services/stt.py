@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from services.sarvam import get_sarvam_client
+from services.runtime_config import RuntimeConfig
 
 
 def _extract_transcript_from_result(result: dict) -> str | None:
@@ -35,6 +36,7 @@ def _extract_transcript_from_json(path: Path) -> str | None:
 
 def transcribe_audio(
     audio_paths: list[str],
+    runtime_config: RuntimeConfig | None = None,
     output_dir: str = "./output",
     model: str = "saaras:v3",
     mode: str = "transcribe",
@@ -42,7 +44,7 @@ def transcribe_audio(
     with_diarization: bool = True,
     num_speakers: int = 2,
 ) -> dict[str, str]:
-    client = get_sarvam_client()
+    client = get_sarvam_client(runtime_config=runtime_config)
 
     job = client.speech_to_text_job.create_job(
         model=model,

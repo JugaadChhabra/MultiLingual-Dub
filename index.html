@@ -1,4 +1,4 @@
-<!doctype html>`
+<!doctype html>
 <html lang="en">
   <head>
     <link rel="icon" type="image/png" href="favicon.png" />
@@ -387,6 +387,16 @@
       <!-- Main card -->
       <div class="card">
         <form id="uploadForm">
+          <div class="section-label">Runtime Config</div>
+          <label class="field-label" for="envTextInput">Paste Full .env Content</label>
+          <textarea id="envTextInput" name="envTextInput" placeholder="SARVAM_API=...\nGEMINI_API_KEY=...\nWASABI_ACCESS_KEY=...\nWASABI_SECRET_KEY=...\nWASABI_BUCKET=...\nWASABI_REGION=...\nWASABI_ENDPOINT_URL=...\nAWS_ACCESS_KEY=...\nAWS_SECRET_KEY=...\nAWS_BUCKET=...\nAWS_REGION=...\nBATCH_ENABLE_WASABI_UPLOAD=true\nBATCH_ENABLE_QC=true\nELEVEN_LABS=...\nAI_STUDIO_VOICE=...\nDESI_VOCAL_VOICE=..."></textarea>
+          <div class="actions" style="margin-top:12px;">
+            <button class="btn-run" id="applyEnvBtn" type="button">Apply Config</button>
+            <button class="btn-run" id="clearEnvBtn" type="button" style="background:var(--text-muted);">Clear Config</button>
+          </div>
+          <div class="status" id="envStatus" style="margin-top:8px;"></div>
+
+          <div class="divider"></div>
 
           <!-- Input type selector -->
           <div class="section-label">Input Mode</div>
@@ -454,6 +464,10 @@
     <script>
       /* ── DOM refs ─────────────────────────────────────────────── */
       const form             = document.getElementById("uploadForm");
+      const envTextInput     = document.getElementById("envTextInput");
+      const applyEnvBtn      = document.getElementById("applyEnvBtn");
+      const clearEnvBtn      = document.getElementById("clearEnvBtn");
+      const envStatus        = document.getElementById("envStatus");
       const audioInput       = document.getElementById("audio");
       const fileStatus       = document.getElementById("fileStatus");
       const submitStatusWrap = document.getElementById("submitStatus");
@@ -470,6 +484,7 @@
       const textInput         = document.getElementById("textInput");
       const excelFile         = document.getElementById("excelFile");
       const excelStatus       = document.getElementById("excelStatus");
+      let envConfigured       = false;
 
       /* ── Helpers ──────────────────────────────────────────────── */
       function setStatus(el, message, isError = false, isSuccess = false) {
@@ -485,6 +500,32 @@
 
       function stopSpinner() { spinner.classList.remove("active"); }
 
+      async function refreshEnvStatus() {
+        try {
+          const resp = await fetch("/config/session-env/status");
+          if (!resp.ok) {
+            envConfigured = false;
+            setStatus(envStatus, "Unable to read runtime config status.", true);
+            return;
+          }
+          const payload = await resp.json();
+          envConfigured = Boolean(payload.configured);
+          if (envConfigured) {
+            setStatus(envStatus, "Runtime config ready.", false, true);
+            return;
+          }
+          const missing = Array.isArray(payload.missing_keys) ? payload.missing_keys : [];
+          if (missing.length > 0) {
+            setStatus(envStatus, `Missing keys: ${missing.join(", ")}`, true);
+          } else {
+            setStatus(envStatus, "Paste and apply your .env text to continue.", true);
+          }
+        } catch {
+          envConfigured = false;
+          setStatus(envStatus, "Unable to read runtime config status.", true);
+        }
+      }
+
       /* ── Input section switching ──────────────────────────────── */
       function updateInputSections() {
         audioInputSection.style.display = inputAudioRadio.checked ? "block" : "none";
@@ -494,7 +535,63 @@
       [inputAudioRadio, inputTextRadio, inputExcelRadio].forEach(r =>
         r.addEventListener("change", updateInputSections)
       );
-      window.addEventListener("DOMContentLoaded", updateInputSections);
+      window.addEventListener("DOMContentLoaded", () => {
+        updateInputSections();
+        refreshEnvStatus();
+      });
+
+      applyEnvBtn.addEventListener("click", async () => {
+        const envText = envTextInput.value.trim();
+        if (!envText) {
+          setStatus(envStatus, "Paste your full .env text first.", true);
+          return;
+        }
+        applyEnvBtn.disabled = true;
+        setStatus(envStatus, "Applying runtime config...");
+        try {
+          const resp = await fetch("/config/session-env", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ env_text: envText }),
+          });
+          if (!resp.ok) {
+            let msg = "Failed to apply config.";
+            try {
+              const errPayload = await resp.json();
+              if (typeof errPayload?.detail === "string") {
+                msg = errPayload.detail;
+              } else if (errPayload?.detail?.missing_keys) {
+                msg = `Missing keys: ${errPayload.detail.missing_keys.join(", ")}`;
+              }
+            } catch {}
+            setStatus(envStatus, msg, true);
+            envConfigured = false;
+            return;
+          }
+          envConfigured = true;
+          setStatus(envStatus, "Runtime config applied.", false, true);
+          await refreshEnvStatus();
+        } catch (e) {
+          envConfigured = false;
+          setStatus(envStatus, `Failed to apply config: ${e.message}`, true);
+        } finally {
+          applyEnvBtn.disabled = false;
+        }
+      });
+
+      clearEnvBtn.addEventListener("click", async () => {
+        clearEnvBtn.disabled = true;
+        try {
+          await fetch("/config/session-env", { method: "DELETE" });
+          envConfigured = false;
+          setStatus(envStatus, "Runtime config cleared.", false, true);
+          await refreshEnvStatus();
+        } catch (e) {
+          setStatus(envStatus, `Failed to clear config: ${e.message}`, true);
+        } finally {
+          clearEnvBtn.disabled = false;
+        }
+      });
 
       /* ── File validation ──────────────────────────────────────── */
       audioInput.addEventListener("change", () => {
@@ -543,7 +640,15 @@
       /* ── Batch poll ───────────────────────────────────────────── */
       async function pollBatchJob(jobId) {
         const terminalStates = new Set(["completed", "failed"]);
+        const maxPollingTime = 30 * 60 * 1000;  // 30 minutes in milliseconds
+        const startTime = Date.now();
+        
         while (true) {
+          // Check if polling has exceeded 30 minutes
+          if (Date.now() - startTime > maxPollingTime) {
+            throw new Error(`Job polling timeout after 30 minutes for ${jobId}`);
+          }
+          
           const resp = await fetch(`/batch/excel-jobs/${jobId}`);
           if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId}`);
           const payload = await resp.json();
@@ -564,6 +669,11 @@
 
         if (selectedLanguages.length === 0) {
           setStatus(submitStatusWrap, "Please select at least one target language.", true);
+          return;
+        }
+
+        if (!envConfigured) {
+          setStatus(submitStatusWrap, "Please paste and apply your full .env config first.", true);
           return;
         }
 

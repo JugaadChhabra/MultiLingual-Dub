@@ -7,6 +7,7 @@ from services import qc
 def test_qc_model_fallback_and_logging(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_QC_MODELS", "model-a,model-b")
+    monkeypatch.setenv("QC_LOG_SINK", "file")
     monkeypatch.setenv("QC_LOG_PATH", str(tmp_path / "qc.jsonl"))
     monkeypatch.setenv("API_RETRY_MAX_ATTEMPTS", "1")
 
@@ -73,7 +74,11 @@ def test_qc_s3_logging(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_QC_MODELS", "model-a")
     monkeypatch.setenv("QC_LOG_SINK", "s3")
-    monkeypatch.setenv("QC_LOG_S3_BUCKET", "test-bucket")
+    monkeypatch.setenv("WASABI_BUCKET", "test-bucket")
+    monkeypatch.setenv("WASABI_ENDPOINT_URL", "https://s3.ap-southeast-1.wasabisys.com")
+    monkeypatch.setenv("WASABI_REGION", "ap-southeast-1")
+    monkeypatch.setenv("WASABI_ACCESS_KEY", "abc")
+    monkeypatch.setenv("WASABI_SECRET_KEY", "xyz")
     monkeypatch.setenv("QC_LOG_S3_PREFIX", "qc/")
     monkeypatch.setenv("API_RETRY_MAX_ATTEMPTS", "1")
 

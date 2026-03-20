@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import os
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +8,7 @@ from pathlib import Path
 import boto3
 from botocore.client import BaseClient
 from services.retry import retry_call
+from services.runtime_config import RuntimeConfig, get_config_value
 
 
 class S3ConfigError(ValueError):
@@ -17,6 +17,7 @@ class S3ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class S3Config:
+    endpoint: str | None
     access_key: str
     secret_key: str
     bucket: str
@@ -25,10 +26,10 @@ class S3Config:
 
 def validate_s3_env() -> tuple[S3Config | None, str | None]:
     required = {
-        "AWS_ACCESS_KEY": os.getenv("AWS_ACCESS_KEY", "").strip(),
-        "AWS_SECRET_KEY": os.getenv("AWS_SECRET_KEY", "").strip(),
-        "AWS_BUCKET": os.getenv("AWS_BUCKET", "").strip(),
-        "AWS_REGION": os.getenv("AWS_REGION", "").strip(),
+        "AWS_ACCESS_KEY": get_config_value("AWS_ACCESS_KEY"),
+        "AWS_SECRET_KEY": get_config_value("AWS_SECRET_KEY"),
+        "AWS_BUCKET": get_config_value("AWS_BUCKET"),
+        "AWS_REGION": get_config_value("AWS_REGION"),
     }
     missing = [key for key, value in required.items() if not value]
     if missing:
@@ -40,15 +41,30 @@ def validate_s3_env() -> tuple[S3Config | None, str | None]:
             secret_key=required["AWS_SECRET_KEY"],
             bucket=required["AWS_BUCKET"],
             region=required["AWS_REGION"],
+            endpoint=get_config_value("AWS_ENDPOINT_URL") or None,
         ),
         None,
     )
 
 
-def get_s3_config() -> S3Config:
-    config, error = validate_s3_env()
-    if error or config is None:
-        raise S3ConfigError(error or "AWS S3 config validation failed")
+def get_s3_config(runtime_config: RuntimeConfig | None = None) -> S3Config:
+    required = {
+        "AWS_ACCESS_KEY": get_config_value("AWS_ACCESS_KEY", runtime_config=runtime_config),
+        "AWS_SECRET_KEY": get_config_value("AWS_SECRET_KEY", runtime_config=runtime_config),
+        "AWS_BUCKET": get_config_value("AWS_BUCKET", runtime_config=runtime_config),
+        "AWS_REGION": get_config_value("AWS_REGION", runtime_config=runtime_config),
+    }
+    missing = [key for key, value in required.items() if not value]
+    if missing:
+        raise S3ConfigError(f"Missing AWS environment variables: {', '.join(sorted(missing))}")
+
+    config = S3Config(
+        access_key=required["AWS_ACCESS_KEY"],
+        secret_key=required["AWS_SECRET_KEY"],
+        bucket=required["AWS_BUCKET"],
+        region=required["AWS_REGION"],
+        endpoint=get_config_value("AWS_ENDPOINT_URL", runtime_config=runtime_config) or None,
+    )
     return config
 
 
@@ -57,6 +73,7 @@ class S3Client:
         self._config = config
         self._client: BaseClient = boto3.client(
             "s3",
+            endpoint_url=config.endpoint,
             aws_access_key_id=config.access_key,
             aws_secret_access_key=config.secret_key,
             region_name=config.region,
