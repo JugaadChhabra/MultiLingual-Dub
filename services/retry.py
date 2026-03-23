@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import time
+from email.utils import parsedate_to_datetime
 from typing import Callable, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,38 @@ def is_retryable(exc: Exception) -> bool:
     return any(marker in message for marker in retry_markers)
 
 
+def _retry_after_seconds(exc: Exception) -> float | None:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+
+    raw = headers.get("retry-after") or headers.get("Retry-After")
+    if not raw:
+        return None
+
+    raw = str(raw).strip()
+    if not raw:
+        return None
+
+    # Retry-After can be seconds (preferred) or an HTTP date.
+    try:
+        seconds = float(raw)
+        if seconds >= 0:
+            return seconds
+    except ValueError:
+        pass
+
+    try:
+        retry_at = parsedate_to_datetime(raw)
+        if retry_at.tzinfo is None:
+            return None
+        delay = retry_at.timestamp() - time.time()
+        return max(0.0, delay)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def retry_call(
     func: Callable[[], T],
     *,
@@ -82,9 +115,17 @@ def retry_call(
     max_delay_s: float | None = None,
     operation: str | None = None,
 ) -> T:
-    attempts = max_attempts or _env_int("API_RETRY_MAX_ATTEMPTS", 5)
-    base_delay = base_delay_s or _env_float("API_RETRY_BASE_DELAY_S", 0.5)
-    max_delay = max_delay_s or _env_float("API_RETRY_MAX_DELAY_S", 8.0)
+    attempts = max_attempts if max_attempts is not None else _env_int("API_RETRY_MAX_ATTEMPTS", 5)
+    base_delay = base_delay_s if base_delay_s is not None else _env_float("API_RETRY_BASE_DELAY_S", 0.5)
+    max_delay = max_delay_s if max_delay_s is not None else _env_float("API_RETRY_MAX_DELAY_S", 8.0)
+    rate_limit_base_delay = _env_float(
+        "API_RETRY_RATE_LIMIT_BASE_DELAY_S",
+        max(1.0, base_delay * 2),
+    )
+    rate_limit_max_delay = _env_float(
+        "API_RETRY_RATE_LIMIT_MAX_DELAY_S",
+        max(30.0, max_delay),
+    )
     op_label = operation or "operation"
 
     for attempt in range(1, attempts + 1):
@@ -95,9 +136,20 @@ def retry_call(
             if attempt >= attempts or not should_retry:
                 raise
 
-            delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
-            jitter = random.uniform(0, delay * 0.25)
-            sleep_for = min(max_delay, delay + jitter)
+            status = _status_code_from_exc(exc)
+            if status == 429:
+                retry_after = _retry_after_seconds(exc)
+                if retry_after is not None:
+                    sleep_for = min(rate_limit_max_delay, retry_after)
+                else:
+                    delay = min(rate_limit_max_delay, rate_limit_base_delay * (2 ** (attempt - 1)))
+                    jitter = random.uniform(0, delay * 0.25)
+                    sleep_for = min(rate_limit_max_delay, delay + jitter)
+            else:
+                delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
+                jitter = random.uniform(0, delay * 0.25)
+                sleep_for = min(max_delay, delay + jitter)
+
             logger.warning(
                 "%s failed (attempt %d/%d): %s; retrying in %.2fs",
                 op_label,

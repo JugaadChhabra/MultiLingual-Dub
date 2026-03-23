@@ -21,6 +21,10 @@ class JobSummary(BaseModel):
     language_tasks_total: int = 0
     language_tasks_succeeded: int = 0
     language_tasks_failed: int = 0
+    placeholder_audio_generated: int = 0
+    translation_fallbacks: int = 0
+    filename_collisions_resolved: int = 0
+    unexpected_row_errors: int = 0
     uploads_succeeded: int = 0
     uploads_failed: int = 0
     started_at: datetime | None = None
