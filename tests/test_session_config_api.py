@@ -22,6 +22,7 @@ def _valid_env_text() -> str:
             "BATCH_ENABLE_QC=true",
             "AI_STUDIO_VOICE=v1",
             "DESI_VOCAL_VOICE=v2",
+            "ENGLISH_VOICE=v3",
         ]
     )
 

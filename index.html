@@ -389,7 +389,7 @@
         <form id="uploadForm">
           <div class="section-label">Runtime Config</div>
           <label class="field-label" for="envTextInput">Paste Full .env Content</label>
-          <textarea id="envTextInput" name="envTextInput" placeholder="SARVAM_API=...\nGEMINI_API_KEY=...\nWASABI_ACCESS_KEY=...\nWASABI_SECRET_KEY=...\nWASABI_BUCKET=...\nWASABI_REGION=...\nWASABI_ENDPOINT_URL=...\nAWS_ACCESS_KEY=...\nAWS_SECRET_KEY=...\nAWS_BUCKET=...\nAWS_REGION=...\nBATCH_ENABLE_WASABI_UPLOAD=true\nBATCH_ENABLE_QC=true\nELEVEN_LABS=...\nAI_STUDIO_VOICE=...\nDESI_VOCAL_VOICE=..."></textarea>
+          <textarea id="envTextInput" name="envTextInput" placeholder="SARVAM_API=...\nGEMINI_API_KEY=...\nWASABI_ACCESS_KEY=...\nWASABI_SECRET_KEY=...\nWASABI_BUCKET=...\nWASABI_REGION=...\nWASABI_ENDPOINT_URL=...\nAWS_ACCESS_KEY=...\nAWS_SECRET_KEY=...\nAWS_BUCKET=...\nAWS_REGION=...\nBATCH_ENABLE_WASABI_UPLOAD=true\nBATCH_ENABLE_QC=true\nELEVEN_LABS=...\nAI_STUDIO_VOICE=...\nDESI_VOCAL_VOICE=...\nENGLISH_VOICE=..."></textarea>
           <div class="actions" style="margin-top:12px;">
             <button class="btn-run" id="applyEnvBtn" type="button">Apply Config</button>
             <button class="btn-run" id="clearEnvBtn" type="button" style="background:var(--text-muted);">Clear Config</button>
@@ -499,6 +499,16 @@
       }
 
       function stopSpinner() { spinner.classList.remove("active"); }
+
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+      }
 
       async function refreshEnvStatus() {
         try {
@@ -643,21 +653,45 @@
       async function pollBatchJob(jobId) {
         const terminalStates = new Set(["completed", "failed"]);
         let consecutiveErrors = 0;
+        let consecutiveNotFound = 0;
+        const startedAtMs = Date.now();
 
         while (true) {
           try {
-            const resp = await fetch(`/batch/excel-jobs/${jobId}`);
-            if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId}`);
+            const resp = await fetchWithTimeout(`/batch/excel-jobs/${jobId}`);
+            if (resp.status === 404) {
+              consecutiveNotFound += 1;
+              const delaySeconds = Math.min(10, 2 ** Math.min(consecutiveNotFound, 3));
+              if (consecutiveNotFound >= 3) {
+                return {
+                  job_id: jobId,
+                  status: "failed",
+                  error: `Job ${jobId} was not found repeatedly. The server may have restarted; please submit the batch again.`,
+                  summary: null,
+                };
+              }
+              setStatus(
+                submitStatusWrap,
+                `Polling... job not found yet (attempt ${consecutiveNotFound}/3). Retrying in ${delaySeconds}s...`
+              );
+              await new Promise(r => setTimeout(r, delaySeconds * 1000));
+              continue;
+            }
+            if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId} (HTTP ${resp.status})`);
             const payload = await resp.json();
             consecutiveErrors = 0;
+            consecutiveNotFound = 0;
+            const elapsedSeconds = Math.floor((Date.now() - startedAtMs) / 1000);
             renderBatchSummary(payload.summary, payload.job_id, payload.status);
-            setStatus(submitStatusWrap, `Polling... (${payload.status})`);
+            setStatus(submitStatusWrap, `Polling... (${payload.status}) · elapsed ${elapsedSeconds}s`);
             if (terminalStates.has(payload.status)) return payload;
             await new Promise(r => setTimeout(r, 2000));
           } catch (error) {
             consecutiveErrors += 1;
-            const backoffSeconds = Math.min(15, 2 ** Math.min(consecutiveErrors, 4));
-            const message = error?.message || "unknown polling error";
+            const backoffSeconds = Math.min(30, 2 ** Math.min(consecutiveErrors, 5));
+            const message = error?.name === "AbortError"
+              ? "status request timed out"
+              : (error?.message || "unknown polling error");
             setStatus(submitStatusWrap, `Polling issue: ${message}. Retrying in ${backoffSeconds}s...`);
             await new Promise(r => setTimeout(r, backoffSeconds * 1000));
           }

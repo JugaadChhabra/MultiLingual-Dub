@@ -27,6 +27,20 @@ LANGUAGE_NAMES = {
     "te-IN": "Telugu",
 }
 
+LANGUAGE_SCRIPT_HINTS = {
+    "bn-IN": "Bengali script",
+    "en-IN": "Latin script (English)",
+    "gu-IN": "Gujarati script",
+    "hi-IN": "Devanagari script",
+    "kn-IN": "Kannada script",
+    "ml-IN": "Malayalam script",
+    "mr-IN": "Devanagari script",
+    "od-IN": "Odia script",
+    "pa-IN": "Gurmukhi script",
+    "ta-IN": "Tamil script",
+    "te-IN": "Telugu script",
+}
+
 DEFAULT_QC_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
 DEFAULT_QC_LOG_S3_PREFIX = "qc/"
 
@@ -345,33 +359,48 @@ def qc_translations_batch(
             f"{lang} ({LANGUAGE_NAMES.get(lang, lang)})"
             for lang in target_languages
         )
+        non_english_targets = [
+            lang for lang in target_languages if not lang.strip().lower().startswith("en")
+        ]
+        non_english_desc = ", ".join(
+            f"{lang} ({LANGUAGE_NAMES.get(lang, lang)})"
+            for lang in non_english_targets
+        ) or "none"
+        script_descs = ", ".join(
+            f"{lang}: {LANGUAGE_SCRIPT_HINTS.get(lang, 'native script')}"
+            for lang in target_languages
+        )
         
         # Build JSON input
         translations_json = json.dumps(translations, ensure_ascii=False, indent=2)
         logger.info(f"Input translations JSON:\n{translations_json}")
         
-        prompt = f"""You are a QC expert in Indian languages: {lang_descs}.
+        prompt = f"""You are a translation quality-control expert for: {lang_descs}.
 
-Original English text: "{original_text}"
+Original English text:
+"{original_text}"
 
-Translations to QC:
+Candidate translations JSON:
 {translations_json}
 
-Task: Fix common translation errors in all target languages. Focus on:
-1. Transliterated English words: Minimize vowels - "sum" should be सम not सुम्, remove trailing halants completely
-2. Extra vowels: Remove unnecessary vowel marks added by translation service
-3. Vowel sign errors: Fix incorrect or redundant vowel diacritics (maatras)
-4. Halants/Virama: Remove trailing halants (्) or equivalent marks at end of words - they should NOT appear at word endings
-5. Anusvara issues: Fix unnecessary anusvara (्) or nasal marks at word endings
-6. Consonant clusters: Correct improper consonant combinations
-7. Unnatural repetitions: Remove repeated syllables or sounds
+Script reference by language:
+{script_descs}
 
-CRITICAL: English technical terms and proper nouns that are transliterated should have MINIMAL characters - no extra vowels, no trailing halants.
+Fix the translations and return corrected JSON using exactly the same keys as input.
 
-Each language has its own script rules - apply these principles to Bengali, Gujarati, Hindi, Kannada, Malayalam, Marathi, Odia, Punjabi, Tamil, and Telugu scripts accordingly.
+Rules:
+1) Preserve the meaning and tone of the original English.
+2) For non-English targets ({non_english_desc}):
+   - Use natural native-script phrasing for that language.
+   - Do NOT keep unnecessary English (Latin-script) words.
+   - Exception: keep only unavoidable proper nouns, brand names, or acronyms.
+   - If both localized and English forms of the same term appear together in one sentence, keep only the localized form (unless it is an allowed exception).
+3) Fix script/orthography issues: redundant vowels, incorrect vowel signs/maatras, trailing halant/virama at word endings, malformed consonant clusters, and accidental repeated syllables.
+4) Keep punctuation, placeholders, and numbers appropriate for the target language.
+5) For English targets (en-*), keep fluent English and do not transliterate.
+6) Output must be valid JSON only (no markdown, no code fences, no commentary); each value must be a plain string.
 
-Return ONLY the corrected translations in JSON format, same structure as input.
-Return valid JSON only, no other text:"""
+Return only the corrected JSON object."""
         
         last_exc: Exception | None = None
 

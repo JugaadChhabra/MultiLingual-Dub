@@ -37,6 +37,7 @@ QC_LOG_SINK=s3
 ELEVEN_LABS=
 AI_STUDIO_VOICE=
 DESI_VOCAL_VOICE=
+ENGLISH_VOICE=
 EOF
     echo "Created .env file."
     echo ""
@@ -57,6 +58,7 @@ EOF
     echo "  - ELEVEN_LABS"
     echo "  - AI_STUDIO_VOICE"
     echo "  - DESI_VOCAL_VOICE"
+    echo "  - ENGLISH_VOICE"
     echo ""
     echo "Then run this script again."
     exit 1
@@ -79,6 +81,7 @@ required_keys=(
   "ELEVEN_LABS"
   "AI_STUDIO_VOICE"
   "DESI_VOCAL_VOICE"
+  "ENGLISH_VOICE"
 )
 
 missing=()

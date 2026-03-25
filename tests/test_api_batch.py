@@ -146,6 +146,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
             "BATCH_ENABLE_QC=true",
             "AI_STUDIO_VOICE=v1",
             "DESI_VOCAL_VOICE=v2",
+            "ENGLISH_VOICE=v3",
         ]
     )
     config_resp = client.post("/config/session-env", json={"env_text": env_text})

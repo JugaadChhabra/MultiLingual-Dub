@@ -28,6 +28,7 @@ Fill all required keys in `.env`:
 - `ELEVEN_LABS`
 - `AI_STUDIO_VOICE`
 - `DESI_VOCAL_VOICE`
+- `ENGLISH_VOICE`
 
 Then run:
 

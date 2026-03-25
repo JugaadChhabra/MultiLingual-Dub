@@ -12,7 +12,7 @@ from batch.excel import read_excel_rows
 from batch.models import JobSummary
 from batch.store import JobsStore
 from services.audio_compress import compress_mp3_bytes
-from services.elevenlabs import get_batch_default_config, get_elevenlabs_api_key, synthesize_speech_bytes
+from services.elevenlabs import get_batch_config_for_language, get_elevenlabs_api_key, synthesize_speech_bytes
 from services.qc import LANGUAGE_NAMES, QCError, qc_translations_batch
 from services.runtime_config import RuntimeConfig, get_config_value
 from services.translation import translate_with_fallback
@@ -44,12 +44,28 @@ def _build_s3_key(job_id: str, target_language: str, audio_type: str) -> str:
     return f"batch/{job_id}/{target_language}/{audio_type_fragment}-{uuid.uuid4().hex}.mp3"
 
 
-def _generate_elevenlabs_audio_bytes(text: str, runtime_config: RuntimeConfig | None = None) -> bytes:
+def _generate_elevenlabs_audio_bytes(
+    text: str,
+    language: str,
+    runtime_config: RuntimeConfig | None = None,
+) -> bytes:
     return synthesize_speech_bytes(
         text,
         api_key=get_elevenlabs_api_key(runtime_config=runtime_config),
-        config=get_batch_default_config(runtime_config=runtime_config),
+        config=get_batch_config_for_language(language, runtime_config=runtime_config),
     )
+
+
+def _validate_english_voice_if_needed(
+    target_languages: list[str],
+    runtime_config: RuntimeConfig | None = None,
+) -> None:
+    has_english_target = any(language.strip().lower().startswith("en") for language in target_languages)
+    if not has_english_target:
+        return
+    english_voice = get_config_value("ENGLISH_VOICE", runtime_config=runtime_config)
+    if not english_voice:
+        raise ValueError("ENGLISH_VOICE is required when generating English batch audio")
 
 
 @lru_cache(maxsize=1)
@@ -189,6 +205,7 @@ async def _run_batch_job_impl(
 
     try:
         upload_to_s3 = _should_upload_to_s3(runtime_config=runtime_config)
+        _validate_english_voice_if_needed(target_languages, runtime_config=runtime_config)
         s3_client: S3Client | None = None
         if upload_to_s3:
             config = await asyncio.to_thread(get_s3_config, runtime_config)
@@ -355,11 +372,16 @@ async def _run_batch_job_impl(
                         tts_text = f"[{row.emotion}] {effective_text}" if row.emotion else effective_text
                         try:
                             if runtime_config is None:
-                                audio_bytes = await asyncio.to_thread(_generate_elevenlabs_audio_bytes, tts_text)
+                                audio_bytes = await asyncio.to_thread(
+                                    _generate_elevenlabs_audio_bytes,
+                                    tts_text,
+                                    language,
+                                )
                             else:
                                 audio_bytes = await asyncio.to_thread(
                                     _generate_elevenlabs_audio_bytes,
                                     tts_text,
+                                    language,
                                     runtime_config,
                                 )
                         except Exception as exc:

@@ -15,10 +15,26 @@ DEFAULT_STYLE = 0.0
 DEFAULT_USE_SPEAKER_BOOST = True
 
 
+def is_english_language(language_code: str) -> bool:
+    return language_code.strip().lower().startswith("en")
+
+
 def get_voice_id(voice_name: str = "desi", runtime_config: RuntimeConfig | None = None) -> str:
-    """Get voice ID from environment variables. voice_name can be 'desi' or 'studio'."""
+    """
+    Get voice ID from environment variables.
+
+    Supported voice_name values:
+    - "desi": DESI_VOCAL_VOICE (default)
+    - "studio": AI_STUDIO_VOICE
+    - "english": ENGLISH_VOICE
+    """
     if voice_name == "studio":
         return get_config_value("AI_STUDIO_VOICE", runtime_config=runtime_config) or "S1JBcZECEJJlf7lEDTbN"
+    if voice_name == "english":
+        voice_id = get_config_value("ENGLISH_VOICE", runtime_config=runtime_config)
+        if not voice_id:
+            raise ValueError("Missing ENGLISH_VOICE for English audio generation")
+        return voice_id
     return get_config_value("DESI_VOCAL_VOICE", runtime_config=runtime_config) or "dffT29nmBclERTsFHmHg"
 
 
@@ -42,6 +58,21 @@ def get_elevenlabs_api_key(runtime_config: RuntimeConfig | None = None) -> str:
 def get_batch_default_config(runtime_config: RuntimeConfig | None = None) -> ElevenLabsTTSConfig:
     return ElevenLabsTTSConfig(
         voice_id=get_voice_id("desi", runtime_config=runtime_config),
+        model_id=DEFAULT_MODEL_ID,
+        stability=DEFAULT_STABILITY,
+        similarity_boost=DEFAULT_SIMILARITY_BOOST,
+        style=DEFAULT_STYLE,
+        use_speaker_boost=DEFAULT_USE_SPEAKER_BOOST,
+    )
+
+
+def get_batch_config_for_language(
+    language_code: str,
+    runtime_config: RuntimeConfig | None = None,
+) -> ElevenLabsTTSConfig:
+    voice_name = "english" if is_english_language(language_code) else "desi"
+    return ElevenLabsTTSConfig(
+        voice_id=get_voice_id(voice_name, runtime_config=runtime_config),
         model_id=DEFAULT_MODEL_ID,
         stability=DEFAULT_STABILITY,
         similarity_boost=DEFAULT_SIMILARITY_BOOST,
