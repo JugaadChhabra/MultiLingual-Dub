@@ -1,504 +1,948 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <link rel="icon" type="image/png" href="favicon.png" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoDub</title>
+    <title>AutoDub Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@1&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
-      /* â”€â”€â”€ Variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       :root {
-        --bg:          #ece7df;
-        --surface:     #ffffff;
-        --surface-2:   #f7f3ee;
-        --border:      rgba(0, 0, 0, 0.11);
-        --border-focus:rgba(0, 0, 0, 0.35);
-        --accent:      #d9533f;
-        --accent-dark: #be3f2d;
-        --text:        #1a1a1a;
-        --text-muted:  #888077;
-        --success:     #2e7d4f;
-        --error:       #c0392b;
-        --radius:      12px;
-        --radius-sm:   8px;
-        --shadow-sm:   0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
-        --shadow-md:   0 4px 12px rgba(0,0,0,0.09);
+        --bg-a: #d9eef6;
+        --bg-b: #e7ecff;
+        --bg-c: #f8efe4;
+        --ink: #0f2238;
+        --muted: #5b6d82;
+        --panel: rgba(255, 255, 255, 0.42);
+        --panel-strong: rgba(255, 255, 255, 0.64);
+        --stroke: rgba(255, 255, 255, 0.72);
+        --stroke-soft: rgba(15, 34, 56, 0.12);
+        --accent: #0f766e;
+        --accent-dark: #0b5a55;
+        --accent-2: #2563eb;
+        --success: #0f9d58;
+        --error: #d93025;
+        --shadow-outer: 0 24px 48px rgba(15, 34, 56, 0.16);
+        --shadow-soft: 0 12px 28px rgba(15, 34, 56, 0.12);
+        --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(255, 255, 255, 0.28);
+        --radius-xl: 24px;
+        --radius-lg: 18px;
+        --radius-md: 14px;
+        --radius-sm: 10px;
       }
 
-      /* â”€â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
 
       body {
-        font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        min-height: 100vh;
-        -webkit-font-smoothing: antialiased;
+        font-family: "Manrope", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(1600px 900px at 12% 5%, rgba(44, 121, 255, 0.2), transparent 52%),
+          radial-gradient(1400px 800px at 90% 5%, rgba(15, 118, 110, 0.2), transparent 54%),
+          linear-gradient(120deg, var(--bg-a), var(--bg-b) 52%, var(--bg-c));
       }
 
-      /* â”€â”€â”€ Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .page {
-        max-width: 760px;
-        margin: 0 auto;
-        padding: 56px 24px 80px;
+      .ambient-layer {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
       }
 
-      /* â”€â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .header {
-        text-align: center;
-        margin-bottom: 44px;
+      .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(2px);
+        opacity: 0.64;
+        animation: drift 16s ease-in-out infinite;
       }
-      .header h1 {
-        font-family: "Inter", sans-serif;
-        font-size: clamp(34px, 5.5vw, 52px);
+
+      .orb-a {
+        width: 380px;
+        height: 380px;
+        background: radial-gradient(circle at 30% 30%, rgba(37, 99, 235, 0.5), rgba(37, 99, 235, 0.12));
+        top: -120px;
+        left: -110px;
+      }
+
+      .orb-b {
+        width: 340px;
+        height: 340px;
+        background: radial-gradient(circle at 70% 40%, rgba(15, 118, 110, 0.46), rgba(15, 118, 110, 0.1));
+        bottom: -130px;
+        right: -80px;
+        animation-delay: -6s;
+      }
+
+      .orb-c {
+        width: 260px;
+        height: 260px;
+        background: radial-gradient(circle at 35% 35%, rgba(245, 158, 11, 0.34), rgba(245, 158, 11, 0.08));
+        bottom: 14%;
+        left: 28%;
+        animation-delay: -10s;
+      }
+
+      @keyframes drift {
+        0%,
+        100% {
+          transform: translateY(0) translateX(0) scale(1);
+        }
+        50% {
+          transform: translateY(18px) translateX(-10px) scale(1.03);
+        }
+      }
+
+      .app-shell {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 12px;
+      }
+
+      .glass {
+        background: linear-gradient(145deg, var(--panel-strong), var(--panel));
+        border: 1px solid var(--stroke);
+        box-shadow: var(--shadow-outer), var(--inner-glow);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+
+      .topbar {
+        border-radius: var(--radius-xl);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        animation: fadeUp 480ms ease;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        background: linear-gradient(155deg, #0f766e, #2563eb 72%);
+        display: grid;
+        place-items: center;
+        color: #f8fbff;
+        font-family: "Sora", sans-serif;
         font-weight: 700;
-        letter-spacing: -1.5px;
+        letter-spacing: 0.05em;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.35),
+          inset 0 -2px 8px rgba(0, 0, 0, 0.2),
+          0 10px 18px rgba(15, 34, 56, 0.25);
+      }
+
+      .brand-copy h1 {
+        font-family: "Sora", sans-serif;
+        font-size: clamp(20px, 2.3vw, 28px);
+        letter-spacing: -0.02em;
         line-height: 1.1;
-        color: var(--text);
-        margin-bottom: 14px;
-      }
-      .header h1 em {
-        font-family: "Instrument Serif", serif;
-        font-style: italic;
-        font-weight: 400;
-        letter-spacing: -0.5px;
-      }
-      .header p {
-        color: var(--text-muted);
-        font-size: 15px;
-        font-weight: 400;
-        line-height: 1.7;
-        max-width: 460px;
-        margin: 0 auto;
       }
 
-      /* â”€â”€â”€ Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 24px 24px 20px;
-        margin-bottom: 16px;
-        box-shadow: var(--shadow-sm);
+      .brand-copy p {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 4px;
+        letter-spacing: 0.02em;
       }
 
-      /* â”€â”€â”€ Section Labels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .section-label {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.1em;
+      .top-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .meta-chip {
+        min-width: 130px;
+        border-radius: 12px;
+        border: 1px solid var(--stroke);
+        background: rgba(255, 255, 255, 0.5);
+        box-shadow: var(--inner-glow);
+        padding: 8px 10px;
+      }
+
+      .meta-chip .meta-label {
+        display: block;
+        font-size: 10px;
         text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 12px;
+        letter-spacing: 0.1em;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+
+      .badge {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .badge.pending {
+        color: #9a5800;
+      }
+
+      .badge.ready {
+        color: var(--success);
+      }
+
+      .badge.neutral {
+        color: var(--accent-2);
+      }
+
+      .workspace {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1.2fr 0.95fr 1.7fr;
+        gap: 12px;
+      }
+
+      .panel {
+        border-radius: var(--radius-xl);
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: fadeUp 520ms ease;
+      }
+
+      .panel:nth-child(2) {
+        animation-delay: 90ms;
+      }
+
+      .panel:nth-child(3) {
+        animation-delay: 150ms;
+      }
+
+      .panel-head {
+        padding: 14px 16px 12px;
+        border-bottom: 1px solid var(--stroke-soft);
+        background: rgba(255, 255, 255, 0.35);
+      }
+
+      .panel-head h2 {
+        font-family: "Sora", sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.01em;
+      }
+
+      .panel-head p {
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .panel-body {
+        min-height: 0;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .scroll-zone {
+        overflow: auto;
+      }
+
+      .scroll-zone::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .scroll-zone::-webkit-scrollbar-thumb {
+        border-radius: 99px;
+        background: rgba(15, 34, 56, 0.2);
+      }
+
+      .section-divider {
+        height: 1px;
+        background: linear-gradient(to right, rgba(15, 34, 56, 0.2), rgba(15, 34, 56, 0.04));
+        margin: 4px 0 2px;
+      }
+
+      .field-label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+
+      textarea,
+      input[type="text"],
+      input[type="file"],
+      select {
+        width: 100%;
+        border: 1px solid rgba(15, 34, 56, 0.18);
+        border-radius: var(--radius-md);
+        background: linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.7));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 0 rgba(15, 34, 56, 0.08);
+        color: var(--ink);
+        font-family: "Manrope", sans-serif;
+        font-size: 13px;
+        padding: 11px 12px;
+        outline: none;
+        transition: border-color 160ms ease, box-shadow 160ms ease;
+      }
+
+      textarea:focus,
+      input[type="text"]:focus,
+      input[type="file"]:focus,
+      select:focus {
+        border-color: rgba(37, 99, 235, 0.55);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+      }
+
+      textarea {
+        resize: none;
+        min-height: 122px;
+        line-height: 1.45;
+      }
+
+      input[type="file"] {
+        padding: 7px 9px;
+      }
+
+      input[type="file"]::file-selector-button {
+        border: 1px solid rgba(15, 34, 56, 0.2);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(236, 242, 251, 0.82));
+        border-radius: 8px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 10px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .btn {
+        border: 1px solid transparent;
+        border-radius: 12px;
+        font-family: "Sora", sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 10px 12px;
+        transition: transform 120ms ease, box-shadow 180ms ease, filter 140ms ease;
+        box-shadow: 0 8px 18px rgba(15, 34, 56, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      }
+
+      .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.52;
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+      }
+
+      .btn-primary {
+        background: linear-gradient(145deg, #2563eb, #1e4fc5);
+        color: #f7fbff;
+        border-color: rgba(37, 99, 235, 0.38);
+      }
+
+      .btn-ghost {
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(225, 236, 251, 0.7));
+        color: var(--ink);
+        border-color: rgba(15, 34, 56, 0.17);
+      }
+
+      .btn-accent {
+        background: linear-gradient(145deg, #0f766e, #0a5d56);
+        color: #f7fbff;
+        border-color: rgba(15, 118, 110, 0.4);
+      }
+
+      .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        filter: brightness(1.03);
+      }
+
+      .input-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .lang-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .lang-chip input[type="checkbox"] {
+        display: none;
+      }
+
+      .lang-chip label {
+        display: block;
+        border-radius: 11px;
+        border: 1px solid rgba(15, 34, 56, 0.16);
+        background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(222, 233, 247, 0.64));
+        box-shadow: var(--inner-glow);
+        text-align: center;
+        padding: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        cursor: pointer;
+        transition: all 140ms ease;
+      }
+
+      .lang-chip input[type="checkbox"]:checked + label {
+        color: #eff7ff;
+        border-color: rgba(15, 118, 110, 0.5);
+        background: linear-gradient(145deg, #0f766e, #0b5c55);
+      }
+
+      .action-wrap {
+        margin-top: auto;
+        display: grid;
+        gap: 10px;
+      }
+
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .status.error {
+        color: var(--error);
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      .status-inline {
+        min-height: 26px;
         display: flex;
         align-items: center;
         gap: 8px;
       }
-      .section-label::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: var(--border);
-      }
-
-      /* â”€â”€â”€ Radio Toggle Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .tab-group {
-        display: flex;
-        gap: 0;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        overflow: hidden;
-        background: var(--surface-2);
-      }
-      .tab-group input[type="radio"] { display: none; }
-      .tab-group label {
-        flex: 1;
-        text-align: center;
-        padding: 10px 14px;
-        font-size: 13.5px;
-        font-weight: 500;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: background 0.18s, color 0.18s;
-        user-select: none;
-        display: block;
-        margin: 0;
-        border-right: 1px solid var(--border);
-      }
-      .tab-group label:last-of-type { border-right: none; }
-      .tab-group input[type="radio"]:checked + label {
-        background: var(--surface);
-        color: var(--text);
-        font-weight: 600;
-      }
-      .tab-group label:hover { color: var(--text); background: rgba(255,255,255,0.7); }
-
-      /* â”€â”€â”€ Field Labels & Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .field-label {
-        display: block;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        color: var(--text-muted);
-        margin-bottom: 7px;
-        margin-top: 18px;
-        text-transform: uppercase;
-      }
-
-      input[type="file"],
-      input[type="text"],
-      textarea,
-      select {
-        width: 100%;
-        padding: 10px 13px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        color: var(--text);
-        font-family: "Inter", inherit;
-        font-size: 14px;
-        outline: none;
-        transition: border-color 0.18s, box-shadow 0.18s;
-        appearance: none;
-        -webkit-appearance: none;
-      }
-      input[type="file"] { background: var(--surface-2); }
-      input[type="file"]::file-selector-button {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        color: var(--text);
-        padding: 5px 12px;
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        margin-right: 10px;
-        transition: background 0.15s;
-      }
-      input[type="file"]::file-selector-button:hover { background: var(--surface-2); }
-      input[type="text"]:focus,
-      textarea:focus,
-      select:focus,
-      input[type="file"]:focus {
-        border-color: var(--border-focus);
-        box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
-      }
-      textarea {
-        resize: vertical;
-        min-height: 110px;
-        line-height: 1.6;
-      }
-      select {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 12 12'%3E%3Cpath fill='%23888077' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 12px center;
-        padding-right: 34px;
-        cursor: pointer;
-      }
-      select option { background: #fff; color: var(--text); }
-
-      /* â”€â”€â”€ Language Chips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .lang-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-        margin-top: 4px;
-      }
-      .lang-chip input[type="checkbox"] { display: none; }
-      .lang-chip label {
-        display: block;
-        padding: 6px 14px;
-        border-radius: 100px;
-        border: 1px solid var(--border);
-        background: var(--surface);
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: all 0.15s;
-        user-select: none;
-        margin: 0;
-      }
-      .lang-chip input[type="checkbox"]:checked + label {
-        background: var(--text);
-        border-color: var(--text);
-        color: #fff;
-      }
-      .lang-chip label:hover {
-        border-color: var(--text-muted);
-        color: var(--text);
-      }
-
-      /* â”€â”€â”€ Actions & Run Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .actions {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        margin-top: 24px;
-      }
-      .btn-run {
-        padding: 12px 30px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: var(--accent);
-        color: #fff;
-        font-family: "Inter", sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        cursor: pointer;
-        transition: background 0.18s, transform 0.12s;
-        flex-shrink: 0;
-      }
-      .btn-run:hover:not(:disabled) { background: var(--accent-dark); transform: translateY(-1px); }
-      .btn-run:active:not(:disabled) { transform: translateY(0); }
-      .btn-run:disabled { opacity: 0.45; cursor: not-allowed; }
-
-      /* â”€â”€â”€ Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .status {
-        font-size: 13px;
-        color: var(--text-muted);
-        line-height: 1.5;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .status.error   { color: var(--error); }
-      .status.success { color: var(--success); }
 
       .spinner {
-        display: none;
-        width: 14px; height: 14px;
-        border: 2px solid rgba(0,0,0,0.12);
-        border-top-color: var(--text);
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(15, 34, 56, 0.2);
+        border-top-color: var(--ink);
         border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-        flex-shrink: 0;
+        animation: spin 760ms linear infinite;
+        display: none;
       }
-      .spinner.active { display: block; }
-      @keyframes spin { to { transform: rotate(360deg); } }
 
-      /* â”€â”€â”€ Result / Player Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+      .spinner.active {
+        display: inline-block;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       .result {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 14px 16px;
-        white-space: pre-wrap;
-        font-size: 13px;
-        color: var(--text-muted);
-        margin-top: 16px;
-        box-shadow: var(--shadow-sm);
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(15, 34, 56, 0.16);
+        background: rgba(255, 255, 255, 0.54);
+        box-shadow: var(--inner-glow);
+        padding: 12px;
+        font-size: 12px;
+        color: var(--muted);
       }
 
-      .player-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 20px;
-        margin-bottom: 12px;
-        box-shadow: var(--shadow-sm);
-        transition: box-shadow 0.2s;
+      .result-stack {
+        display: grid;
+        gap: 10px;
       }
-      .player-card:hover { box-shadow: var(--shadow-md); }
-      .player-card-title {
+
+      .empty-state {
+        border-radius: var(--radius-lg);
+        border: 1px dashed rgba(15, 34, 56, 0.24);
+        padding: 26px 16px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.28);
+      }
+
+      .empty-state h3 {
+        font-family: "Sora", sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.01em;
+      }
+
+      .empty-state p {
+        margin-top: 8px;
         font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 12px;
+        color: var(--muted);
       }
-      .player-card textarea { margin-bottom: 12px; }
-      .player-card-row {
+
+      .summary-card,
+      .translation-card {
+        border-radius: var(--radius-lg);
+        border: 1px solid rgba(15, 34, 56, 0.15);
+        background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(226, 235, 247, 0.6));
+        box-shadow: var(--shadow-soft), var(--inner-glow);
+        padding: 12px;
+      }
+
+      .summary-top {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 10px;
-        flex-wrap: wrap;
-      }
-      .player-card select { flex: 1; min-width: 180px; }
-      .btn-gen {
-        padding: 9px 18px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: var(--accent);
-        color: #fff;
-        font-size: 13px;
-        font-weight: 600;
-        font-family: inherit;
-        cursor: pointer;
-        transition: background 0.15s;
-        white-space: nowrap;
-      }
-      .btn-gen:hover { background: var(--accent-dark); }
-      .player-card audio {
-        width: 100%;
-        margin-top: 12px;
-        border-radius: 6px;
+        margin-bottom: 10px;
       }
 
-      /* â”€â”€â”€ Batch Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .batch-grid {
+      .summary-title {
+        font-family: "Sora", sans-serif;
+        font-size: 14px;
+        letter-spacing: 0.01em;
+      }
+
+      .status-pill {
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .status-pill.running {
+        background: rgba(37, 99, 235, 0.14);
+        color: #124fcb;
+      }
+
+      .status-pill.completed {
+        background: rgba(15, 157, 88, 0.14);
+        color: var(--success);
+      }
+
+      .status-pill.failed {
+        background: rgba(217, 48, 37, 0.14);
+        color: var(--error);
+      }
+
+      .summary-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .metric {
+        border-radius: 10px;
+        border: 1px solid rgba(15, 34, 56, 0.11);
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: var(--inner-glow);
+        padding: 8px;
+      }
+
+      .metric .label {
+        display: block;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .metric .value {
+        display: block;
+        margin-top: 4px;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+
+      .translation-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .translation-head h3 {
+        font-family: "Sora", sans-serif;
+        font-size: 13px;
+      }
+
+      .chip-soft {
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #1f4cb2;
+        background: rgba(37, 99, 235, 0.14);
+      }
+
+      .translation-card textarea {
+        min-height: 94px;
+      }
+
+      .control-grid {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: center;
+      }
+
+      .control-grid input[type="text"] {
+        font-size: 12px;
+        padding: 10px;
+      }
+
+      .status-row {
+        display: flex;
         gap: 10px;
         margin-top: 8px;
       }
-      .batch-stat {
-        background: var(--surface-2);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 12px 14px;
-      }
-      .batch-stat .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 600; }
-      .batch-stat .value { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
 
-      /* â”€â”€â”€ Divider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .divider {
-        height: 1px;
-        background: var(--border);
-        margin: 20px 0;
+      .status-row .status {
+        flex: 1;
       }
 
-      /* â”€â”€â”€ Responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      @media (max-width: 600px) {
-        .page { padding: 32px 16px 60px; }
-        .tab-group { flex-direction: column; }
-        .batch-grid { grid-template-columns: 1fr; }
-        .player-card-row { flex-direction: column; align-items: stretch; }
-        .player-card select { min-width: unset; }
+      .translation-card audio {
+        width: 100%;
+        margin-top: 10px;
+        border-radius: 10px;
+      }
+
+      .log-output {
+        margin-top: 8px;
+        min-height: 200px;
+        max-height: 320px;
+        overflow: auto;
+        border-radius: 10px;
+        border: 1px solid rgba(15, 34, 56, 0.13);
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: var(--inner-glow);
+        padding: 10px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #1f334a;
+        font-family: "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        white-space: pre-wrap;
+      }
+
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 1300px) {
+        .workspace {
+          grid-template-columns: 1.1fr 0.9fr 1.4fr;
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 1040px) {
+        html,
+        body {
+          overflow: auto;
+        }
+
+        .app-shell {
+          height: auto;
+          min-height: 100%;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          min-height: 320px;
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+        }
+
+        .top-meta {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .lang-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .control-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="page">
-      <!-- Header -->
-      <header class="header">
-        <h1>Auto<em>Dub</em></h1>
-        <p>Translate &amp; voice content into multiple Indian languages â€” instantly.</p>
+    <div class="ambient-layer" aria-hidden="true">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="orb orb-c"></div>
+    </div>
+
+    <div class="app-shell">
+      <header class="topbar glass">
+        <div class="brand">
+          <div class="brand-icon">AD</div>
+          <div class="brand-copy">
+            <h1>AutoDub Studio</h1>
+            <p>Multilingual dubbing control surface with live output</p>
+          </div>
+        </div>
+        <div class="top-meta">
+          <div class="meta-chip">
+            <span class="meta-label">Session Config</span>
+            <span class="badge pending" id="envBadge">Not loaded</span>
+          </div>
+          <div class="meta-chip">
+            <span class="meta-label">Pipeline</span>
+            <span class="badge neutral">Excel Batch</span>
+          </div>
+        </div>
       </header>
 
-      <!-- Main card -->
-      <div class="card">
-        <form id="uploadForm">
-          <div class="section-label">Runtime Config</div>
-          <label class="field-label" for="envTextInput">Paste Full .env Content</label>
-          <textarea id="envTextInput" name="envTextInput" placeholder="SARVAM_API=...\nGEMINI_API_KEY=...\nWASABI_ACCESS_KEY=...\nWASABI_SECRET_KEY=...\nWASABI_BUCKET=...\nWASABI_REGION=...\nWASABI_ENDPOINT_URL=...\nAWS_ACCESS_KEY=...\nAWS_SECRET_KEY=...\nAWS_BUCKET=...\nAWS_REGION=...\nBATCH_ENABLE_WASABI_UPLOAD=true\nBATCH_ENABLE_QC=true\nELEVEN_LABS=...\nAI_STUDIO_VOICE=...\nDESI_VOCAL_VOICE=...\nENGLISH_VOICE=..."></textarea>
-          <div class="actions" style="margin-top:12px;">
-            <button class="btn-run" id="applyEnvBtn" type="button">Apply Config</button>
-            <button class="btn-run" id="clearEnvBtn" type="button" style="background:var(--text-muted);">Clear Config</button>
+      <form id="uploadForm" class="workspace">
+        <section class="panel glass">
+          <div class="panel-head">
+            <h2>System + Upload</h2>
+            <p>Runtime config is read from server environment</p>
           </div>
-          <div class="status" id="envStatus" style="margin-top:8px;"></div>
+          <div class="panel-body scroll-zone">
+            <div>
+              <label class="field-label">Runtime Config Status</label>
+              <div class="result" id="envStatusBox">
+                <div class="status" id="envStatus">Checking runtime config status...</div>
+              </div>
+            </div>
 
-          <div class="divider"></div>
+            <div class="section-divider"></div>
 
-          <!-- Input type selector -->
-          <div class="section-label">Input Mode</div>
-          <div class="tab-group">
-            <input type="radio" id="inputText"  name="inputType" value="text"  checked /><label for="inputText">Paste Script</label>
-            <input type="radio" id="inputAudio" name="inputType" value="audio"        /><label for="inputAudio">Upload MP3</label>
-            <input type="radio" id="inputExcel" name="inputType" value="excel"        /><label for="inputExcel">Excel Batch</label>
-          </div>
-
-          <!-- Text input -->
-          <div id="textInputSection">
-            <label class="field-label" for="textInput">Script / Text</label>
-            <textarea id="textInput" name="textInput" placeholder="Paste or type your script hereâ€¦"></textarea>
-          </div>
-
-          <!-- Audio input -->
-          <div id="audioInputSection" style="display:none;">
-            <label class="field-label" for="audio">MP3 Audio File</label>
-            <input id="audio" name="audio" type="file" accept="audio/mpeg,.mp3" />
-            <div class="status" id="fileStatus" style="margin-top:8px;"></div>
-          </div>
-
-          <!-- Excel input -->
-          <div id="excelInputSection" style="display:none;">
-            <label class="field-label" for="excelFile">Excel File (.xlsx)</label>
-            <input id="excelFile" name="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-            <div class="status" id="excelStatus" style="margin-top:8px;"></div>
-          </div>
-
-          <div class="divider"></div>
-
-          <!-- Language selector -->
-          <div class="section-label">Target Languages</div>
-          <div class="lang-grid" id="languageCheckboxes">
-            <div class="lang-chip"><input type="checkbox" id="lang-bn" name="target_language" value="bn-IN"><label for="lang-bn">Bengali</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-en" name="target_language" value="en-IN"><label for="lang-en">English</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-gu" name="target_language" value="gu-IN"><label for="lang-gu">Gujarati</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-hi" name="target_language" value="hi-IN" checked><label for="lang-hi">Hindi</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-kn" name="target_language" value="kn-IN"><label for="lang-kn">Kannada</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-ml" name="target_language" value="ml-IN"><label for="lang-ml">Malayalam</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-mr" name="target_language" value="mr-IN"><label for="lang-mr">Marathi</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-od" name="target_language" value="od-IN"><label for="lang-od">Odia</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-pa" name="target_language" value="pa-IN"><label for="lang-pa">Punjabi</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-ta" name="target_language" value="ta-IN"><label for="lang-ta">Tamil</label></div>
-            <div class="lang-chip"><input type="checkbox" id="lang-te" name="target_language" value="te-IN"><label for="lang-te">Telugu</label></div>
-          </div>
-
-          <!-- Actions -->
-          <div class="actions">
-            <button class="btn-run" id="submitBtn" type="submit">Run Pipeline</button>
-            <div class="status" id="submitStatus">
-              <div class="spinner" id="spinner"></div>
-              <span id="submitStatusText"></span>
+            <div id="excelInputSection" class="input-section">
+              <label class="field-label" for="excelFile">Excel file (.xlsx)</label>
+              <input id="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+              <div class="status" id="excelStatus"></div>
             </div>
           </div>
+        </section>
 
-        </form>
-      </div>
+        <section class="panel glass">
+          <div class="panel-head">
+            <h2>Language + Run</h2>
+            <p>Pick one or many output locales</p>
+          </div>
+          <div class="panel-body">
+            <div class="lang-grid" id="languageCheckboxes">
+              <div class="lang-chip"><input type="checkbox" id="lang-bn" name="target_language" value="bn-IN" /><label for="lang-bn">Bengali</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-en" name="target_language" value="en-IN" /><label for="lang-en">English</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-gu" name="target_language" value="gu-IN" /><label for="lang-gu">Gujarati</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-hi" name="target_language" value="hi-IN" checked /><label for="lang-hi">Hindi</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-kn" name="target_language" value="kn-IN" /><label for="lang-kn">Kannada</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-ml" name="target_language" value="ml-IN" /><label for="lang-ml">Malayalam</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-mr" name="target_language" value="mr-IN" /><label for="lang-mr">Marathi</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-od" name="target_language" value="od-IN" /><label for="lang-od">Odia</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-pa" name="target_language" value="pa-IN" /><label for="lang-pa">Punjabi</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-ta" name="target_language" value="ta-IN" /><label for="lang-ta">Tamil</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-te" name="target_language" value="te-IN" /><label for="lang-te">Telugu</label></div>
+            </div>
 
-      <!-- Results -->
-      <div class="result" id="result" hidden></div>
-      <div id="multiResults"></div>
+            <div class="action-wrap">
+              <button class="btn btn-accent" id="submitBtn" type="submit">Run Pipeline</button>
+              <div class="status status-inline" id="submitStatus">
+                <div class="spinner" id="spinner"></div>
+                <span id="submitStatusText"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel glass">
+          <div class="panel-head">
+            <h2>Output Console</h2>
+            <p>Live execution summary and important logs</p>
+          </div>
+          <div class="panel-body scroll-zone" id="outputScroll">
+            <div class="result" id="result" hidden></div>
+            <div id="multiResults" class="result-stack"></div>
+            <div class="summary-card" id="logsCard">
+              <div class="summary-top">
+                <div>
+                  <div class="summary-title">Important Logs</div>
+                  <div class="status" id="logStatusText" style="margin-top:4px;">Waiting for batch run...</div>
+                </div>
+                <span class="status-pill running" id="logStatusBadge">idle</span>
+              </div>
+              <pre id="logOutput" class="log-output"></pre>
+            </div>
+          </div>
+        </section>
+      </form>
     </div>
 
     <script>
-      /* â”€â”€ DOM refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      const form             = document.getElementById("uploadForm");
-      const envTextInput     = document.getElementById("envTextInput");
-      const applyEnvBtn      = document.getElementById("applyEnvBtn");
-      const clearEnvBtn      = document.getElementById("clearEnvBtn");
-      const envStatus        = document.getElementById("envStatus");
-      const audioInput       = document.getElementById("audio");
-      const fileStatus       = document.getElementById("fileStatus");
+      const form = document.getElementById("uploadForm");
+      const envStatus = document.getElementById("envStatus");
+      const envBadge = document.getElementById("envBadge");
+      const excelFile = document.getElementById("excelFile");
+      const excelStatus = document.getElementById("excelStatus");
+      const submitBtn = document.getElementById("submitBtn");
       const submitStatusWrap = document.getElementById("submitStatus");
       const submitStatusText = document.getElementById("submitStatusText");
-      const spinner          = document.getElementById("spinner");
-      const result           = document.getElementById("result");
-      const submitBtn        = document.getElementById("submitBtn");
-      const inputAudioRadio  = document.getElementById("inputAudio");
-      const inputTextRadio   = document.getElementById("inputText");
-      const inputExcelRadio  = document.getElementById("inputExcel");
-      const audioInputSection = document.getElementById("audioInputSection");
-      const textInputSection  = document.getElementById("textInputSection");
-      const excelInputSection = document.getElementById("excelInputSection");
-      const textInput         = document.getElementById("textInput");
-      const excelFile         = document.getElementById("excelFile");
-      const excelStatus       = document.getElementById("excelStatus");
-      let envConfigured       = false;
+      const spinner = document.getElementById("spinner");
+      const result = document.getElementById("result");
+      const multiResults = document.getElementById("multiResults");
+      const logStatusText = document.getElementById("logStatusText");
+      const logStatusBadge = document.getElementById("logStatusBadge");
+      const logOutput = document.getElementById("logOutput");
 
-      /* â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+      let envConfigured = false;
+      let latestJobState = null;
+      let durationTicker = null;
+      let logPollTimer = null;
+      let lastLogId = 0;
+      const logLines = [];
+
       function setStatus(el, message, isError = false, isSuccess = false) {
         if (el === submitStatusWrap) {
           submitStatusText.textContent = message;
-          submitStatusWrap.className = "status" + (isError ? " error" : isSuccess ? " success" : "");
+          submitStatusWrap.className = "status status-inline" + (isError ? " error" : isSuccess ? " success" : "");
           spinner.classList.toggle("active", !isError && !isSuccess && message !== "");
-        } else {
-          el.textContent = message;
-          el.className = "status" + (isError ? " error" : isSuccess ? " success" : "");
+          return;
         }
+        el.textContent = message;
+        el.className = "status" + (isError ? " error" : isSuccess ? " success" : "");
       }
 
-      function stopSpinner() { spinner.classList.remove("active"); }
+      function stopSpinner() {
+        spinner.classList.remove("active");
+      }
+
+      function setEnvBadgeState(configured) {
+        if (configured) {
+          envBadge.textContent = "Ready";
+          envBadge.className = "badge ready";
+          return;
+        }
+        envBadge.textContent = "Not loaded";
+        envBadge.className = "badge pending";
+      }
+
+      function setLogStreamState(label, stateClass) {
+        logStatusBadge.textContent = label;
+        logStatusBadge.className = `status-pill ${stateClass}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function formatDuration(durationMs) {
+        if (durationMs == null || Number.isNaN(durationMs)) return "--";
+        const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours > 0) {
+          return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+        }
+        return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+      }
+
+      function computeDurationMs(summary) {
+        if (!summary) return null;
+        if (summary.duration_ms != null) return summary.duration_ms;
+        if (summary.started_at) {
+          const started = Date.parse(summary.started_at);
+          if (!Number.isNaN(started)) {
+            return Date.now() - started;
+          }
+        }
+        return null;
+      }
+
+      async function extractErrorMessage(resp, fallback) {
+        let message = fallback;
+        try {
+          const payload = await resp.json();
+          if (typeof payload?.detail === "string") {
+            return payload.detail;
+          }
+          if (payload?.detail?.message) {
+            return payload.detail.message;
+          }
+          if (Array.isArray(payload?.detail?.missing_keys)) {
+            return `Missing keys: ${payload.detail.missing_keys.join(", ")}`;
+          }
+        } catch (_err) {
+          return message;
+        }
+        return message;
+      }
 
       async function fetchWithTimeout(url, options = {}, timeoutMs = 25000) {
         const controller = new AbortController();
@@ -510,200 +954,239 @@
         }
       }
 
+      function renderEmptyState() {
+        multiResults.innerHTML = `
+          <div class="empty-state">
+            <h3>Excel batch mode ready</h3>
+            <p>Select languages, upload an .xlsx file, and run pipeline.</p>
+          </div>
+        `;
+      }
+
+      function renderBatchSummary(summary, jobId, status, errorMessage = "") {
+        const s = summary || {};
+        const statusClass = status === "completed" ? "completed" : status === "failed" ? "failed" : "running";
+        const duration = formatDuration(computeDurationMs(s));
+        const failureBlock = errorMessage
+          ? `<div class="status error" style="margin-top:8px;">${escapeHtml(errorMessage)}</div>`
+          : "";
+
+        multiResults.innerHTML = `
+          <div class="summary-card">
+            <div class="summary-top">
+              <div>
+                <div class="summary-title">Batch Job ${escapeHtml(jobId || "--")}</div>
+                <div class="status" style="margin-top:4px;">Live execution summary</div>
+              </div>
+              <span class="status-pill ${statusClass}">${escapeHtml(status || "running")}</span>
+            </div>
+            <div class="summary-grid">
+              <div class="metric"><span class="label">Rows</span><span class="value">${s.total_rows ?? 0}</span></div>
+              <div class="metric"><span class="label">Processed</span><span class="value">${s.rows_processed ?? 0}</span></div>
+              <div class="metric"><span class="label">Succeeded</span><span class="value">${s.rows_succeeded ?? 0}</span></div>
+              <div class="metric"><span class="label">Failed</span><span class="value">${s.rows_failed ?? 0}</span></div>
+              <div class="metric"><span class="label">Lang Tasks</span><span class="value">${s.language_tasks_total ?? 0}</span></div>
+              <div class="metric"><span class="label">Tasks OK</span><span class="value">${s.language_tasks_succeeded ?? 0}</span></div>
+              <div class="metric"><span class="label">Placeholders</span><span class="value">${s.placeholder_audio_generated ?? 0}</span></div>
+              <div class="metric"><span class="label">Uploads OK</span><span class="value">${s.uploads_succeeded ?? 0}</span></div>
+              <div class="metric"><span class="label">Name Collisions</span><span class="value">${s.filename_collisions_resolved ?? 0}</span></div>
+              <div class="metric"><span class="label">Duration</span><span class="value">${duration}</span></div>
+            </div>
+            ${failureBlock}
+          </div>
+        `;
+      }
+
+      function startDurationTicker() {
+        if (durationTicker) return;
+        durationTicker = window.setInterval(() => {
+          if (!latestJobState) return;
+          if (latestJobState.status !== "running") return;
+          renderBatchSummary(
+            latestJobState.summary,
+            latestJobState.job_id,
+            latestJobState.status,
+            latestJobState.error || ""
+          );
+        }, 1000);
+      }
+
+      function stopDurationTicker() {
+        if (!durationTicker) return;
+        clearInterval(durationTicker);
+        durationTicker = null;
+      }
+
+      function appendLogLines(items) {
+        for (const item of items) {
+          const timestamp = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "--:--:--";
+          const level = item.level || "INFO";
+          const logger = item.logger || "log";
+          const message = item.message || "";
+          logLines.push(`[${timestamp}] ${level} ${logger} - ${message}`);
+        }
+        if (logLines.length > 300) {
+          logLines.splice(0, logLines.length - 300);
+        }
+        logOutput.textContent = logLines.join("\n");
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+
+      async function primeLogCursor() {
+        try {
+          const resp = await fetchWithTimeout("/logs/important?since_id=0&limit=1");
+          if (!resp.ok) return;
+          const payload = await resp.json();
+          if (typeof payload.latest_id === "number") {
+            lastLogId = payload.latest_id;
+          }
+        } catch (_err) {
+          // ignore cursor prime issues; normal polling still handles updates
+        }
+      }
+
+      async function fetchImportantLogs() {
+        try {
+          const resp = await fetchWithTimeout(`/logs/important?since_id=${lastLogId}&limit=200`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const payload = await resp.json();
+          const logs = Array.isArray(payload.logs) ? payload.logs : [];
+          if (logs.length > 0) {
+            appendLogLines(logs);
+            logStatusText.textContent = `Streaming logs (${logs.length} new).`;
+          } else if (logLines.length === 0) {
+            logStatusText.textContent = "No important logs yet.";
+          } else {
+            logStatusText.textContent = "Listening for important logs...";
+          }
+          if (typeof payload.latest_id === "number") {
+            lastLogId = Math.max(lastLogId, payload.latest_id);
+          }
+        } catch (error) {
+          logStatusText.textContent = `Log stream issue: ${error.message || error}`;
+        }
+      }
+
+      async function startLogPolling() {
+        stopLogPolling(false);
+        lastLogId = 0;
+        logLines.length = 0;
+        logOutput.textContent = "";
+        setLogStreamState("live", "running");
+        logStatusText.textContent = "Connecting log stream...";
+        await primeLogCursor();
+        await fetchImportantLogs();
+        logPollTimer = window.setInterval(() => {
+          void fetchImportantLogs();
+        }, 2000);
+      }
+
+      function stopLogPolling(markFinal) {
+        if (logPollTimer) {
+          clearInterval(logPollTimer);
+          logPollTimer = null;
+        }
+        if (!markFinal) {
+          setLogStreamState("idle", "running");
+          logStatusText.textContent = "Waiting for batch run...";
+          return;
+        }
+        const finalStatus = latestJobState?.status || "idle";
+        const finalClass = finalStatus === "completed" ? "completed" : finalStatus === "failed" ? "failed" : "running";
+        setLogStreamState(finalStatus, finalClass);
+      }
+
       async function refreshEnvStatus() {
         try {
           const resp = await fetch("/config/session-env/status");
           if (!resp.ok) {
             envConfigured = false;
+            setEnvBadgeState(false);
             setStatus(envStatus, "Unable to read runtime config status.", true);
             return;
           }
+
           const payload = await resp.json();
           envConfigured = Boolean(payload.configured);
+          setEnvBadgeState(envConfigured);
+
           if (envConfigured) {
             setStatus(envStatus, "Runtime config ready.", false, true);
             return;
           }
+
           const missing = Array.isArray(payload.missing_keys) ? payload.missing_keys : [];
           if (missing.length > 0) {
             setStatus(envStatus, `Missing keys: ${missing.join(", ")}`, true);
           } else {
-            setStatus(envStatus, "Paste and apply your .env text to continue.", true);
+            setStatus(envStatus, "Runtime config not ready.", true);
           }
-        } catch {
+        } catch (_err) {
           envConfigured = false;
+          setEnvBadgeState(false);
           setStatus(envStatus, "Unable to read runtime config status.", true);
         }
       }
 
-      /* â”€â”€ Input section switching â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      function updateInputSections() {
-        audioInputSection.style.display = inputAudioRadio.checked ? "block" : "none";
-        textInputSection.style.display  = inputTextRadio.checked  ? "block" : "none";
-        excelInputSection.style.display = inputExcelRadio.checked ? "block" : "none";
-      }
-      [inputAudioRadio, inputTextRadio, inputExcelRadio].forEach(r =>
-        r.addEventListener("change", updateInputSections)
-      );
-      window.addEventListener("DOMContentLoaded", () => {
-        updateInputSections();
-        refreshEnvStatus();
-      });
-
-      applyEnvBtn.addEventListener("click", async () => {
-        const envText = envTextInput.value.trim();
-        if (!envText) {
-          setStatus(envStatus, "Paste your full .env text first.", true);
-          return;
-        }
-        applyEnvBtn.disabled = true;
-        setStatus(envStatus, "Applying runtime config...");
-        try {
-          const resp = await fetch("/config/session-env", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ env_text: envText }),
-          });
-          if (!resp.ok) {
-            let msg = "Failed to apply config.";
-            try {
-              const errPayload = await resp.json();
-              if (typeof errPayload?.detail === "string") {
-                msg = errPayload.detail;
-              } else if (errPayload?.detail?.missing_keys) {
-                msg = `Missing keys: ${errPayload.detail.missing_keys.join(", ")}`;
-              }
-            } catch {}
-            setStatus(envStatus, msg, true);
-            envConfigured = false;
-            return;
-          }
-          envConfigured = true;
-          setStatus(envStatus, "Runtime config applied.", false, true);
-          await refreshEnvStatus();
-        } catch (e) {
-          envConfigured = false;
-          setStatus(envStatus, `Failed to apply config: ${e.message}`, true);
-        } finally {
-          applyEnvBtn.disabled = false;
-        }
-      });
-
-      clearEnvBtn.addEventListener("click", async () => {
-        clearEnvBtn.disabled = true;
-        try {
-          await fetch("/config/session-env", { method: "DELETE" });
-          envConfigured = false;
-          setStatus(envStatus, "Runtime config cleared.", false, true);
-          await refreshEnvStatus();
-        } catch (e) {
-          setStatus(envStatus, `Failed to clear config: ${e.message}`, true);
-        } finally {
-          clearEnvBtn.disabled = false;
-        }
-      });
-
-      /* â”€â”€ File validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      audioInput.addEventListener("change", () => {
-        const file = audioInput.files[0];
-        result.hidden = true;
-        if (!file) { setStatus(fileStatus, ""); return; }
-        if (!file.name.toLowerCase().endsWith(".mp3")) {
-          setStatus(fileStatus, "Only .mp3 files are allowed.", true);
-          audioInput.value = ""; return;
-        }
-        setStatus(fileStatus, `âœ“ ${file.name} (${(file.size/1048576).toFixed(2)} MB)`, false, true);
-      });
-
-      excelFile.addEventListener("change", () => {
-        const file = excelFile.files[0];
-        if (!file) { setStatus(excelStatus, ""); return; }
-        if (!file.name.toLowerCase().endsWith(".xlsx")) {
-          setStatus(excelStatus, "Only .xlsx files are allowed.", true);
-          excelFile.value = ""; return;
-        }
-        setStatus(excelStatus, `âœ“ ${file.name} (${(file.size/1048576).toFixed(2)} MB)`, false, true);
-      });
-
-      /* â”€â”€ Batch summary renderer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      function renderBatchSummary(summary, jobId, status) {
-        const s = summary || {};
-        const statusColor = status === "completed" ? "var(--success)" : status === "failed" ? "var(--error)" : "var(--accent)";
-        const html = `
-          <div class="card">
-            <div class="section-label">Batch Job â€” ${jobId}</div>
-            <div style="margin-bottom:14px;font-size:13px;color:${statusColor};font-weight:600;text-transform:uppercase;letter-spacing:.06em;">${status}</div>
-            <div class="batch-grid">
-              <div class="batch-stat"><div class="label">Total Rows</div><div class="value">${s.total_rows ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Rows Processed</div><div class="value">${s.rows_processed ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Succeeded</div><div class="value" style="color:var(--success)">${s.rows_succeeded ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Failed</div><div class="value" style="color:var(--error)">${s.rows_failed ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Lang Tasks</div><div class="value">${s.language_tasks_total ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Tasks OK</div><div class="value" style="color:var(--success)">${s.language_tasks_succeeded ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Placeholders</div><div class="value">${s.placeholder_audio_generated ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Name Collisions</div><div class="value">${s.filename_collisions_resolved ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Uploads OK</div><div class="value" style="color:var(--success)">${s.uploads_succeeded ?? 0}</div></div>
-              <div class="batch-stat"><div class="label">Duration</div><div class="value">${s.duration_ms != null ? (s.duration_ms/1000).toFixed(1)+"s" : "â€”"}</div></div>
-            </div>
-          </div>`;
-        document.getElementById("multiResults").innerHTML = html;
-      }
-
-      /* â”€â”€ Batch poll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       async function pollBatchJob(jobId) {
         const terminalStates = new Set(["completed", "failed"]);
         let consecutiveErrors = 0;
         let consecutiveNotFound = 0;
-        const startedAtMs = Date.now();
 
         while (true) {
           try {
             const resp = await fetchWithTimeout(`/batch/excel-jobs/${jobId}`);
+
             if (resp.status === 404) {
               consecutiveNotFound += 1;
               const delaySeconds = Math.min(10, 2 ** Math.min(consecutiveNotFound, 3));
               if (consecutiveNotFound >= 3) {
-                return {
+                const missing = {
                   job_id: jobId,
                   status: "failed",
-                  error: `Job ${jobId} was not found repeatedly. The server may have restarted; please submit the batch again.`,
+                  error: `Job ${jobId} was not found repeatedly. Server may have restarted.`,
                   summary: null,
                 };
+                latestJobState = missing;
+                return missing;
               }
               setStatus(
                 submitStatusWrap,
-                `Polling... job not found yet (attempt ${consecutiveNotFound}/3). Retrying in ${delaySeconds}s...`
+                `Polling issue: job not found (${consecutiveNotFound}/3). Retrying in ${delaySeconds}s...`
               );
-              await new Promise(r => setTimeout(r, delaySeconds * 1000));
+              await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
               continue;
             }
-            if (!resp.ok) throw new Error(`Failed to fetch job status for ${jobId} (HTTP ${resp.status})`);
+
+            if (!resp.ok) throw new Error(`Failed to fetch job status (HTTP ${resp.status})`);
             const payload = await resp.json();
+            latestJobState = payload;
             consecutiveErrors = 0;
             consecutiveNotFound = 0;
-            const elapsedSeconds = Math.floor((Date.now() - startedAtMs) / 1000);
-            renderBatchSummary(payload.summary, payload.job_id, payload.status);
-            setStatus(submitStatusWrap, `Polling... (${payload.status}) · elapsed ${elapsedSeconds}s`);
+
+            renderBatchSummary(payload.summary, payload.job_id, payload.status, payload.error || "");
+            setStatus(submitStatusWrap, `Running batch... (${payload.status})`);
             if (terminalStates.has(payload.status)) return payload;
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000));
           } catch (error) {
             consecutiveErrors += 1;
             const backoffSeconds = Math.min(30, 2 ** Math.min(consecutiveErrors, 5));
-            const message = error?.name === "AbortError"
-              ? "status request timed out"
-              : (error?.message || "unknown polling error");
+            const message =
+              error?.name === "AbortError"
+                ? "status request timed out"
+                : error?.message || "unknown polling error";
             setStatus(submitStatusWrap, `Polling issue: ${message}. Retrying in ${backoffSeconds}s...`);
-            await new Promise(r => setTimeout(r, backoffSeconds * 1000));
+            await new Promise((resolve) => setTimeout(resolve, backoffSeconds * 1000));
           }
         }
       }
-      /* â”€â”€ Form submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
 
         const selectedLanguages = Array.from(
           document.querySelectorAll('input[name="target_language"]:checked')
-        ).map(cb => cb.value);
+        ).map((checkbox) => checkbox.value);
 
         if (selectedLanguages.length === 0) {
           setStatus(submitStatusWrap, "Please select at least one target language.", true);
@@ -711,151 +1194,116 @@
         }
 
         if (!envConfigured) {
-          setStatus(submitStatusWrap, "Please paste and apply your full .env config first.", true);
+          setStatus(submitStatusWrap, "Runtime config is not ready.", true);
           return;
         }
 
-        const isAudio = inputAudioRadio.checked;
-        const isText  = inputTextRadio.checked;
-        const isExcel = inputExcelRadio.checked;
+        const file = excelFile.files[0];
+        if (!file) {
+          setStatus(submitStatusWrap, "Please upload an .xlsx file.", true);
+          return;
+        }
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+          setStatus(submitStatusWrap, "Only .xlsx files are allowed.", true);
+          return;
+        }
 
         submitBtn.disabled = true;
-        setStatus(submitStatusWrap, "Processingâ€¦");
+        setStatus(submitStatusWrap, "Creating batch job...");
         result.hidden = true;
         result.textContent = "";
-        document.getElementById("multiResults").innerHTML = "";
+        renderEmptyState();
+        latestJobState = null;
+        stopDurationTicker();
 
         try {
-          /* â”€â”€ Excel Batch â”€â”€ */
-          if (isExcel) {
-            const file = excelFile.files[0];
-            if (!file) { setStatus(submitStatusWrap, "Please upload an .xlsx file.", true); return; }
-            if (!file.name.toLowerCase().endsWith(".xlsx")) { setStatus(submitStatusWrap, "Only .xlsx files are allowed.", true); return; }
+          await startLogPolling();
 
-            const fd = new FormData();
-            fd.append("file", file);
-            fd.append("max_language_parallelism", "3");
-            selectedLanguages.forEach(l => fd.append("target_languages", l));
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("max_language_parallelism", "3");
+          selectedLanguages.forEach((language) => formData.append("target_languages", language));
 
-            const createResp = await fetch("/batch/excel-jobs", { method: "POST", body: fd });
-            if (!createResp.ok) {
-              let msg = "Failed to create batch job.";
-              try { msg = (await createResp.json()).detail || msg; } catch {}
-              setStatus(submitStatusWrap, msg, true); return;
-            }
-            const { job_id } = await createResp.json();
-            setStatus(submitStatusWrap, `Job ${job_id} startedâ€¦`);
-            const final = await pollBatchJob(job_id);
+          const createResp = await fetch("/batch/excel-jobs", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!createResp.ok) {
+            const msg = await extractErrorMessage(createResp, "Failed to create batch job.");
+            setStatus(submitStatusWrap, msg, true);
+            stopLogPolling(false);
             stopSpinner();
-            final.status === "completed"
-              ? setStatus(submitStatusWrap, `Job ${job_id} completed.`, false, true)
-              : setStatus(submitStatusWrap, final.error || `Job ${job_id} failed.`, true);
-
-          /* â”€â”€ Text â”€â”€ */
-          } else if (isText) {
-            const text = textInput.value.trim();
-            if (!text) { setStatus(submitStatusWrap, "Please enter text to translate.", true); return; }
-
-            const resp = await fetch("/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text, target_languages: selectedLanguages }),
-            });
-            if (!resp.ok) {
-              let msg = "Translation failed.";
-              try { msg = (await resp.json()).detail || msg; } catch {}
-              setStatus(submitStatusWrap, msg, true); return;
-            }
-            const { translations } = await resp.json();
-
-            window.ttsElevenLabs = async function(lang) {
-              const ta      = document.getElementById(`edit-translation-${lang}`);
-              const st      = document.getElementById(`tts-status-${lang}`);
-              const audioEl = document.getElementById(`audio-${lang}`);
-              const vs      = document.getElementById(`voiceSelect-${lang}`);
-              if (!ta || !vs) return;
-              const txt = ta.value.trim();
-              const vid = vs.value;
-              if (!txt) { st.textContent = "Text is empty."; st.className = "status error"; return; }
-              st.textContent = "Generatingâ€¦"; st.className = "status";
-              try {
-                const r = await fetch("/tts-elevenlabs", {
-                  method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ text: txt, voice_id: vid }),
-                });
-                if (!r.ok) {
-                  let em = `TTS failed for ${lang}`;
-                  try { em = (await r.json()).detail || em; } catch {}
-                  st.textContent = em; st.className = "status error"; return;
-                }
-                const p = await r.json();
-                if (p.tts_url) {
-                  audioEl.src = p.tts_url; audioEl.style.display = "block";
-                  st.textContent = "Audio ready!"; st.className = "status success";
-                } else { st.textContent = "No audio URL returned."; st.className = "status error"; }
-              } catch (e) { st.textContent = `Error: ${e.message}`; st.className = "status error"; }
-            };
-
-            const langNames = {
-              "bn-IN":"Bengali","en-IN":"English","gu-IN":"Gujarati","hi-IN":"Hindi",
-              "kn-IN":"Kannada","ml-IN":"Malayalam","mr-IN":"Marathi","od-IN":"Odia",
-              "pa-IN":"Punjabi","ta-IN":"Tamil","te-IN":"Telugu"
-            };
-
-            let html = "";
-            for (const lang of selectedLanguages) {
-              const t = translations[lang] || "";
-              html += `
-              <div class="player-card">
-                <div class="player-card-title">${langNames[lang] || lang}</div>
-                <textarea id="edit-translation-${lang}" rows="3">${t}</textarea>
-                <div class="player-card-row">
-                  <select id="voiceSelect-${lang}">
-                    <option value="S1JBcZECEJJlf7lEDTbN">bhojpuri_ai_studio</option>
-                    <option value="dffT29nmBclERTsFHmHg">dv_nisha</option>
-                  </select>
-                  <button class="btn-gen" type="button" onclick="ttsElevenLabs('${lang}')">â–¶ Generate Audio</button>
-                  <span id="tts-status-${lang}" class="status"></span>
-                </div>
-                <audio id="audio-${lang}" controls style="display:none;"></audio>
-              </div>`;
-            }
-            document.getElementById("multiResults").innerHTML = html;
-            stopSpinner();
-            setStatus(submitStatusWrap, "Translations ready â€” edit &amp; generate audio.", false, true);
-
-          } else {
-            setStatus(submitStatusWrap, "Audio upload flow not yet supported in this UI.", true);
+            return;
           }
-        } catch (err) {
+
+          const createPayload = await createResp.json();
+          const jobId = createPayload.job_id;
+          latestJobState = {
+            job_id: jobId,
+            status: "running",
+            summary: { started_at: new Date().toISOString() },
+            error: null,
+          };
+          renderBatchSummary(latestJobState.summary, jobId, "running");
+          startDurationTicker();
+          setStatus(submitStatusWrap, `Job ${jobId} started.`);
+
+          const final = await pollBatchJob(jobId);
+          latestJobState = final;
+          stopDurationTicker();
+          await fetchImportantLogs();
+          stopLogPolling(true);
           stopSpinner();
-          setStatus(submitStatusWrap, err.message || "Request failed.", true);
+
+          renderBatchSummary(final.summary, final.job_id || jobId, final.status, final.error || "");
+          if (final.status === "completed") {
+            setStatus(submitStatusWrap, `Job ${jobId} completed.`, false, true);
+          } else {
+            setStatus(submitStatusWrap, final.error || `Job ${jobId} failed.`, true);
+          }
+        } catch (error) {
+          latestJobState = {
+            job_id: latestJobState?.job_id || "--",
+            status: "failed",
+            summary: latestJobState?.summary || null,
+            error: error.message || String(error),
+          };
+          stopDurationTicker();
+          stopLogPolling(true);
+          stopSpinner();
+          renderBatchSummary(
+            latestJobState.summary,
+            latestJobState.job_id,
+            latestJobState.status,
+            latestJobState.error
+          );
+          setStatus(submitStatusWrap, error.message || "Request failed.", true);
         } finally {
           submitBtn.disabled = false;
         }
       });
 
-      /* â”€â”€ Finalize helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      window.finalizeText = async function(lang) {
-        const ta = document.getElementById(`edit-translation-${lang}`);
-        const st = document.getElementById(`finalize-status-${lang}`);
-        if (!ta) return;
-        const text = ta.value.trim();
-        if (!text) { st.textContent = "Text is empty."; st.className = "status error"; return; }
-        st.textContent = "Sendingâ€¦"; st.className = "status";
-        try {
-          const resp = await fetch("/finalize-text", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text, language: lang }),
-          });
-          if (!resp.ok) {
-            let msg = `Failed to finalize for ${lang}`;
-            try { msg = (await resp.json()).detail || msg; } catch {}
-            st.textContent = msg; st.className = "status error"; return;
-          }
-          st.textContent = "Finalized!"; st.className = "status success";
-        } catch (e) { st.textContent = `Error: ${e.message}`; st.className = "status error"; }
-      };
+      excelFile.addEventListener("change", () => {
+        const file = excelFile.files[0];
+        if (!file) {
+          setStatus(excelStatus, "");
+          return;
+        }
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+          setStatus(excelStatus, "Only .xlsx files are allowed.", true);
+          excelFile.value = "";
+          return;
+        }
+        setStatus(excelStatus, `${file.name} (${(file.size / 1048576).toFixed(2)} MB)`, false, true);
+      });
+
+      window.addEventListener("DOMContentLoaded", () => {
+        renderEmptyState();
+        setLogStreamState("idle", "running");
+        logStatusText.textContent = "Waiting for batch run...";
+        refreshEnvStatus();
+      });
     </script>
   </body>
 </html>
