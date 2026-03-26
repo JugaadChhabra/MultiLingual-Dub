@@ -17,7 +17,15 @@ def _xlsx_bytes() -> bytes:
     return buff.getvalue()
 
 
-async def _fake_job_runner(*, job_id, excel_path, target_languages, jobs_store, runtime_config=None):
+async def _fake_job_runner(
+    *,
+    job_id,
+    excel_path,
+    target_languages,
+    max_language_parallelism=None,
+    jobs_store,
+    runtime_config=None,
+):
     """Shared stub: immediately completes a job with 1 row and N language tasks."""
     await jobs_store.start(job_id)
     summary = (await jobs_store.get(job_id)).summary
@@ -51,6 +59,23 @@ def test_create_excel_job_rejects_non_xlsx() -> None:
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Only .xlsx files are allowed"
+
+
+def test_create_excel_job_rejects_invalid_parallelism() -> None:
+    client = TestClient(api.app)
+    response = client.post(
+        "/batch/excel-jobs",
+        files={
+            "file": (
+                "input.xlsx",
+                _xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"target_languages": "hi-IN", "max_language_parallelism": "0"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "max_language_parallelism must be >= 1"
 
 
 def test_create_and_get_excel_job(monkeypatch) -> None:
@@ -115,12 +140,22 @@ def test_get_excel_job_not_found() -> None:
 def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_runner(*, job_id, excel_path, target_languages, jobs_store, runtime_config=None):
+    async def fake_runner(
+        *,
+        job_id,
+        excel_path,
+        target_languages,
+        max_language_parallelism=None,
+        jobs_store,
+        runtime_config=None,
+    ):
         captured["runtime_config"] = runtime_config
+        captured["max_language_parallelism"] = max_language_parallelism
         await _fake_job_runner(
             job_id=job_id,
             excel_path=excel_path,
             target_languages=target_languages,
+            max_language_parallelism=max_language_parallelism,
             jobs_store=jobs_store,
             runtime_config=runtime_config,
         )
@@ -161,7 +196,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         },
-        data={"target_languages_json": '["hi-IN"]'},
+        data={"target_languages_json": '["hi-IN"]', "max_language_parallelism": "3"},
     )
     assert response.status_code == 202
     job_id = response.json()["job_id"]
@@ -169,3 +204,4 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
     runtime_config = captured.get("runtime_config")
     assert isinstance(runtime_config, dict)
     assert runtime_config.get("SARVAM_API") == "test-sarvam"
+    assert captured.get("max_language_parallelism") == 3

@@ -593,6 +593,72 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
     assert set(second_files.keys()) == {"b1.mp3"}
 
 
+def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeypatch) -> None:
+    rows = [
+        ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
+    ]
+    translate_calls = {"gu-IN": 0}
+
+    async def flaky_translate_async(text: str, language: str, runtime_config=None):
+        if language == "gu-IN":
+            translate_calls["gu-IN"] += 1
+            if translate_calls["gu-IN"] == 1:
+                return language, None, "Server disconnected without sending a response."
+        return language, f"translated:{text}:{language}", None
+
+    class FakeS3Client:
+        last_instance: "FakeS3Client | None" = None
+
+        def __init__(self, _config):
+            self.uploads: list[tuple[str, dict[str, bytes], str]] = []
+            FakeS3Client.last_instance = self
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            self.uploads.append((language, dict(audio_files), folder_name))
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.service._translate_language_async", flaky_translate_async)
+    monkeypatch.setattr(
+        "batch.service._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, runtime_config=None: b"fake-audio",
+    )
+    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
+
+    store = JobsStore()
+    job_id = "job-retry-before-upload"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["gu-IN"],
+            jobs_store=store,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert state.summary.language_tasks_succeeded == 1
+    assert state.summary.language_tasks_failed == 0
+    assert state.summary.rows_succeeded == 1
+    assert state.summary.rows_failed == 0
+    assert translate_calls["gu-IN"] >= 2
+
+    assert FakeS3Client.last_instance is not None
+    assert len(FakeS3Client.last_instance.uploads) == 1
+    language, files, folder = FakeS3Client.last_instance.uploads[0]
+    assert language == "Gujarati"
+    assert folder == "act_1"
+    assert set(files.keys()) == {"a1.mp3"}
+
+
 def test_run_excel_batch_job_requires_english_voice_for_english_targets(monkeypatch) -> None:
     monkeypatch.delenv("ENGLISH_VOICE", raising=False)
     monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "false")
