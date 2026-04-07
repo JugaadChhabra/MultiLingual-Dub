@@ -399,6 +399,10 @@
         gap: 6px;
       }
 
+      .hidden {
+        display: none !important;
+      }
+
       .lang-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -589,6 +593,22 @@
         letter-spacing: -0.01em;
       }
 
+      .link-list {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .link-list a {
+        font-size: 12px;
+        color: #1b4fbe;
+        text-decoration: none;
+      }
+
+      .link-list a:hover {
+        text-decoration: underline;
+      }
+
       .translation-head {
         display: flex;
         align-items: center;
@@ -757,7 +777,7 @@
           </div>
           <div class="meta-chip">
             <span class="meta-label">Pipeline</span>
-            <span class="badge neutral">Excel Batch</span>
+            <span class="badge neutral" id="pipelineBadge">Excel Batch</span>
           </div>
         </div>
       </header>
@@ -778,10 +798,46 @@
 
             <div class="section-divider"></div>
 
+            <div class="input-section">
+              <label class="field-label" for="pipelineMode">Pipeline Mode</label>
+              <select id="pipelineMode">
+                <option value="excel" selected>Excel Batch</option>
+                <option value="subtitle">Subtitle Pipeline</option>
+              </select>
+            </div>
+
+            <div class="section-divider"></div>
+
             <div id="excelInputSection" class="input-section">
               <label class="field-label" for="excelFile">Excel file (.xlsx)</label>
               <input id="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
               <div class="status" id="excelStatus"></div>
+            </div>
+
+            <div id="subtitleInputSection" class="input-section hidden">
+              <label class="field-label" for="subtitleSource">Subtitle Source</label>
+              <select id="subtitleSource">
+                <option value="video" selected>Upload Video (.mp4)</option>
+                <option value="youtube">YouTube Link</option>
+              </select>
+
+              <div id="subtitleVideoSection" class="input-section">
+                <label class="field-label" for="subtitleVideoFile">Video file (.mp4)</label>
+                <input id="subtitleVideoFile" type="file" accept=".mp4,video/mp4" />
+                <div class="status" id="subtitleVideoStatus"></div>
+              </div>
+
+              <div id="subtitleYoutubeSection" class="input-section hidden">
+                <label class="field-label" for="subtitleYoutubeUrl">YouTube URL</label>
+                <input id="subtitleYoutubeUrl" type="text" placeholder="https://www.youtube.com/watch?v=..." />
+                <div class="status" id="subtitleYoutubeStatus"></div>
+              </div>
+
+              <div class="input-section">
+                <label class="field-label" for="subtitleChunkSize">Translation chunk size</label>
+                <input id="subtitleChunkSize" type="text" value="1800" inputmode="numeric" />
+                <div class="status" id="subtitleChunkStatus">Used for subtitle translation batching.</div>
+              </div>
             </div>
           </div>
         </section>
@@ -843,8 +899,25 @@
       const form = document.getElementById("uploadForm");
       const envStatus = document.getElementById("envStatus");
       const envBadge = document.getElementById("envBadge");
+      const pipelineBadge = document.getElementById("pipelineBadge");
+      const pipelineMode = document.getElementById("pipelineMode");
+
+      const excelInputSection = document.getElementById("excelInputSection");
+      const subtitleInputSection = document.getElementById("subtitleInputSection");
+
       const excelFile = document.getElementById("excelFile");
       const excelStatus = document.getElementById("excelStatus");
+
+      const subtitleSource = document.getElementById("subtitleSource");
+      const subtitleVideoSection = document.getElementById("subtitleVideoSection");
+      const subtitleYoutubeSection = document.getElementById("subtitleYoutubeSection");
+      const subtitleVideoFile = document.getElementById("subtitleVideoFile");
+      const subtitleVideoStatus = document.getElementById("subtitleVideoStatus");
+      const subtitleYoutubeUrl = document.getElementById("subtitleYoutubeUrl");
+      const subtitleYoutubeStatus = document.getElementById("subtitleYoutubeStatus");
+      const subtitleChunkSize = document.getElementById("subtitleChunkSize");
+      const subtitleChunkStatus = document.getElementById("subtitleChunkStatus");
+
       const submitBtn = document.getElementById("submitBtn");
       const submitStatusWrap = document.getElementById("submitStatus");
       const submitStatusText = document.getElementById("submitStatusText");
@@ -887,6 +960,11 @@
         envBadge.className = "badge pending";
       }
 
+      function setPipelineBadge() {
+        const mode = pipelineMode.value;
+        pipelineBadge.textContent = mode === "excel" ? "Excel Batch" : "Subtitle";
+      }
+
       function setLogStreamState(label, stateClass) {
         logStatusBadge.textContent = label;
         logStatusBadge.className = `status-pill ${stateClass}`;
@@ -913,16 +991,20 @@
         return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
       }
 
-      function computeDurationMs(summary) {
-        if (!summary) return null;
-        if (summary.duration_ms != null) return summary.duration_ms;
-        if (summary.started_at) {
-          const started = Date.parse(summary.started_at);
+      function computeDurationMs(summaryLike) {
+        if (!summaryLike) return null;
+        if (summaryLike.duration_ms != null) return summaryLike.duration_ms;
+        if (summaryLike.started_at) {
+          const started = Date.parse(summaryLike.started_at);
           if (!Number.isNaN(started)) {
             return Date.now() - started;
           }
         }
         return null;
+      }
+
+      function selectedTargetLanguages() {
+        return Array.from(document.querySelectorAll('input[name="target_language"]:checked')).map((checkbox) => checkbox.value);
       }
 
       async function extractErrorMessage(resp, fallback) {
@@ -955,10 +1037,21 @@
       }
 
       function renderEmptyState() {
+        const mode = pipelineMode.value;
+        if (mode === "excel") {
+          multiResults.innerHTML = `
+            <div class="empty-state">
+              <h3>Excel batch mode ready</h3>
+              <p>Select languages, upload an .xlsx file, and run pipeline.</p>
+            </div>
+          `;
+          return;
+        }
+
         multiResults.innerHTML = `
           <div class="empty-state">
-            <h3>Excel batch mode ready</h3>
-            <p>Select languages, upload an .xlsx file, and run pipeline.</p>
+            <h3>Subtitle mode ready</h3>
+            <p>Choose video upload or YouTube link, then run subtitle generation.</p>
           </div>
         `;
       }
@@ -997,17 +1090,78 @@
         `;
       }
 
+      function subtitleLinkList(subtitleUrls) {
+        const entries = Object.entries(subtitleUrls || {});
+        if (entries.length === 0) return "";
+        const items = entries
+          .map(([lang, url]) => {
+            const label = lang === "source" ? "source" : lang;
+            return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(label)} subtitle</a>`;
+          })
+          .join("");
+        return `<div class="link-list">${items}</div>`;
+      }
+
+      function renderSubtitleSummary(payload, fallbackStatus = "running", fallbackError = "") {
+        const status = payload?.status || fallbackStatus;
+        const statusClass = status === "completed" ? "completed" : status === "failed" ? "failed" : "running";
+        const resultPayload = payload?.result || null;
+        const duration = formatDuration(computeDurationMs(payload || resultPayload || {}));
+        const progressStep = payload?.progress_step || (status === "completed" ? "completed" : status);
+        const progressPercent =
+          typeof payload?.progress_percent === "number"
+            ? payload.progress_percent
+            : status === "completed"
+              ? 100
+              : 0;
+        const progressMessage = payload?.progress_message || "";
+        const segmentCount = resultPayload?.subtitle_segments ?? 0;
+        const languageCount = Array.isArray(resultPayload?.target_languages) ? resultPayload.target_languages.length : 0;
+        const translationErrorCount = resultPayload?.translation_errors
+          ? Object.keys(resultPayload.translation_errors).length
+          : 0;
+        const errorMessage = payload?.error || fallbackError;
+
+        multiResults.innerHTML = `
+          <div class="summary-card">
+            <div class="summary-top">
+              <div>
+                <div class="summary-title">Subtitle Job ${escapeHtml(payload?.job_id || "--")}</div>
+                <div class="status" style="margin-top:4px;">Live execution summary</div>
+              </div>
+              <span class="status-pill ${statusClass}">${escapeHtml(status)}</span>
+            </div>
+            <div class="summary-grid">
+              <div class="metric"><span class="label">Stage</span><span class="value">${escapeHtml(progressStep || "--")}</span></div>
+              <div class="metric"><span class="label">Progress</span><span class="value">${progressPercent}%</span></div>
+              <div class="metric"><span class="label">Segments</span><span class="value">${segmentCount}</span></div>
+              <div class="metric"><span class="label">Languages</span><span class="value">${languageCount}</span></div>
+              <div class="metric"><span class="label">Translation Errors</span><span class="value">${translationErrorCount}</span></div>
+              <div class="metric"><span class="label">Duration</span><span class="value">${duration}</span></div>
+              <div class="metric"><span class="label">Video ID</span><span class="value">${escapeHtml(resultPayload?.video_id || "--")}</span></div>
+            </div>
+            ${progressMessage ? `<div class="status" style="margin-top:8px;">${escapeHtml(progressMessage)}</div>` : ""}
+            ${errorMessage ? `<div class="status error" style="margin-top:8px;">${escapeHtml(errorMessage)}</div>` : ""}
+            ${resultPayload ? subtitleLinkList(resultPayload.subtitle_urls) : ""}
+          </div>
+        `;
+      }
+
       function startDurationTicker() {
         if (durationTicker) return;
         durationTicker = window.setInterval(() => {
           if (!latestJobState) return;
           if (latestJobState.status !== "running") return;
-          renderBatchSummary(
-            latestJobState.summary,
-            latestJobState.job_id,
-            latestJobState.status,
-            latestJobState.error || ""
-          );
+          if (latestJobState.pipeline === "excel") {
+            renderBatchSummary(
+              latestJobState.summary,
+              latestJobState.job_id,
+              latestJobState.status,
+              latestJobState.error || ""
+            );
+          } else {
+            renderSubtitleSummary(latestJobState, "running", latestJobState.error || "");
+          }
         }, 1000);
       }
 
@@ -1041,7 +1195,7 @@
             lastLogId = payload.latest_id;
           }
         } catch (_err) {
-          // ignore cursor prime issues; normal polling still handles updates
+          // keep silent; polling handles normal flow
         }
       }
 
@@ -1088,7 +1242,7 @@
         }
         if (!markFinal) {
           setLogStreamState("idle", "running");
-          logStatusText.textContent = "Waiting for batch run...";
+          logStatusText.textContent = "Waiting for pipeline run...";
           return;
         }
         const finalStatus = latestJobState?.status || "idle";
@@ -1128,6 +1282,21 @@
         }
       }
 
+      function syncPipelineControls() {
+        const isExcel = pipelineMode.value === "excel";
+        excelInputSection.classList.toggle("hidden", !isExcel);
+        subtitleInputSection.classList.toggle("hidden", isExcel);
+        submitBtn.textContent = isExcel ? "Run Pipeline" : "Run Subtitle";
+        setPipelineBadge();
+        syncSubtitleSourceControls();
+      }
+
+      function syncSubtitleSourceControls() {
+        const isVideo = subtitleSource.value === "video";
+        subtitleVideoSection.classList.toggle("hidden", !isVideo);
+        subtitleYoutubeSection.classList.toggle("hidden", isVideo);
+      }
+
       async function pollBatchJob(jobId) {
         const terminalStates = new Set(["completed", "failed"]);
         let consecutiveErrors = 0;
@@ -1142,6 +1311,7 @@
               const delaySeconds = Math.min(10, 2 ** Math.min(consecutiveNotFound, 3));
               if (consecutiveNotFound >= 3) {
                 const missing = {
+                  pipeline: "excel",
                   job_id: jobId,
                   status: "failed",
                   error: `Job ${jobId} was not found repeatedly. Server may have restarted.`,
@@ -1160,13 +1330,13 @@
 
             if (!resp.ok) throw new Error(`Failed to fetch job status (HTTP ${resp.status})`);
             const payload = await resp.json();
-            latestJobState = payload;
+            latestJobState = { ...payload, pipeline: "excel" };
             consecutiveErrors = 0;
             consecutiveNotFound = 0;
 
             renderBatchSummary(payload.summary, payload.job_id, payload.status, payload.error || "");
             setStatus(submitStatusWrap, `Running batch... (${payload.status})`);
-            if (terminalStates.has(payload.status)) return payload;
+            if (terminalStates.has(payload.status)) return latestJobState;
             await new Promise((resolve) => setTimeout(resolve, 2000));
           } catch (error) {
             consecutiveErrors += 1;
@@ -1181,23 +1351,64 @@
         }
       }
 
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
+      async function pollSubtitleJob(jobId, sourceMode) {
+        const terminalStates = new Set(["completed", "failed"]);
+        let consecutiveErrors = 0;
+        let consecutiveNotFound = 0;
+        const endpoint = sourceMode === "video" ? `/subtitle/video-jobs/${jobId}` : `/subtitle/youtube-jobs/${jobId}`;
 
-        const selectedLanguages = Array.from(
-          document.querySelectorAll('input[name="target_language"]:checked')
-        ).map((checkbox) => checkbox.value);
+        while (true) {
+          try {
+            const resp = await fetchWithTimeout(endpoint);
 
-        if (selectedLanguages.length === 0) {
-          setStatus(submitStatusWrap, "Please select at least one target language.", true);
-          return;
+            if (resp.status === 404) {
+              consecutiveNotFound += 1;
+              const delaySeconds = Math.min(10, 2 ** Math.min(consecutiveNotFound, 3));
+              if (consecutiveNotFound >= 3) {
+                const missing = {
+                  pipeline: "subtitle",
+                  job_id: jobId,
+                  status: "failed",
+                  error: `Job ${jobId} was not found repeatedly. Server may have restarted.`,
+                };
+                latestJobState = missing;
+                return missing;
+              }
+              setStatus(
+                submitStatusWrap,
+                `Polling issue: job not found (${consecutiveNotFound}/3). Retrying in ${delaySeconds}s...`
+              );
+              await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+              continue;
+            }
+
+            if (!resp.ok) throw new Error(`Failed to fetch job status (HTTP ${resp.status})`);
+            const payload = await resp.json();
+            latestJobState = { ...payload, pipeline: "subtitle" };
+            consecutiveErrors = 0;
+            consecutiveNotFound = 0;
+
+            renderSubtitleSummary(latestJobState, payload.status, payload.error || "");
+            const progressText =
+              typeof payload.progress_percent === "number" ? ` ${payload.progress_percent}%` : "";
+            const progressMessage = payload.progress_message ? ` - ${payload.progress_message}` : "";
+            setStatus(submitStatusWrap, `Running subtitle job... (${payload.status}${progressText})${progressMessage}`);
+            if (terminalStates.has(payload.status)) return latestJobState;
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } catch (error) {
+            consecutiveErrors += 1;
+            const backoffSeconds = Math.min(30, 2 ** Math.min(consecutiveErrors, 5));
+            const message =
+              error?.name === "AbortError"
+                ? "status request timed out"
+                : error?.message || "unknown polling error";
+            setStatus(submitStatusWrap, `Polling issue: ${message}. Retrying in ${backoffSeconds}s...`);
+            await new Promise((resolve) => setTimeout(resolve, backoffSeconds * 1000));
+          }
         }
+      }
 
-        if (!envConfigured) {
-          setStatus(submitStatusWrap, "Runtime config is not ready.", true);
-          return;
-        }
-
+      async function runExcelPipeline(selectedLanguages) {
         const file = excelFile.files[0];
         if (!file) {
           setStatus(submitStatusWrap, "Please upload an .xlsx file.", true);
@@ -1207,9 +1418,150 @@
           setStatus(submitStatusWrap, "Only .xlsx files are allowed.", true);
           return;
         }
+        if (selectedLanguages.length === 0) {
+          setStatus(submitStatusWrap, "Please select at least one target language.", true);
+          return;
+        }
+
+        setStatus(submitStatusWrap, "Creating batch job...");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("max_language_parallelism", "3");
+        selectedLanguages.forEach((language) => formData.append("target_languages", language));
+
+        const createResp = await fetch("/batch/excel-jobs", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!createResp.ok) {
+          const msg = await extractErrorMessage(createResp, "Failed to create batch job.");
+          throw new Error(msg);
+        }
+
+        const createPayload = await createResp.json();
+        const jobId = createPayload.job_id;
+        latestJobState = {
+          pipeline: "excel",
+          job_id: jobId,
+          status: "running",
+          summary: { started_at: new Date().toISOString() },
+          error: null,
+        };
+        renderBatchSummary(latestJobState.summary, jobId, "running");
+        startDurationTicker();
+        setStatus(submitStatusWrap, `Job ${jobId} started.`);
+
+        const final = await pollBatchJob(jobId);
+        stopDurationTicker();
+        renderBatchSummary(final.summary, final.job_id || jobId, final.status, final.error || "");
+
+        if (final.status === "completed") {
+          setStatus(submitStatusWrap, `Job ${jobId} completed.`, false, true);
+        } else {
+          setStatus(submitStatusWrap, final.error || `Job ${jobId} failed.`, true);
+        }
+      }
+
+      function parseChunkSize() {
+        const raw = (subtitleChunkSize.value || "").trim();
+        const parsed = Number.parseInt(raw, 10);
+        if (Number.isNaN(parsed) || parsed < 200) {
+          return null;
+        }
+        return parsed;
+      }
+
+      async function runSubtitlePipeline(selectedLanguages) {
+        const sourceMode = subtitleSource.value;
+        const chunkSize = parseChunkSize();
+        if (chunkSize == null) {
+          setStatus(subtitleChunkStatus, "Chunk size must be a number >= 200.", true);
+          throw new Error("Chunk size must be >= 200");
+        }
+        setStatus(subtitleChunkStatus, "Used for subtitle translation batching.", false, true);
+
+        let endpoint = "";
+        let options = {};
+
+        if (sourceMode === "video") {
+          const file = subtitleVideoFile.files[0];
+          if (!file) {
+            throw new Error("Please upload a .mp4 file for subtitle mode.");
+          }
+          if (!file.name.toLowerCase().endsWith(".mp4")) {
+            throw new Error("Only .mp4 files are allowed for subtitle mode.");
+          }
+
+          endpoint = "/subtitle/video-jobs";
+          const formData = new FormData();
+          formData.append("video", file);
+          formData.append("max_chars_per_translation_chunk", String(chunkSize));
+          selectedLanguages.forEach((language) => formData.append("target_languages", language));
+          options = { method: "POST", body: formData };
+        } else {
+          const youtubeUrl = (subtitleYoutubeUrl.value || "").trim();
+          if (!youtubeUrl) {
+            throw new Error("Please enter a YouTube URL.");
+          }
+          endpoint = "/subtitle/youtube-jobs";
+          options = {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              youtube_url: youtubeUrl,
+              target_languages: selectedLanguages,
+              max_chars_per_translation_chunk: chunkSize,
+            }),
+          };
+        }
+
+        setStatus(submitStatusWrap, "Creating subtitle job...");
+        const createResp = await fetch(endpoint, options);
+        if (!createResp.ok) {
+          const msg = await extractErrorMessage(createResp, "Failed to create subtitle job.");
+          throw new Error(msg);
+        }
+
+        const createPayload = await createResp.json();
+        const jobId = createPayload.job_id;
+        latestJobState = {
+          pipeline: "subtitle",
+          job_id: jobId,
+          status: "running",
+          progress_step: "queued",
+          progress_percent: 0,
+          progress_message: "Job accepted and waiting to start",
+          started_at: new Date().toISOString(),
+          error: null,
+        };
+        renderSubtitleSummary(latestJobState, "running");
+        startDurationTicker();
+        setStatus(submitStatusWrap, `Subtitle job ${jobId} started.`);
+
+        const final = await pollSubtitleJob(jobId, sourceMode);
+        stopDurationTicker();
+        renderSubtitleSummary(final, final.status, final.error || "");
+
+        if (final.status === "completed") {
+          setStatus(submitStatusWrap, `Subtitle job ${jobId} completed.`, false, true);
+        } else {
+          setStatus(submitStatusWrap, final.error || `Subtitle job ${jobId} failed.`, true);
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        if (!envConfigured) {
+          setStatus(submitStatusWrap, "Runtime config is not ready.", true);
+          return;
+        }
+
+        const selectedLanguages = selectedTargetLanguages();
+        const mode = pipelineMode.value;
 
         submitBtn.disabled = true;
-        setStatus(submitStatusWrap, "Creating batch job...");
         result.hidden = true;
         result.textContent = "";
         renderEmptyState();
@@ -1218,70 +1570,46 @@
 
         try {
           await startLogPolling();
-
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("max_language_parallelism", "3");
-          selectedLanguages.forEach((language) => formData.append("target_languages", language));
-
-          const createResp = await fetch("/batch/excel-jobs", {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!createResp.ok) {
-            const msg = await extractErrorMessage(createResp, "Failed to create batch job.");
-            setStatus(submitStatusWrap, msg, true);
-            stopLogPolling(false);
-            stopSpinner();
-            return;
+          if (mode === "excel") {
+            await runExcelPipeline(selectedLanguages);
+          } else {
+            await runSubtitlePipeline(selectedLanguages);
           }
-
-          const createPayload = await createResp.json();
-          const jobId = createPayload.job_id;
-          latestJobState = {
-            job_id: jobId,
-            status: "running",
-            summary: { started_at: new Date().toISOString() },
-            error: null,
-          };
-          renderBatchSummary(latestJobState.summary, jobId, "running");
-          startDurationTicker();
-          setStatus(submitStatusWrap, `Job ${jobId} started.`);
-
-          const final = await pollBatchJob(jobId);
-          latestJobState = final;
-          stopDurationTicker();
           await fetchImportantLogs();
           stopLogPolling(true);
           stopSpinner();
-
-          renderBatchSummary(final.summary, final.job_id || jobId, final.status, final.error || "");
-          if (final.status === "completed") {
-            setStatus(submitStatusWrap, `Job ${jobId} completed.`, false, true);
-          } else {
-            setStatus(submitStatusWrap, final.error || `Job ${jobId} failed.`, true);
-          }
         } catch (error) {
-          latestJobState = {
-            job_id: latestJobState?.job_id || "--",
-            status: "failed",
-            summary: latestJobState?.summary || null,
-            error: error.message || String(error),
-          };
           stopDurationTicker();
           stopLogPolling(true);
           stopSpinner();
-          renderBatchSummary(
-            latestJobState.summary,
-            latestJobState.job_id,
-            latestJobState.status,
-            latestJobState.error
-          );
+
+          if (mode === "excel") {
+            renderBatchSummary(
+              latestJobState?.summary || null,
+              latestJobState?.job_id || "--",
+              latestJobState?.status || "failed",
+              error.message || String(error)
+            );
+          } else {
+            renderSubtitleSummary(
+              latestJobState || { job_id: "--", status: "failed", error: error.message || String(error) },
+              "failed",
+              error.message || String(error)
+            );
+          }
           setStatus(submitStatusWrap, error.message || "Request failed.", true);
         } finally {
           submitBtn.disabled = false;
         }
+      });
+
+      pipelineMode.addEventListener("change", () => {
+        syncPipelineControls();
+        renderEmptyState();
+      });
+
+      subtitleSource.addEventListener("change", () => {
+        syncSubtitleSourceControls();
       });
 
       excelFile.addEventListener("change", () => {
@@ -1298,10 +1626,42 @@
         setStatus(excelStatus, `${file.name} (${(file.size / 1048576).toFixed(2)} MB)`, false, true);
       });
 
+      subtitleVideoFile.addEventListener("change", () => {
+        const file = subtitleVideoFile.files[0];
+        if (!file) {
+          setStatus(subtitleVideoStatus, "");
+          return;
+        }
+        if (!file.name.toLowerCase().endsWith(".mp4")) {
+          setStatus(subtitleVideoStatus, "Only .mp4 files are allowed.", true);
+          subtitleVideoFile.value = "";
+          return;
+        }
+        setStatus(subtitleVideoStatus, `${file.name} (${(file.size / 1048576).toFixed(2)} MB)`, false, true);
+      });
+
+      subtitleYoutubeUrl.addEventListener("input", () => {
+        if (!subtitleYoutubeUrl.value.trim()) {
+          setStatus(subtitleYoutubeStatus, "");
+          return;
+        }
+        setStatus(subtitleYoutubeStatus, "Ready to fetch video from YouTube link.", false, true);
+      });
+
+      subtitleChunkSize.addEventListener("input", () => {
+        const chunkSize = parseChunkSize();
+        if (chunkSize == null) {
+          setStatus(subtitleChunkStatus, "Chunk size must be a number >= 200.", true);
+          return;
+        }
+        setStatus(subtitleChunkStatus, "Used for subtitle translation batching.", false, true);
+      });
+
       window.addEventListener("DOMContentLoaded", () => {
+        syncPipelineControls();
         renderEmptyState();
         setLogStreamState("idle", "running");
-        logStatusText.textContent = "Waiting for batch run...";
+        logStatusText.textContent = "Waiting for pipeline run...";
         refreshEnvStatus();
       });
     </script>

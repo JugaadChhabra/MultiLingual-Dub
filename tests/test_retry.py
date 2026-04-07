@@ -20,3 +20,4 @@ def test_is_retryable_for_rate_limit_status() -> None:
 
 def test_is_retryable_rejects_language_mismatch() -> None:
     assert not is_retryable(RuntimeError("Source and target languages must be different"))
+    assert not is_retryable(RuntimeError("Source and target language cannot be same"))

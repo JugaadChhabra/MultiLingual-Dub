@@ -43,6 +43,17 @@ def _status_code_from_exc(exc: Exception) -> int | None:
     return None
 
 
+def _is_same_language_error_message(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    has_source_target = "source" in text and "target" in text
+    has_language = "language" in text or "lang" in text
+    has_same_or_different = "same" in text or "different" in text
+    return has_source_target and has_language and has_same_or_different
+
+
 def is_retryable(exc: Exception) -> bool:
     status = _status_code_from_exc(exc)
     if status is not None:
@@ -51,7 +62,7 @@ def is_retryable(exc: Exception) -> bool:
         return False
 
     message = str(exc).lower()
-    if "source and target languages must be different" in message:
+    if _is_same_language_error_message(message):
         return False
 
     retry_markers = (
