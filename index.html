@@ -778,6 +778,18 @@
 
             <div class="section-divider"></div>
 
+            <div class="input-section" style="margin-top: 6px;">
+              <div class="lang-chip" style="width: fit-content;">
+                <input type="checkbox" id="teachingMode" name="teaching_mode" value="true" />
+                <label for="teachingMode" style="padding: 6px 12px; display: flex; align-items: center; gap: 6px;">
+                  <span>Teaching Mode (Mix English + Native)</span>
+                </label>
+              </div>
+              <p style="font-size: 10px; color: var(--muted); margin-left: 2px;">
+                Keeps English alphabets/words in English script, translates only filler words to native script.
+              </p>
+            </div>
+
             <div id="excelInputSection" class="input-section">
               <label class="field-label" for="excelFile">Excel file (.xlsx)</label>
               <input id="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -1222,6 +1234,10 @@
           const formData = new FormData();
           formData.append("file", file);
           formData.append("max_language_parallelism", "3");
+          const isTeachingMode = document.getElementById("teachingMode").checked;
+          if (isTeachingMode) {
+              formData.append("teaching_mode", "true");
+          }
           selectedLanguages.forEach((language) => formData.append("target_languages", language));
 
           const createResp = await fetch("/batch/excel-jobs", {

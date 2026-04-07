@@ -296,6 +296,7 @@ async def _retry_failed_activity_tasks(
                     "retry_pass": True,
                 },
                 runtime_config=runtime_config,
+                teaching_mode=teaching_mode,
             )
             qc_text = (qc_results.get(task.language) or "").strip()
             if not qc_text:
@@ -369,6 +370,7 @@ async def run_excel_batch_job(
     max_language_parallelism: int | None = None,
     jobs_store: JobsStore,
     runtime_config: RuntimeConfig | None = None,
+    teaching_mode: bool = False,
 ) -> None:
     """
     Run a batch job to completion without a fixed global timeout.
@@ -384,6 +386,7 @@ async def run_excel_batch_job(
             jobs_store,
             summary,
             runtime_config=runtime_config,
+            teaching_mode=teaching_mode,
         )
     except Exception as exc:
         logger.exception("Job %s crashed unexpectedly: %s", job_id, exc)
@@ -398,6 +401,7 @@ async def _run_batch_job_impl(
     jobs_store: JobsStore,
     summary: JobSummary,
     runtime_config: RuntimeConfig | None = None,
+    teaching_mode: bool = False,
 ) -> None:
     summary.started_at = await jobs_store.start(job_id)
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
@@ -586,6 +590,7 @@ async def _run_batch_job_impl(
                                 "voiceover_title": row.audio_type,
                             },
                             runtime_config=runtime_config,
+                            teaching_mode=teaching_mode,
                         )
                         for language, translated_text in translations_to_qc.items():
                             qc_text = (qc_results.get(language) or "").strip()

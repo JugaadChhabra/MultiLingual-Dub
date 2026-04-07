@@ -336,6 +336,7 @@ def qc_translations_batch(
     *,
     metadata: dict[str, object] | None = None,
     runtime_config: RuntimeConfig | None = None,
+    teaching_mode: bool = False,
 ) -> dict[str, str]:
     """
     QC multiple translations at once using Gemini.
@@ -375,6 +376,32 @@ def qc_translations_batch(
         translations_json = json.dumps(translations, ensure_ascii=False, indent=2)
         logger.info(f"Input translations JSON:\n{translations_json}")
         
+        teaching_instructions = ""
+        if teaching_mode:
+            teaching_instructions = f"""
+SPECIAL TEACHING INSTRUCTIONS:
+This is an English learning activity for children. The translations must use a mix of English and the target native language.
+- Key English vocabulary words, English letters, and English grammar terms (e.g., 'apple', 'red', 'adjective', 'A') MUST be kept in English (Latin script).
+- Only the connecting words, filler words, and sentence structure should be translated into the native language, written in its native script.
+- Example 1 (Alphabet): "A for apple" -> "A से apple" (Hindi).
+- Example 2 (Grammar): "This apple is red! 'Red' is an adjective that describes the color of the apple." -> "यह apple red है! 'Red' एक adjective है जो apple के color को describe करता है।" (Hindi).
+- Do not transliterate the English words into the native script (WRONG: एप्पल, RIGHT: apple).
+"""
+        else:
+            teaching_instructions = f"""
+Rules:
+1) Preserve the meaning and tone of the original English.
+2) For non-English targets ({non_english_desc}):
+   - Use natural native-script phrasing for that language.
+   - Do NOT keep unnecessary English (Latin-script) words.
+   - Exception: keep only unavoidable proper nouns, brand names, or acronyms.
+   - If both localized and English forms of the same term appear together in one sentence, keep only the localized form (unless it is an allowed exception).
+3) Fix script/orthography issues: redundant vowels, incorrect vowel signs/maatras, trailing halant/virama at word endings, malformed consonant clusters, and accidental repeated syllables.
+4) Keep punctuation, placeholders, and numbers appropriate for the target language.
+5) For English targets (en-*), keep fluent English and do not transliterate.
+6) Output must be valid JSON only (no markdown, no code fences, no commentary); each value must be a plain string.
+"""
+
         prompt = f"""You are a translation quality-control expert for: {lang_descs}.
 
 Original English text:
@@ -387,18 +414,7 @@ Script reference by language:
 {script_descs}
 
 Fix the translations and return corrected JSON using exactly the same keys as input.
-
-Rules:
-1) Preserve the meaning and tone of the original English.
-2) For non-English targets ({non_english_desc}):
-   - Use natural native-script phrasing for that language.
-   - Do NOT keep unnecessary English (Latin-script) words.
-   - Exception: keep only unavoidable proper nouns, brand names, or acronyms.
-   - If both localized and English forms of the same term appear together in one sentence, keep only the localized form (unless it is an allowed exception).
-3) Fix script/orthography issues: redundant vowels, incorrect vowel signs/maatras, trailing halant/virama at word endings, malformed consonant clusters, and accidental repeated syllables.
-4) Keep punctuation, placeholders, and numbers appropriate for the target language.
-5) For English targets (en-*), keep fluent English and do not transliterate.
-6) Output must be valid JSON only (no markdown, no code fences, no commentary); each value must be a plain string.
+{teaching_instructions}
 
 Return only the corrected JSON object."""
         

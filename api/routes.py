@@ -224,6 +224,7 @@ async def create_excel_job(
     target_languages: list[str] | None = Form(default=None),
     target_languages_json: str | None = Form(default=None),
     max_language_parallelism: int | None = Form(default=None),
+    teaching_mode: bool | None = Form(default=False),
 ):
     runtime_config = await _runtime_config_for_request(request)
     filename = ensure_file_extension(file.filename, ".xlsx", "Only .xlsx files are allowed")
@@ -249,6 +250,7 @@ async def create_excel_job(
             max_language_parallelism=max_language_parallelism,
             jobs_store=jobs_store,
             runtime_config=runtime_config,
+            teaching_mode=teaching_mode,
         )
     )
 
