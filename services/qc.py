@@ -380,12 +380,12 @@ def qc_translations_batch(
         if teaching_mode:
             teaching_instructions = f"""
 SPECIAL TEACHING INSTRUCTIONS:
-This is an English learning activity for children. The translations must use a mix of English and the target native language.
-- Key English vocabulary words, English letters, and English grammar terms (e.g., 'apple', 'red', 'adjective', 'A') MUST be kept in English (Latin script).
-- Only the connecting words, filler words, and sentence structure should be translated into the native language, written in its native script.
-- Example 1 (Alphabet): "A for apple" -> "A से apple" (Hindi).
-- Example 2 (Grammar): "This apple is red! 'Red' is an adjective that describes the color of the apple." -> "यह apple red है! 'Red' एक adjective है जो apple के color को describe करता है।" (Hindi).
-- Do not transliterate the English words into the native script (WRONG: एप्पल, RIGHT: apple).
+This is an English learning activity for children. The translations must use a mix of English and the target native language, but keep the explanation natural.
+- The target vocabulary word and the English letter being taught MUST remain in English (Latin script). Do not transliterate them.
+- Translate the rest of the explanatory sentence naturally and completely into the target language. Do not randomly mix English adjectives, nouns, or verbs into the explanation.
+- For alphabet introductions, use a consistent format like "[Letter] से [Word]".
+- Correct Example: "A for Apple. An apple is red." -> "A से Apple. Apple लाल होता है।"
+- Incorrect Example: "A for Apple. An apple is red and grows on trees." -> "A से Apple. Apple red होता है और trees पर grow करता है।" (Too many English words mixed in)
 """
         else:
             teaching_instructions = f"""
