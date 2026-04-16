@@ -405,6 +405,18 @@
         gap: 8px;
       }
 
+      .lang-divider {
+        grid-column: 1 / -1;
+        height: 1px;
+        margin: 2px 0 6px;
+        background: linear-gradient(
+          to right,
+          rgba(15, 34, 56, 0.08),
+          rgba(15, 34, 56, 0.28),
+          rgba(15, 34, 56, 0.08)
+        );
+      }
+
       .lang-chip input[type="checkbox"] {
         display: none;
       }
@@ -816,6 +828,14 @@
               <div class="lang-chip"><input type="checkbox" id="lang-pa" name="target_language" value="pa-IN" /><label for="lang-pa">Punjabi</label></div>
               <div class="lang-chip"><input type="checkbox" id="lang-ta" name="target_language" value="ta-IN" /><label for="lang-ta">Tamil</label></div>
               <div class="lang-chip"><input type="checkbox" id="lang-te" name="target_language" value="te-IN" /><label for="lang-te">Telugu</label></div>
+
+              <div class="lang-divider" aria-hidden="true"></div>
+
+              <div class="lang-chip"><input type="checkbox" id="lang-de" name="target_language" value="de" /><label for="lang-de">German</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-es" name="target_language" value="es" /><label for="lang-es">Spanish</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-fr" name="target_language" value="fr" /><label for="lang-fr">French</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-pt" name="target_language" value="pt" /><label for="lang-pt">Portuguese</label></div>
+              <div class="lang-chip"><input type="checkbox" id="lang-ru" name="target_language" value="ru" /><label for="lang-ru">Russian</label></div>
             </div>
 
             <div class="action-wrap">

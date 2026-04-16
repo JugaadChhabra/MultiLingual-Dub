@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 LANGUAGE_NAMES = {
     "bn-IN": "Bengali",
+    "de": "German",
     "en-IN": "English",
+    "es": "Spanish",
+    "fr": "French",
     "gu-IN": "Gujarati",
     "hi-IN": "Hindi",
     "kn-IN": "Kannada",
@@ -23,13 +26,18 @@ LANGUAGE_NAMES = {
     "mr-IN": "Marathi",
     "od-IN": "Odia",
     "pa-IN": "Punjabi",
+    "pt": "Portuguese",
+    "ru": "Russian",
     "ta-IN": "Tamil",
     "te-IN": "Telugu",
 }
 
 LANGUAGE_SCRIPT_HINTS = {
     "bn-IN": "Bengali script",
+    "de": "Latin script (German)",
     "en-IN": "Latin script (English)",
+    "es": "Latin script (Spanish)",
+    "fr": "Latin script (French)",
     "gu-IN": "Gujarati script",
     "hi-IN": "Devanagari script",
     "kn-IN": "Kannada script",
@@ -37,6 +45,8 @@ LANGUAGE_SCRIPT_HINTS = {
     "mr-IN": "Devanagari script",
     "od-IN": "Odia script",
     "pa-IN": "Gurmukhi script",
+    "pt": "Latin script (Portuguese)",
+    "ru": "Cyrillic script (Russian)",
     "ta-IN": "Tamil script",
     "te-IN": "Telugu script",
 }

@@ -11,6 +11,7 @@ charset-normalizer==3.4.4
 click==8.3.1
 cryptography==46.0.5
 distro==1.9.0
+deep-translator==1.11.4
 elevenlabs==2.36.1
 et_xmlfile==2.0.0
 fastapi==0.132.0

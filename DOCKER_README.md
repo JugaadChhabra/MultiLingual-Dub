@@ -37,6 +37,12 @@ docker compose up -d
 
 App URL: `http://localhost:8080`
 
+## Translation Routing
+
+- Sarvam handles existing Indian language targets.
+- In-process translation handles `fr`, `de`, `es`, `ru`, and `pt` inside AutoDub.
+- QC and TTS flow stays the same after translation.
+
 ## Runtime Browser Config
 
 The web interface includes a runtime `.env` text area:
