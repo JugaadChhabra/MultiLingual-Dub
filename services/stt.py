@@ -4,12 +4,19 @@ from services.sarvam import get_sarvam_client
 from services.runtime_config import RuntimeConfig
 
 
-def _extract_transcript_from_result(result: dict) -> str | None:
-    for key in ("text", "transcript", "transcription"):
-        value = result.get(key)
+_TRANSCRIPT_KEYS = ("text", "transcript", "transcription")
+
+
+def _get_text_value(mapping: dict) -> str | None:
+    for key in _TRANSCRIPT_KEYS:
+        value = mapping.get(key)
         if isinstance(value, str) and value.strip():
             return value
     return None
+
+
+def _extract_transcript_from_result(result: dict) -> str | None:
+    return _get_text_value(result)
 
 
 def _extract_transcript_from_json(path: Path) -> str | None:
@@ -19,10 +26,9 @@ def _extract_transcript_from_json(path: Path) -> str | None:
         return None
 
     if isinstance(payload, dict):
-        for key in ("text", "transcript", "transcription"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value
+        text = _get_text_value(payload)
+        if text:
+            return text
 
         segments = payload.get("segments")
         if isinstance(segments, list):

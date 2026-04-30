@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from services.free_translate import should_use_free_translate, translate_text_free
-from services.translate import translate_text
+from services.translation.free import should_use_free_translate, translate_text_free
+from services.translation.sarvam import translate_text
 from services.runtime_config import RuntimeConfig
 
 

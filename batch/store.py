@@ -9,6 +9,13 @@ from batch.models import JobState, JobSummary
 logger = logging.getLogger(__name__)
 
 
+def _finalize_summary(summary: JobSummary) -> None:
+    summary.finished_at = datetime.now(timezone.utc)
+    if summary.started_at:
+        delta = summary.finished_at - summary.started_at
+        summary.duration_ms = int(delta.total_seconds() * 1000)
+
+
 class JobsStore:
     def __init__(self) -> None:
         self._jobs: dict[str, JobState] = {}
@@ -45,10 +52,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "completed"
-            summary.finished_at = datetime.now(timezone.utc)
-            if summary.started_at:
-                delta = summary.finished_at - summary.started_at
-                summary.duration_ms = int(delta.total_seconds() * 1000)
+            _finalize_summary(summary)
             state.summary = summary
             logger.info(
                 "Job %s → completed | rows=%d/%d tasks=%d/%d duration_ms=%s",
@@ -67,9 +71,6 @@ class JobsStore:
             state.error = message
             if summary is None:
                 summary = state.summary
-            summary.finished_at = datetime.now(timezone.utc)
-            if summary.started_at:
-                delta = summary.finished_at - summary.started_at
-                summary.duration_ms = int(delta.total_seconds() * 1000)
+            _finalize_summary(summary)
             state.summary = summary
             logger.error("Job %s → failed | %s", job_id, message)

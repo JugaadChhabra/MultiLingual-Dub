@@ -113,6 +113,12 @@ def _retry_after_seconds(exc: Exception) -> float | None:
         return None
 
 
+def _backoff_delay(base: float, max_delay: float, attempt: int) -> float:
+    delay = min(max_delay, base * (2 ** (attempt - 1)))
+    jitter = random.uniform(0, delay * 0.25)
+    return min(max_delay, delay + jitter)
+
+
 def retry_call(
     func: Callable[[], T],
     *,
@@ -148,13 +154,9 @@ def retry_call(
                 if retry_after is not None:
                     sleep_for = min(rate_limit_max_delay, retry_after)
                 else:
-                    delay = min(rate_limit_max_delay, rate_limit_base_delay * (2 ** (attempt - 1)))
-                    jitter = random.uniform(0, delay * 0.25)
-                    sleep_for = min(rate_limit_max_delay, delay + jitter)
+                    sleep_for = _backoff_delay(rate_limit_base_delay, rate_limit_max_delay, attempt)
             else:
-                delay = min(max_delay, base_delay * (2 ** (attempt - 1)))
-                jitter = random.uniform(0, delay * 0.25)
-                sleep_for = min(max_delay, delay + jitter)
+                sleep_for = _backoff_delay(base_delay, max_delay, attempt)
 
             logger.warning(
                 "%s failed (attempt %d/%d): %s; retrying in %.2fs",
@@ -166,4 +168,4 @@ def retry_call(
             )
             time.sleep(sleep_for)
 
-    return func()
+    raise RuntimeError("unreachable")

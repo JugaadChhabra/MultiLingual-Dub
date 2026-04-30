@@ -55,17 +55,6 @@ def get_elevenlabs_api_key(runtime_config: RuntimeConfig | None = None) -> str:
     return api_key
 
 
-def get_batch_default_config(runtime_config: RuntimeConfig | None = None) -> ElevenLabsTTSConfig:
-    return ElevenLabsTTSConfig(
-        voice_id=get_voice_id("desi", runtime_config=runtime_config),
-        model_id=DEFAULT_MODEL_ID,
-        stability=DEFAULT_STABILITY,
-        similarity_boost=DEFAULT_SIMILARITY_BOOST,
-        style=DEFAULT_STYLE,
-        use_speaker_boost=DEFAULT_USE_SPEAKER_BOOST,
-    )
-
-
 def get_batch_config_for_language(
     language_code: str,
     runtime_config: RuntimeConfig | None = None,

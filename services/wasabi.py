@@ -24,30 +24,7 @@ class S3Config:
     region: str
 
 
-def validate_s3_env() -> tuple[S3Config | None, str | None]:
-    required = {
-        "AWS_ACCESS_KEY": get_config_value("AWS_ACCESS_KEY"),
-        "AWS_SECRET_KEY": get_config_value("AWS_SECRET_KEY"),
-        "AWS_BUCKET": get_config_value("AWS_BUCKET"),
-        "AWS_REGION": get_config_value("AWS_REGION"),
-    }
-    missing = [key for key, value in required.items() if not value]
-    if missing:
-        return None, f"Missing AWS environment variables: {', '.join(sorted(missing))}"
-
-    return (
-        S3Config(
-            access_key=required["AWS_ACCESS_KEY"],
-            secret_key=required["AWS_SECRET_KEY"],
-            bucket=required["AWS_BUCKET"],
-            region=required["AWS_REGION"],
-            endpoint=get_config_value("AWS_ENDPOINT_URL") or None,
-        ),
-        None,
-    )
-
-
-def get_s3_config(runtime_config: RuntimeConfig | None = None) -> S3Config:
+def _read_s3_keys(runtime_config: RuntimeConfig | None = None) -> tuple[dict[str, str], list[str]]:
     required = {
         "AWS_ACCESS_KEY": get_config_value("AWS_ACCESS_KEY", runtime_config=runtime_config),
         "AWS_SECRET_KEY": get_config_value("AWS_SECRET_KEY", runtime_config=runtime_config),
@@ -55,17 +32,31 @@ def get_s3_config(runtime_config: RuntimeConfig | None = None) -> S3Config:
         "AWS_REGION": get_config_value("AWS_REGION", runtime_config=runtime_config),
     }
     missing = [key for key, value in required.items() if not value]
-    if missing:
-        raise S3ConfigError(f"Missing AWS environment variables: {', '.join(sorted(missing))}")
+    return required, missing
 
-    config = S3Config(
+
+def _build_s3_config(required: dict[str, str], runtime_config: RuntimeConfig | None = None) -> S3Config:
+    return S3Config(
         access_key=required["AWS_ACCESS_KEY"],
         secret_key=required["AWS_SECRET_KEY"],
         bucket=required["AWS_BUCKET"],
         region=required["AWS_REGION"],
         endpoint=get_config_value("AWS_ENDPOINT_URL", runtime_config=runtime_config) or None,
     )
-    return config
+
+
+def validate_s3_env() -> tuple[S3Config | None, str | None]:
+    required, missing = _read_s3_keys()
+    if missing:
+        return None, f"Missing AWS environment variables: {', '.join(sorted(missing))}"
+    return _build_s3_config(required), None
+
+
+def get_s3_config(runtime_config: RuntimeConfig | None = None) -> S3Config:
+    required, missing = _read_s3_keys(runtime_config)
+    if missing:
+        raise S3ConfigError(f"Missing AWS environment variables: {', '.join(sorted(missing))}")
+    return _build_s3_config(required, runtime_config)
 
 
 class S3Client:
@@ -95,37 +86,26 @@ class S3Client:
             folder_key = parts[0] + "/"
             self._ensure_folder(folder_key)
 
-    def upload_file(self, file_path: str | Path, key: str) -> dict[str, str]:
-        """Upload file from disk to S3."""
-        def _call() -> dict[str, str]:
-            self._ensure_folder_for_key(key)
-            path = Path(file_path)
-            with path.open("rb") as handle:
-                response = self._client.put_object(
-                    Bucket=self._config.bucket,
-                    Key=key,
-                    Body=handle,
-                    ContentType="audio/mpeg",
-                )
-            etag = str(response.get("ETag", "")).strip('"')
-            return {"bucket": self._config.bucket, "key": key, "etag": etag}
-
-        return retry_call(_call, operation="S3 upload file")
-
-    def upload_bytes(self, audio_bytes: bytes, key: str) -> dict[str, str]:
-        """Upload audio bytes directly to S3 without saving to disk."""
+    def _put_object(self, body, key: str, content_type: str = "audio/mpeg", operation: str = "S3 upload") -> dict[str, str]:
         def _call() -> dict[str, str]:
             self._ensure_folder_for_key(key)
             response = self._client.put_object(
                 Bucket=self._config.bucket,
                 Key=key,
-                Body=audio_bytes,
-                ContentType="audio/mpeg",
+                Body=body,
+                ContentType=content_type,
             )
             etag = str(response.get("ETag", "")).strip('"')
             return {"bucket": self._config.bucket, "key": key, "etag": etag}
 
-        return retry_call(_call, operation="S3 upload bytes")
+        return retry_call(_call, operation=operation)
+
+    def upload_file(self, file_path: str | Path, key: str) -> dict[str, str]:
+        with Path(file_path).open("rb") as handle:
+            return self._put_object(handle, key, operation="S3 upload file")
+
+    def upload_bytes(self, audio_bytes: bytes, key: str) -> dict[str, str]:
+        return self._put_object(audio_bytes, key, operation="S3 upload bytes")
 
     def upload_language_zip(
         self, language: str, audio_files: dict[str, bytes], folder_name: str

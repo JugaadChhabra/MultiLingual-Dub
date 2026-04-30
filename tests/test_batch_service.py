@@ -1,7 +1,8 @@
 import asyncio
 
 from batch.models import ExcelRow, JobSummary
-from batch.service import _build_s3_key, run_excel_batch_job
+from batch.naming import _build_s3_key
+from batch.service import run_excel_batch_job
 from batch.store import JobsStore
 
 

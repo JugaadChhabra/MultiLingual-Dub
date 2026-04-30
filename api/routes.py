@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import logging
 from pathlib import Path
 import uuid
 import tempfile
-from threading import Lock
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from api.logging import get_important_logs as _get_important_logs, install_log_handler
 from api.models import (
     ElevenLabsTTSRequest,
     FinalizeTextRequest,
@@ -45,49 +43,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-
-_IMPORTANT_LOG_BUFFER: deque[dict[str, object]] = deque(maxlen=400)
-_IMPORTANT_LOG_LOCK = Lock()
-_IMPORTANT_LOG_ID = 0
-_IMPORTANT_LOGGER_PREFIXES = (
-    "batch",
-    "services.qc",
-    "services.elevenlabs",
-    "api.routes",
-)
-
-
-def _is_important_log_record(record: logging.LogRecord) -> bool:
-    if record.levelno >= logging.WARNING:
-        return True
-    if record.levelno >= logging.INFO:
-        name = record.name or ""
-        return any(name.startswith(prefix) for prefix in _IMPORTANT_LOGGER_PREFIXES)
-    return False
-
-
-class ImportantLogHandler(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:
-        global _IMPORTANT_LOG_ID
-        if not _is_important_log_record(record):
-            return
-        payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        with _IMPORTANT_LOG_LOCK:
-            _IMPORTANT_LOG_ID += 1
-            payload["id"] = _IMPORTANT_LOG_ID
-            _IMPORTANT_LOG_BUFFER.append(payload)
-
-
-_root_logger = logging.getLogger()
-if not any(isinstance(handler, ImportantLogHandler) for handler in _root_logger.handlers):
-    important_handler = ImportantLogHandler()
-    important_handler.setLevel(logging.INFO)
-    _root_logger.addHandler(important_handler)
+install_log_handler()
 
 
 @asynccontextmanager
@@ -103,6 +59,10 @@ UPLOAD_DIR = Path("./uploads")
 OUTPUT_DIR = Path("./output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+
+STATIC_DIR = Path("./static")
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs_store = JobsStore()
 session_config_store = SessionConfigStore()
@@ -184,14 +144,7 @@ async def clear_session_env_config(request: Request):
 
 @app.get("/logs/important")
 async def get_important_logs(since_id: int = 0, limit: int = 200) -> dict:
-    safe_limit = max(1, min(limit, 400))
-    safe_since = max(0, since_id)
-    with _IMPORTANT_LOG_LOCK:
-        items = [item for item in _IMPORTANT_LOG_BUFFER if int(item.get("id", 0)) > safe_since]
-        if len(items) > safe_limit:
-            items = items[-safe_limit:]
-    latest_id = items[-1]["id"] if items else safe_since
-    return {"logs": items, "latest_id": latest_id}
+    return _get_important_logs(since_id, limit)
 
 
 @app.post("/translate")

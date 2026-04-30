@@ -6,6 +6,16 @@ from services.sarvam import get_sarvam_client
 from services.runtime_config import RuntimeConfig
 
 
+def _try_base64_decode(text: str) -> bytes | None:
+    try:
+        return base64.b64decode(text, validate=True)
+    except (ValueError, binascii.Error):
+        try:
+            return base64.b64decode(re.sub(r"\s+", "", text))
+        except (ValueError, binascii.Error):
+            return None
+
+
 def _extract_audio_bytes(response) -> bytes | None:
     if isinstance(response, (bytes, bytearray)):
         return bytes(response)
@@ -17,58 +27,26 @@ def _extract_audio_bytes(response) -> bytes | None:
             re.DOTALL,
         )
         if match:
-            try:
-                return base64.b64decode(match.group("audio"), validate=True)
-            except (ValueError, binascii.Error):
-                try:
-                    cleaned = re.sub(r"\s+", "", match.group("audio"))
-                    return base64.b64decode(cleaned)
-                except (ValueError, binascii.Error):
-                    return None
+            return _try_base64_decode(match.group("audio"))
 
     if isinstance(response, dict):
         audios = response.get("audios")
-        if isinstance(audios, list) and audios:
-            first = audios[0]
-            if isinstance(first, str):
-                try:
-                    return base64.b64decode(first, validate=True)
-                except (ValueError, binascii.Error):
-                    try:
-                        cleaned = re.sub(r"\s+", "", first)
-                        return base64.b64decode(cleaned)
-                    except (ValueError, binascii.Error):
-                        return None
+        if isinstance(audios, list) and audios and isinstance(audios[0], str):
+            return _try_base64_decode(audios[0])
         for key in ("audio", "audio_content", "audio_data"):
             value = response.get(key)
             if isinstance(value, (bytes, bytearray)):
                 return bytes(value)
             if isinstance(value, str) and value.strip():
-                try:
-                    return base64.b64decode(value, validate=True)
-                except (ValueError, binascii.Error):
-                    try:
-                        cleaned = re.sub(r"\s+", "", value)
-                        return base64.b64decode(cleaned)
-                    except (ValueError, binascii.Error):
-                        return None
+                return _try_base64_decode(value)
 
     audio = getattr(response, "audio", None)
     if isinstance(audio, (bytes, bytearray)):
         return bytes(audio)
 
     audios = getattr(response, "audios", None)
-    if isinstance(audios, list) and audios:
-        first = audios[0]
-        if isinstance(first, str):
-            try:
-                return base64.b64decode(first, validate=True)
-            except (ValueError, binascii.Error):
-                try:
-                    cleaned = re.sub(r"\s+", "", first)
-                    return base64.b64decode(cleaned)
-                except (ValueError, binascii.Error):
-                    return None
+    if isinstance(audios, list) and audios and isinstance(audios[0], str):
+        return _try_base64_decode(audios[0])
 
     return None
 
@@ -105,9 +83,7 @@ def text_to_speech(
     if audio_bytes:
         path = Path(output_path)
         detected_ext = _detect_audio_extension(audio_bytes)
-        if not path.suffix and detected_ext:
-            path = path.with_suffix(detected_ext)
-        elif path.suffix and detected_ext and path.suffix.lower() != detected_ext:
+        if detected_ext and path.suffix.lower() != detected_ext:
             path = path.with_suffix(detected_ext)
 
         path.parent.mkdir(parents=True, exist_ok=True)

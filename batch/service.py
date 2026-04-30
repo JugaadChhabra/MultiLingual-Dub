@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from dataclasses import dataclass
 import logging
 from pathlib import Path
-import uuid
 
 from batch.excel import read_excel_rows
 from batch.models import JobSummary
+from batch.naming import (
+    _build_output_filename,
+    _dedupe_filename,
+    _new_language_audio_buffers,
+    _resolve_activity_segment_name,
+)
 from batch.store import JobsStore
+from batch.upload import _upload_activity_archives
 from services.audio_compress import compress_mp3_bytes
 from services.elevenlabs import get_batch_config_for_language, get_elevenlabs_api_key, synthesize_speech_bytes
-from services.qc import LANGUAGE_NAMES, QCError, qc_translations_batch
+from services.qc import QCError, qc_translations_batch
 from services.runtime_config import RuntimeConfig, get_config_value
 from services.translation import translate_with_fallback
 from services.wasabi import S3Client, S3ConfigError, get_s3_config
@@ -30,6 +37,18 @@ class FailedLanguageTask:
     reason: str
 
 
+def _make_failed_task(row, language: str, reason: str) -> FailedLanguageTask:
+    return FailedLanguageTask(
+        row_index=row.row_index,
+        row_text=row.text,
+        emotion=row.emotion,
+        activity_name=row.activity_name,
+        audio_type=row.audio_type,
+        language=language,
+        reason=reason,
+    )
+
+
 def _is_truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -41,16 +60,6 @@ def _should_upload_to_s3(runtime_config: RuntimeConfig | None = None) -> bool:
 def _should_enable_qc(runtime_config: RuntimeConfig | None = None) -> bool:
     return _is_truthy(get_config_value("BATCH_ENABLE_QC", runtime_config=runtime_config))
 
-
-def _sanitize_for_key(raw: str) -> str:
-    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw.strip().lower())
-    cleaned = cleaned.strip("_")
-    return cleaned or "na"
-
-
-def _build_s3_key(job_id: str, target_language: str, audio_type: str) -> str:
-    audio_type_fragment = _sanitize_for_key(audio_type)
-    return f"batch/{job_id}/{target_language}/{audio_type_fragment}-{uuid.uuid4().hex}.mp3"
 
 
 def _generate_elevenlabs_audio_bytes(
@@ -144,105 +153,6 @@ async def _translate_language_async(
         return language, None, str(exc)
 
 
-def _dedupe_filename(
-    filename: str,
-    existing_files: dict[str, bytes],
-    row_index: int,
-) -> tuple[str, bool]:
-    if filename not in existing_files:
-        return filename, False
-
-    stem = Path(filename).stem or "audio"
-    suffix = Path(filename).suffix or ".mp3"
-    candidate = f"{stem}-row{row_index}{suffix}"
-    counter = 2
-    while candidate in existing_files:
-        candidate = f"{stem}-row{row_index}-{counter}{suffix}"
-        counter += 1
-    return candidate, True
-
-
-def _resolve_activity_segment_name(raw_activity_name: str, current_activity_name: str | None) -> str:
-    if raw_activity_name.strip():
-        return _sanitize_for_key(raw_activity_name)
-    if current_activity_name:
-        return current_activity_name
-    return "batch"
-
-
-def _new_language_audio_buffers(target_languages: list[str]) -> dict[str, dict[str, bytes]]:
-    return {lang: {} for lang in target_languages}
-
-
-def _next_activity_folder_name(activity_name: str, upload_counts: dict[str, int]) -> str:
-    next_count = upload_counts.get(activity_name, 0) + 1
-    upload_counts[activity_name] = next_count
-    if next_count == 1:
-        return activity_name
-    return f"{activity_name}-{next_count}"
-
-
-async def _upload_activity_archives(
-    *,
-    job_id: str,
-    activity_name: str,
-    target_languages: list[str],
-    language_audio_files: dict[str, dict[str, bytes]],
-    s3_client: S3Client,
-    jobs_store: JobsStore,
-    summary: JobSummary,
-    activity_upload_counts: dict[str, int],
-) -> None:
-    folder_name = _next_activity_folder_name(activity_name, activity_upload_counts)
-    logger.info(
-        "Job %s | activity %s: uploading zip files for %d languages under %s",
-        job_id,
-        activity_name,
-        len(target_languages),
-        folder_name,
-    )
-
-    for language in target_languages:
-        audio_files = language_audio_files.get(language, {})
-        if not audio_files:
-            logger.info("Job %s | activity %s | lang %s: no files to zip", job_id, activity_name, language)
-            continue
-
-        try:
-            language_label = LANGUAGE_NAMES.get(language, language)
-            result = await asyncio.to_thread(
-                s3_client.upload_language_zip,
-                language_label,
-                audio_files,
-                folder_name,
-            )
-            summary.uploads_succeeded += 1
-            logger.info(
-                "Job %s | activity %s | lang %s: uploaded zip with %d files -> %s",
-                job_id,
-                activity_name,
-                language_label,
-                len(audio_files),
-                result["key"],
-            )
-        except Exception as exc:
-            summary.uploads_failed += 1
-            logger.error(
-                "Job %s | activity %s | lang %s: zip upload failed: %s",
-                job_id,
-                activity_name,
-                language,
-                exc,
-            )
-        finally:
-            await jobs_store.update_summary(job_id, summary)
-
-
-def _build_output_filename(*, audio_type: str, row_index: int, language: str) -> str:
-    filename = audio_type or f"row-{row_index}-{language}"
-    if not filename.lower().endswith(".mp3"):
-        filename = f"{filename}.mp3"
-    return filename
 
 
 async def _retry_failed_activity_tasks(
@@ -253,7 +163,7 @@ async def _retry_failed_activity_tasks(
     language_audio_files: dict[str, dict[str, bytes]],
     summary: JobSummary,
     jobs_store: JobsStore,
-    row_unresolved_failures: dict[int, int],
+    row_unresolved_failures: Counter[int],
     recoverable_failed_rows: set[int],
     runtime_config: RuntimeConfig | None = None,
 ) -> None:
@@ -457,7 +367,7 @@ async def _run_batch_job_impl(
         _new_language_audio_buffers(target_languages) if s3_client else None
     )
     current_activity_failed_tasks: list[FailedLanguageTask] | None = [] if s3_client else None
-    row_unresolved_failures: dict[int, int] = {}
+    row_unresolved_failures: Counter[int] = Counter()
     recoverable_failed_rows: set[int] = set()
     translation_parallelism = _resolve_language_parallelism(
         total_languages=len(target_languages),
@@ -544,19 +454,9 @@ async def _run_batch_job_impl(
                         summary.translation_fallbacks += 1
                         summary.language_tasks_failed += 1
                         row_had_task_failure = True
-                        row_unresolved_failures[row.row_index] = row_unresolved_failures.get(row.row_index, 0) + 1
+                        row_unresolved_failures[row.row_index] += 1
                         if current_activity_failed_tasks is not None:
-                            current_activity_failed_tasks.append(
-                                FailedLanguageTask(
-                                    row_index=row.row_index,
-                                    row_text=row.text,
-                                    emotion=row.emotion,
-                                    activity_name=row.activity_name,
-                                    audio_type=row.audio_type,
-                                    language=language,
-                                    reason=failure_reason,
-                                )
-                            )
+                            current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                         logger.error(
                             "Job %s | row %d | lang %s: translation failed; skipping TTS (%s)",
                             job_id,
@@ -617,19 +517,9 @@ async def _run_batch_job_impl(
                             failure_reason = qc_failures_by_language[language]
                             summary.language_tasks_failed += 1
                             row_had_task_failure = True
-                            row_unresolved_failures[row.row_index] = row_unresolved_failures.get(row.row_index, 0) + 1
+                            row_unresolved_failures[row.row_index] += 1
                             if current_activity_failed_tasks is not None:
-                                current_activity_failed_tasks.append(
-                                    FailedLanguageTask(
-                                        row_index=row.row_index,
-                                        row_text=row.text,
-                                        emotion=row.emotion,
-                                        activity_name=row.activity_name,
-                                        audio_type=row.audio_type,
-                                        language=language,
-                                        reason=failure_reason,
-                                    )
-                                )
+                                current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                             logger.error(
                                 "Job %s | row %d | lang %s: skipping TTS because QC did not produce output (%s)",
                                 job_id,
@@ -643,36 +533,19 @@ async def _run_batch_job_impl(
                     logger.info("Job %s | row %d | lang %s: TTS start", job_id, row.row_index, language)
                     tts_text = f"[{row.emotion}] {effective_text}" if row.emotion else effective_text
                     try:
-                        if runtime_config is None:
-                            audio_bytes = await asyncio.to_thread(
-                                _generate_elevenlabs_audio_bytes,
-                                tts_text,
-                                language,
-                            )
-                        else:
-                            audio_bytes = await asyncio.to_thread(
-                                _generate_elevenlabs_audio_bytes,
-                                tts_text,
-                                language,
-                                runtime_config,
-                            )
+                        audio_bytes = await asyncio.to_thread(
+                            _generate_elevenlabs_audio_bytes,
+                            tts_text,
+                            language,
+                            runtime_config,
+                        )
                     except Exception as exc:
                         failure_reason = str(exc)
                         summary.language_tasks_failed += 1
                         row_had_task_failure = True
-                        row_unresolved_failures[row.row_index] = row_unresolved_failures.get(row.row_index, 0) + 1
+                        row_unresolved_failures[row.row_index] += 1
                         if current_activity_failed_tasks is not None:
-                            current_activity_failed_tasks.append(
-                                FailedLanguageTask(
-                                    row_index=row.row_index,
-                                    row_text=row.text,
-                                    emotion=row.emotion,
-                                    activity_name=row.activity_name,
-                                    audio_type=row.audio_type,
-                                    language=language,
-                                    reason=failure_reason,
-                                )
-                            )
+                            current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                         logger.error(
                             "Job %s | row %d | lang %s: TTS failed; skipping audio output (%s)",
                             job_id,

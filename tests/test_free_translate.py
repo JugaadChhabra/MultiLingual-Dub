@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from services import free_translate
+from services.translation import free as free_translate
 
 
 def test_should_use_free_translate_for_supported_language_codes() -> None:

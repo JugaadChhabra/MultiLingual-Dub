@@ -8,48 +8,11 @@ from uuid import uuid4
 import boto3
 import google.genai as genai
 
+from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
 from services.runtime_config import RuntimeConfig, get_config_value
 
 logger = logging.getLogger(__name__)
-
-LANGUAGE_NAMES = {
-    "bn-IN": "Bengali",
-    "de": "German",
-    "en-IN": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "gu-IN": "Gujarati",
-    "hi-IN": "Hindi",
-    "kn-IN": "Kannada",
-    "ml-IN": "Malayalam",
-    "mr-IN": "Marathi",
-    "od-IN": "Odia",
-    "pa-IN": "Punjabi",
-    "pt": "Portuguese",
-    "ru": "Russian",
-    "ta-IN": "Tamil",
-    "te-IN": "Telugu",
-}
-
-LANGUAGE_SCRIPT_HINTS = {
-    "bn-IN": "Bengali script",
-    "de": "Latin script (German)",
-    "en-IN": "Latin script (English)",
-    "es": "Latin script (Spanish)",
-    "fr": "Latin script (French)",
-    "gu-IN": "Gujarati script",
-    "hi-IN": "Devanagari script",
-    "kn-IN": "Kannada script",
-    "ml-IN": "Malayalam script",
-    "mr-IN": "Devanagari script",
-    "od-IN": "Odia script",
-    "pa-IN": "Gurmukhi script",
-    "pt": "Latin script (Portuguese)",
-    "ru": "Cyrillic script (Russian)",
-    "ta-IN": "Tamil script",
-    "te-IN": "Telugu script",
-}
 
 DEFAULT_QC_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
 DEFAULT_QC_LOG_S3_PREFIX = "qc/"
