@@ -218,6 +218,40 @@ async def get_excel_job(job_id: str):
     return job
 
 
+@app.post("/batch/excel-jobs/{job_id}/cancel")
+async def cancel_excel_job(job_id: str):
+    job = await jobs_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    ok = await jobs_store.request_cancel(job_id)
+    if not ok:
+        raise HTTPException(status_code=409, detail=f"Job is {job.status}, cannot cancel")
+    return {"job_id": job_id, "status": "cancelling"}
+
+
+@app.post("/batch/preview-excel")
+async def preview_excel(file: UploadFile = File(...)):
+    ensure_file_extension(file.filename, ".xlsx", "Only .xlsx files are allowed")
+    import tempfile, openpyxl
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    saved = Path(tmp.name)
+    tmp.close()
+    await save_upload_file(file, saved)
+    try:
+        wb = openpyxl.load_workbook(str(saved), read_only=True, data_only=True)
+        ws = wb.worksheets[0]
+        rows_out = []
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            cells = [str(c).strip() if c is not None else "" for c in row]
+            rows_out.append(cells)
+            if i >= 3:
+                break
+        wb.close()
+        return {"rows": rows_out}
+    finally:
+        saved.unlink(missing_ok=True)
+
+
 @app.post("/stt")
 async def stt_pipeline(
     request: Request,

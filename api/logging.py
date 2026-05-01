@@ -8,11 +8,33 @@ from threading import Lock
 _IMPORTANT_LOG_BUFFER: deque[dict[str, object]] = deque(maxlen=400)
 _IMPORTANT_LOG_LOCK = Lock()
 _IMPORTANT_LOG_ID = 0
-_IMPORTANT_LOGGER_PREFIXES = (
+
+# INFO logs from these loggers are shown only if they match _IMPORTANT_MSG_MARKERS.
+# WARNING+ from any logger always passes through.
+_INFO_LOGGER_PREFIXES = (
     "batch",
     "services.qc",
     "services.elevenlabs",
     "api.routes",
+)
+
+# Only INFO messages containing one of these substrings make it to the UI.
+# This filters out per-row/per-language noise like "TTS start", "translating into",
+# "ready for zip", "QC start", keeping only lifecycle events users care about.
+_IMPORTANT_MSG_MARKERS = (
+    "started",
+    "completed",
+    "failed",
+    "crashed",
+    "cancel",
+    "running",
+    "uploaded zip",
+    "upload failed",
+    "retry",
+    "rows x",
+    "row complete",
+    "config error",
+    "setup failed",
 )
 
 
@@ -21,7 +43,9 @@ def _is_important_log_record(record: logging.LogRecord) -> bool:
         return True
     if record.levelno >= logging.INFO:
         name = record.name or ""
-        return any(name.startswith(prefix) for prefix in _IMPORTANT_LOGGER_PREFIXES)
+        if any(name.startswith(prefix) for prefix in _INFO_LOGGER_PREFIXES):
+            msg = record.getMessage().lower()
+            return any(marker in msg for marker in _IMPORTANT_MSG_MARKERS)
     return False
 
 

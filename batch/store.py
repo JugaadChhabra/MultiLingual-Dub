@@ -19,6 +19,7 @@ def _finalize_summary(summary: JobSummary) -> None:
 class JobsStore:
     def __init__(self) -> None:
         self._jobs: dict[str, JobState] = {}
+        self._cancel_flags: set[str] = set()
         self._lock = asyncio.Lock()
 
     async def create(self, job_id: str) -> JobState:
@@ -74,3 +75,28 @@ class JobsStore:
             _finalize_summary(summary)
             state.summary = summary
             logger.error("Job %s → failed | %s", job_id, message)
+
+    async def request_cancel(self, job_id: str) -> bool:
+        async with self._lock:
+            state = self._jobs.get(job_id)
+            if not state or state.status not in ("queued", "running"):
+                return False
+            self._cancel_flags.add(job_id)
+            logger.info("Job %s → cancel requested", job_id)
+            return True
+
+    async def is_cancelled(self, job_id: str) -> bool:
+        async with self._lock:
+            return job_id in self._cancel_flags
+
+    async def cancel(self, job_id: str, summary: JobSummary | None = None) -> None:
+        async with self._lock:
+            state = self._jobs[job_id]
+            state.status = "cancelled"
+            state.error = "Job cancelled by user"
+            self._cancel_flags.discard(job_id)
+            if summary is None:
+                summary = state.summary
+            _finalize_summary(summary)
+            state.summary = summary
+            logger.info("Job %s → cancelled", job_id)

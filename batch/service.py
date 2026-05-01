@@ -377,6 +377,10 @@ async def _run_batch_job_impl(
 
     try:
         for row in rows:
+            if await jobs_store.is_cancelled(job_id):
+                await jobs_store.cancel(job_id, summary)
+                return
+
             row_ok = True
             row_had_task_failure = False
             try:

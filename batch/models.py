@@ -34,7 +34,7 @@ class JobSummary(BaseModel):
 
 class JobState(BaseModel):
     job_id: str
-    status: str = Field(pattern="^(queued|running|completed|failed)$")
+    status: str = Field(pattern="^(queued|running|completed|failed|cancelled)$")
     summary: JobSummary = Field(default_factory=JobSummary)
     error: str | None = None
 
