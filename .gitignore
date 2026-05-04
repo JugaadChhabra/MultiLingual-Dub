@@ -211,3 +211,4 @@ __marimo__/
 # Graphify
 graphify-out/*
 .claude/*
+data/qc/*
