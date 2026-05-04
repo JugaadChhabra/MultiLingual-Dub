@@ -29,7 +29,7 @@ from batch.store import JobsStore
 from services.stt import transcribe_audio
 from services.tts import text_to_speech
 from services.translation import translate_with_fallback
-from services.wasabi import validate_s3_env
+from services.s3 import validate_s3_env
 from services.runtime_config import (
     get_effective_required_status,
     get_missing_required_keys,

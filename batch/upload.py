@@ -7,7 +7,7 @@ from batch.models import JobSummary
 from batch.naming import _next_activity_folder_name
 from batch.store import JobsStore
 from services.languages import LANGUAGE_NAMES
-from services.wasabi import S3Client
+from services.s3 import S3Client
 
 logger = logging.getLogger(__name__)
 

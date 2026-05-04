@@ -1,8 +1,6 @@
 from __future__ import annotations
 import json
 import logging
-from datetime import datetime
-from pathlib import Path
 
 import google.genai as genai
 
@@ -42,158 +40,6 @@ def _get_qc_models(runtime_config: RuntimeConfig | None = None) -> list[str]:
     return DEFAULT_QC_MODELS
 
 
-def _get_qc_log_path(runtime_config: RuntimeConfig | None = None) -> Path:
-    raw = _cfg("QC_LOG_PATH", runtime_config=runtime_config, default="data/qc/qc-log.jsonl").strip()
-    return Path(raw)
-
-
-def _get_qc_train_log_path(runtime_config: RuntimeConfig | None = None) -> Path:
-    raw_path = _get_qc_log_path(runtime_config=runtime_config)
-    if raw_path.suffix:
-        return raw_path.with_name(f"{raw_path.stem}-train{raw_path.suffix}")
-    return raw_path.with_name(f"{raw_path.name}-train.jsonl")
-
-
-def _env_bool(name: str, default: bool, runtime_config: RuntimeConfig | None = None) -> bool:
-    raw = _cfg(name, runtime_config=runtime_config)
-    if raw is None or raw.strip() == "":
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
-def _is_train_log_enabled(runtime_config: RuntimeConfig | None = None) -> bool:
-    return _env_bool("QC_TRAIN_LOG_ENABLED", True, runtime_config=runtime_config)
-
-
-def _build_raw_payload(
-    *,
-    timestamp: str,
-    model: str,
-    original_text: str,
-    input_translations: dict[str, str],
-    output_translations: dict[str, str],
-    target_languages: list[str],
-    metadata: dict[str, object] | None,
-) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "timestamp": timestamp,
-        "model": model,
-        "original_text": original_text,
-        "input_translations": input_translations,
-        "output_translations": output_translations,
-        "target_languages": target_languages,
-    }
-    if metadata:
-        payload["metadata"] = metadata
-    return payload
-
-
-def _build_training_records(
-    *,
-    timestamp: str,
-    model: str,
-    original_text: str,
-    input_translations: dict[str, str],
-    output_translations: dict[str, str],
-    target_languages: list[str],
-    metadata: dict[str, object] | None,
-) -> list[dict[str, object]]:
-    records: list[dict[str, object]] = []
-    for lang_code in target_languages:
-        input_text = input_translations.get(lang_code, "")
-        output_text = output_translations.get(lang_code, "")
-        language_name = LANGUAGE_NAMES.get(lang_code, lang_code)
-        record: dict[str, object] = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": f"You are a QC expert for {language_name}.",
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f'Original English: "{original_text}"\n'
-                        f'Translation ({lang_code}): "{input_text}"\n'
-                        "Fix any errors in the translation and return only the corrected translation."
-                    ),
-                },
-                {"role": "assistant", "content": output_text},
-            ],
-            "lang_code": lang_code,
-            "timestamp": timestamp,
-            "model": model,
-        }
-        if metadata:
-            record["metadata"] = metadata
-        records.append(record)
-    return records
-
-
-def _write_jsonl_file(path: Path, lines: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        for line in lines:
-            handle.write(line + "\n")
-
-
-def _log_qc_sample_file(
-    *,
-    raw_payload: dict[str, object],
-    train_records: list[dict[str, object]],
-    runtime_config: RuntimeConfig | None = None,
-) -> None:
-    raw_path = _get_qc_log_path(runtime_config=runtime_config)
-    raw_line = json.dumps(raw_payload, ensure_ascii=False)
-    _write_jsonl_file(raw_path, [raw_line])
-
-    if _is_train_log_enabled(runtime_config=runtime_config) and train_records:
-        train_path = _get_qc_train_log_path(runtime_config=runtime_config)
-        train_lines = [
-            json.dumps(record, ensure_ascii=False) for record in train_records
-        ]
-        _write_jsonl_file(train_path, train_lines)
-
-
-def _log_qc_sample(
-    *,
-    model: str,
-    original_text: str,
-    input_translations: dict[str, str],
-    output_translations: dict[str, str],
-    target_languages: list[str],
-    metadata: dict[str, object] | None,
-    runtime_config: RuntimeConfig | None = None,
-) -> None:
-    now = datetime.utcnow()
-    timestamp = now.isoformat() + "Z"
-    raw_payload = _build_raw_payload(
-        timestamp=timestamp,
-        model=model,
-        original_text=original_text,
-        input_translations=input_translations,
-        output_translations=output_translations,
-        target_languages=target_languages,
-        metadata=metadata,
-    )
-    train_records = _build_training_records(
-        timestamp=timestamp,
-        model=model,
-        original_text=original_text,
-        input_translations=input_translations,
-        output_translations=output_translations,
-        target_languages=target_languages,
-        metadata=metadata,
-    )
-    try:
-        _log_qc_sample_file(
-            raw_payload=raw_payload,
-            train_records=train_records,
-            runtime_config=runtime_config,
-        )
-    except OSError as exc:
-        logger.warning("QC: failed to write log sample: %s", exc)
-
-
 def _parse_response_json(response_text: str) -> dict[str, str]:
     text = response_text.strip()
     if text.startswith("```json"):
@@ -208,17 +54,15 @@ def qc_translations_batch(
     translations: dict[str, str],
     target_languages: list[str],
     *,
-    metadata: dict[str, object] | None = None,
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
 ) -> dict[str, str]:
     """
     QC multiple translations at once using Gemini.
-    
+
     :param original_text: English source text
     :param translations: Dict of {language_code: translated_text}
     :param target_languages: List of language codes
-    :param metadata: Optional metadata to store with QC log entries
     :return: Dict of {language_code: corrected_text}
     """
     if not target_languages or not translations:
@@ -228,8 +72,7 @@ def qc_translations_batch(
         api_key = get_gemini_api_key(runtime_config=runtime_config)
         client = genai.Client(api_key=api_key)
         models = _get_qc_models(runtime_config=runtime_config)
-        
-        # Build language descriptions
+
         lang_descs = ", ".join(
             f"{lang} ({LANGUAGE_NAMES.get(lang, lang)})"
             for lang in target_languages
@@ -245,11 +88,10 @@ def qc_translations_batch(
             f"{lang}: {LANGUAGE_SCRIPT_HINTS.get(lang, 'native script')}"
             for lang in target_languages
         )
-        
-        # Build JSON input
+
         translations_json = json.dumps(translations, ensure_ascii=False, indent=2)
         logger.info(f"Input translations JSON:\n{translations_json}")
-        
+
         teaching_instructions = ""
         if teaching_mode:
             teaching_instructions = f"""
@@ -291,7 +133,7 @@ Fix the translations and return corrected JSON using exactly the same keys as in
 {teaching_instructions}
 
 Return only the corrected JSON object."""
-        
+
         last_exc: Exception | None = None
 
         for model in models:
@@ -303,7 +145,6 @@ Return only the corrected JSON object."""
                 response_text = response.text.strip()
                 corrected = _parse_response_json(response_text)
 
-                # Validate response has all languages
                 for lang in target_languages:
                     if lang not in corrected:
                         logger.warning(f"QC: language {lang} missing in response, using original")
@@ -312,16 +153,6 @@ Return only the corrected JSON object."""
                 corrected_json = json.dumps(corrected, ensure_ascii=False, indent=2)
                 logger.info(f"Corrected translations JSON:\n{corrected_json}")
                 logger.info(f"QC successful for {len(corrected)} languages using {model}")
-
-                _log_qc_sample(
-                    model=model,
-                    original_text=original_text,
-                    input_translations=translations,
-                    output_translations=corrected,
-                    target_languages=target_languages,
-                    metadata=metadata,
-                    runtime_config=runtime_config,
-                )
                 return corrected
             except Exception as exc:
                 last_exc = exc

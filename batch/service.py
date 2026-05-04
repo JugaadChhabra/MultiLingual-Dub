@@ -21,7 +21,7 @@ from services.elevenlabs import get_batch_config_for_language, get_elevenlabs_ap
 from services.qc import QCError, qc_translations_batch
 from services.runtime_config import RuntimeConfig, get_config_value
 from services.translation import translate_with_fallback
-from services.wasabi import S3Client, S3ConfigError, get_s3_config
+from services.s3 import S3Client, S3ConfigError, get_s3_config
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def _is_truthy(value: str) -> bool:
 
 
 def _should_upload_to_s3(runtime_config: RuntimeConfig | None = None) -> bool:
-    return _is_truthy(get_config_value("BATCH_ENABLE_WASABI_UPLOAD", runtime_config=runtime_config))
+    return _is_truthy(get_config_value("BATCH_ENABLE_S3_UPLOAD", runtime_config=runtime_config))
 
 
 def _should_enable_qc(runtime_config: RuntimeConfig | None = None) -> bool:
@@ -166,6 +166,7 @@ async def _retry_failed_activity_tasks(
     row_unresolved_failures: Counter[int],
     recoverable_failed_rows: set[int],
     runtime_config: RuntimeConfig | None = None,
+    teaching_mode: bool = False,
 ) -> None:
     if not failed_tasks:
         return
@@ -198,13 +199,6 @@ async def _retry_failed_activity_tasks(
                 task.row_text,
                 {task.language: translated_clean},
                 [task.language],
-                metadata={
-                    "job_id": job_id,
-                    "row_index": task.row_index,
-                    "activity_name": task.activity_name,
-                    "voiceover_title": task.audio_type,
-                    "retry_pass": True,
-                },
                 runtime_config=runtime_config,
                 teaching_mode=teaching_mode,
             )
@@ -351,7 +345,7 @@ async def _run_batch_job_impl(
             summary.language_tasks_total,
         )
     except S3ConfigError as exc:
-        await jobs_store.fail(job_id, f"Wasabi config error: {exc}", summary)
+        await jobs_store.fail(job_id, f"S3 config error: {exc}", summary)
         return
     except Exception as exc:
         await jobs_store.fail(job_id, f"Batch setup failed: {exc}", summary)
@@ -400,6 +394,7 @@ async def _run_batch_job_impl(
                                 row_unresolved_failures=row_unresolved_failures,
                                 recoverable_failed_rows=recoverable_failed_rows,
                                 runtime_config=runtime_config,
+                                teaching_mode=teaching_mode,
                             )
                         await _upload_activity_archives(
                             job_id=job_id,
@@ -487,12 +482,6 @@ async def _run_batch_job_impl(
                             row.text,
                             translations_to_qc,
                             list(translations_to_qc.keys()),
-                            metadata={
-                                "job_id": job_id,
-                                "row_index": row.row_index,
-                                "activity_name": row.activity_name,
-                                "voiceover_title": row.audio_type,
-                            },
                             runtime_config=runtime_config,
                             teaching_mode=teaching_mode,
                         )
@@ -641,6 +630,7 @@ async def _run_batch_job_impl(
                     row_unresolved_failures=row_unresolved_failures,
                     recoverable_failed_rows=recoverable_failed_rows,
                     runtime_config=runtime_config,
+                    teaching_mode=teaching_mode,
                 )
             await _upload_activity_archives(
                 job_id=job_id,

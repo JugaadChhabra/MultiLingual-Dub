@@ -22,18 +22,12 @@ if [ ! -f .env ]; then
 # Fill all required values before running start.sh again.
 SARVAM_API=
 GEMINI_API_KEY=
-WASABI_ACCESS_KEY=
-WASABI_SECRET_KEY=
-WASABI_BUCKET=
-WASABI_REGION=
-WASABI_ENDPOINT_URL=
 AWS_ACCESS_KEY=
 AWS_SECRET_KEY=
 AWS_BUCKET=
 AWS_REGION=
-BATCH_ENABLE_WASABI_UPLOAD=true
+BATCH_ENABLE_S3_UPLOAD=true
 BATCH_ENABLE_QC=true
-QC_LOG_SINK=s3
 ELEVEN_LABS=
 AI_STUDIO_VOICE=
 DESI_VOCAL_VOICE=
@@ -44,16 +38,11 @@ EOF
     echo "Edit .env and add all required keys:"
     echo "  - SARVAM_API"
     echo "  - GEMINI_API_KEY"
-    echo "  - WASABI_ACCESS_KEY"
-    echo "  - WASABI_SECRET_KEY"
-    echo "  - WASABI_BUCKET"
-    echo "  - WASABI_REGION"
-    echo "  - WASABI_ENDPOINT_URL"
     echo "  - AWS_ACCESS_KEY"
     echo "  - AWS_SECRET_KEY"
     echo "  - AWS_BUCKET"
     echo "  - AWS_REGION"
-    echo "  - BATCH_ENABLE_WASABI_UPLOAD"
+    echo "  - BATCH_ENABLE_S3_UPLOAD"
     echo "  - BATCH_ENABLE_QC"
     echo "  - ELEVEN_LABS"
     echo "  - AI_STUDIO_VOICE"
@@ -67,16 +56,11 @@ fi
 required_keys=(
   "SARVAM_API"
   "GEMINI_API_KEY"
-  "WASABI_ACCESS_KEY"
-  "WASABI_SECRET_KEY"
-  "WASABI_BUCKET"
-  "WASABI_REGION"
-  "WASABI_ENDPOINT_URL"
   "AWS_ACCESS_KEY"
   "AWS_SECRET_KEY"
   "AWS_BUCKET"
   "AWS_REGION"
-  "BATCH_ENABLE_WASABI_UPLOAD"
+  "BATCH_ENABLE_S3_UPLOAD"
   "BATCH_ENABLE_QC"
   "ELEVEN_LABS"
   "AI_STUDIO_VOICE"

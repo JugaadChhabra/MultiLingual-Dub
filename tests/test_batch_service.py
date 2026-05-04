@@ -49,7 +49,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -89,7 +89,7 @@ def test_run_excel_batch_job_fails_when_s3_config_missing(monkeypatch) -> None:
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
 
@@ -147,7 +147,7 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -191,7 +191,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
 
@@ -223,7 +223,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     assert not excel_path.exists()
 
 def test_run_excel_batch_job_sets_failed_when_s3_missing(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
 
@@ -273,7 +273,7 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -327,7 +327,7 @@ def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", failing_tts)
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -394,7 +394,7 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
     monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
     monkeypatch.setattr("batch.service.qc_translations_batch", failing_qc)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -423,7 +423,7 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
 
 
 def test_run_excel_batch_job_fails_when_qc_disabled(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "false")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
     monkeypatch.setenv("BATCH_ENABLE_QC", "false")
 
     store = JobsStore()
@@ -446,7 +446,7 @@ def test_run_excel_batch_job_fails_when_qc_disabled(monkeypatch) -> None:
 
 
 def test_run_excel_batch_job_fails_when_qc_toggle_unreadable(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "false")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
 
     def flaky_should_enable_qc(runtime_config=None) -> bool:
         raise RuntimeError("temporary QC toggle failure")
@@ -499,7 +499,7 @@ def test_run_excel_batch_job_dedupes_duplicate_filenames(monkeypatch) -> None:
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -559,7 +559,7 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -625,7 +625,7 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
     )
     monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
     monkeypatch.setenv("BATCH_ENABLE_QC", "true")
     monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
@@ -662,7 +662,7 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
 
 def test_run_excel_batch_job_requires_english_voice_for_english_targets(monkeypatch) -> None:
     monkeypatch.delenv("ENGLISH_VOICE", raising=False)
-    monkeypatch.setenv("BATCH_ENABLE_WASABI_UPLOAD", "false")
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
 
     store = JobsStore()
     job_id = "job-requires-english-voice"
