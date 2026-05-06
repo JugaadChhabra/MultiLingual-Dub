@@ -26,6 +26,8 @@ from batch.models import CreateJobResponse, JobState
 from batch.service import run_excel_batch_job
 from services.elevenlabs import ElevenLabsTTSConfig, get_elevenlabs_api_key, synthesize_speech_bytes
 from batch.store import JobsStore
+from services.video_pipeline import VideoJobSpec, VideoJobsStore, run_video_job
+from services.video_pipeline.heygen_client import get_heygen_api_key, list_talking_photos
 from services.stt import transcribe_audio
 from services.tts import text_to_speech
 from services.translation import translate_with_fallback
@@ -65,7 +67,11 @@ if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs_store = JobsStore()
+video_jobs_store = VideoJobsStore()
 session_config_store = SessionConfigStore()
+
+VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
+VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def _runtime_config_for_request(request: Request) -> RuntimeConfig | None:
@@ -90,6 +96,104 @@ def index() -> FileResponse:
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html not found")
     return FileResponse(index_path)
+
+
+@app.get("/heygen")
+def heygen_page() -> FileResponse:
+    page = Path("./static/heygen.html")
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="heygen.html not found")
+    return FileResponse(page)
+
+
+@app.get("/video/heygen/talking-photos")
+async def list_heygen_talking_photos(request: Request):
+    runtime_config = await _runtime_config_for_request(request)
+    try:
+        api_key = get_heygen_api_key(runtime_config=runtime_config)
+        return {"items": await asyncio.to_thread(list_talking_photos, api_key=api_key)}
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"HeyGen list failed: {exc}") from exc
+
+
+@app.post("/video/heygen", status_code=202)
+async def create_heygen_video_job(
+    request: Request,
+    image: UploadFile | None = File(default=None),
+    talking_photo_id: str | None = Form(default=None),
+    script: str = Form(...),
+    voice_id: str | None = Form(default=None),
+    video_prompt: str | None = Form(default=None),
+    motion_prompt: str | None = Form(default=None),
+    width: int = Form(default=1080),
+    height: int = Form(default=1920),
+    video_title: str = Form(default="HeyGen Avatar IV Job"),
+    stability: float = Form(default=0.5),
+    similarity_boost: float = Form(default=0.75),
+    style: float = Form(default=0.0),
+    use_speaker_boost: bool = Form(default=True),
+):
+    runtime_config = await _runtime_config_for_request(request)
+
+    if not script.strip():
+        raise HTTPException(status_code=400, detail="script must not be empty")
+
+    if not (talking_photo_id or (image and image.filename)):
+        raise HTTPException(status_code=400, detail="provide either an image file or a talking_photo_id")
+
+    image_bytes = b""
+    image_filename = "image.jpg"
+    if image and image.filename:
+        image_bytes = await image.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="image upload was empty")
+        image_filename = image.filename
+
+    spec = VideoJobSpec(
+        script=script,
+        voice_id=voice_id or None,
+        video_prompt=video_prompt or None,
+        motion_prompt=motion_prompt or None,
+        width=width,
+        height=height,
+        video_title=video_title,
+        stability=stability,
+        similarity_boost=similarity_boost,
+        style=style,
+        use_speaker_boost=use_speaker_boost,
+        talking_photo_id=talking_photo_id or None,
+    )
+
+    job_id = uuid.uuid4().hex
+    await video_jobs_store.create(job_id)
+
+    asyncio.create_task(
+        run_video_job(
+            job_id=job_id,
+            spec=spec,
+            image_bytes=image_bytes,
+            image_filename=image_filename,
+            output_dir=VIDEO_OUTPUT_DIR,
+            jobs_store=video_jobs_store,
+            runtime_config=runtime_config,
+        )
+    )
+
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/video/heygen/{job_id}")
+async def get_heygen_video_job(job_id: str):
+    state = await video_jobs_store.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Job not found")
+    payload = state.model_dump(mode="json")
+    if state.summary.video_path:
+        rel = to_output_url(state.summary.video_path, OUTPUT_DIR)
+        payload["video_local_url"] = rel
+    return payload
 
 
 @app.get("/health")

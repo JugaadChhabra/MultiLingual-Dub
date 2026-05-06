@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HeyGen Avatar IV Pipeline</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0d0f14;
+        color: #e6e8ee;
+        min-height: 100vh;
+        padding: 32px 20px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      h1 { font-size: 22px; margin: 0 0 6px; }
+      .sub { color: #8b94a7; font-size: 13px; margin: 0 0 24px; }
+      form { display: grid; gap: 14px; }
+      label { display: grid; gap: 6px; font-size: 13px; color: #b6bdcc; }
+      input[type=text], input[type=number], textarea {
+        background: #161a23;
+        border: 1px solid #262b38;
+        color: #e6e8ee;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: inherit;
+      }
+      textarea { resize: vertical; min-height: 80px; }
+      input[type=file] { font-size: 13px; color: #b6bdcc; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      button {
+        background: #4f7cff;
+        border: 0;
+        color: white;
+        padding: 11px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .status {
+        margin-top: 22px;
+        padding: 14px 16px;
+        background: #141823;
+        border: 1px solid #232936;
+        border-radius: 10px;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+      .status.hidden { display: none; }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #1f2533;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #8da2ff;
+      }
+      .badge.completed { background: #1d3a25; color: #6cd594; }
+      .badge.failed { background: #3a1d1d; color: #ff8b8b; }
+      pre {
+        margin: 8px 0 0;
+        background: #0a0c11;
+        padding: 10px;
+        border-radius: 6px;
+        overflow: auto;
+        font-size: 12px;
+        color: #aab2c2;
+      }
+      video { width: 100%; margin-top: 14px; border-radius: 10px; background: black; }
+      a { color: #8da2ff; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>HeyGen Avatar IV Pipeline</h1>
+      <p class="sub">Script → ElevenLabs (eleven_v3) → HeyGen Avatar IV → lip-synced video.</p>
+
+      <form id="form">
+        <label>
+          Existing talking photo (your HeyGen account)
+          <select name="talking_photo_id" id="talkingPhotoSel">
+            <option value="">— upload new image instead —</option>
+          </select>
+          <span style="color:#8b94a7;font-size:12px;" id="tpHint">Loading your talking photos…</span>
+        </label>
+
+        <label id="imageLabel">
+          Or upload a new reference image
+          <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/webp" />
+          <span style="color:#c8a86a;font-size:12px;">HeyGen caps you at 3 photo avatars. If you're already at 3, the oldest is auto-deleted to make room. Crop the photo to your target orientation before uploading.</span>
+        </label>
+
+        <label>
+          Script (what the avatar will say)
+          <textarea name="script" rows="4" required placeholder="Type the line the avatar should speak…"></textarea>
+        </label>
+
+        <label>
+          Video prompt (how the video should look / feel — optional)
+          <textarea name="video_prompt" rows="3" placeholder="e.g. calm, slight head movement, soft natural expression"></textarea>
+        </label>
+
+        <label>
+          Motion prompt (avatar motion only — optional, advanced)
+          <input type="text" name="motion_prompt" placeholder="[body part] + [action] + [emotion/intensity]" />
+        </label>
+
+        <div class="row">
+          <label>
+            Voice ID (optional, defaults to ISHWARI_VOICE_ID)
+            <input type="text" name="voice_id" placeholder="leave blank for default" />
+          </label>
+          <label>
+            Video title
+            <input type="text" name="video_title" value="HeyGen Avatar IV Job" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Orientation
+            <select name="orientation" id="orientation">
+              <option value="portrait" selected>Portrait (9:16) — Reels</option>
+              <option value="landscape">Landscape (16:9)</option>
+              <option value="square">Square (1:1)</option>
+            </select>
+          </label>
+          <label>
+            Resolution
+            <select name="resolution" id="resolution">
+              <option value="720">720p</option>
+              <option value="1080" selected>1080p (HD)</option>
+              <option value="1440">1440p (2K)</option>
+            </select>
+          </label>
+        </div>
+        <input type="hidden" name="width" id="width" />
+        <input type="hidden" name="height" id="height" />
+
+        <button type="submit" id="submitBtn">Generate video</button>
+      </form>
+
+      <div id="status" class="status hidden"></div>
+    </div>
+
+    <script>
+      const form = document.getElementById("form");
+      const statusBox = document.getElementById("status");
+      const submitBtn = document.getElementById("submitBtn");
+      const orientationSel = document.getElementById("orientation");
+      const resolutionSel = document.getElementById("resolution");
+      const widthInput = document.getElementById("width");
+      const heightInput = document.getElementById("height");
+      let pollTimer = null;
+
+      // Map (orientation, resolution) -> {width, height}.
+      // Resolution = the short edge for portrait, long edge for landscape, both for square.
+      function computeDimensions() {
+        const o = orientationSel.value;
+        const r = parseInt(resolutionSel.value, 10);
+        const long = { 720: 1280, 1080: 1920, 1440: 2560 }[r] || 1920;
+        if (o === "portrait")  return { width: r,    height: long };
+        if (o === "landscape") return { width: long, height: r    };
+        return { width: r, height: r };
+      }
+      function syncDims() {
+        const { width, height } = computeDimensions();
+        widthInput.value = width;
+        heightInput.value = height;
+      }
+      orientationSel.addEventListener("change", syncDims);
+      resolutionSel.addEventListener("change", syncDims);
+      syncDims();
+
+      const talkingPhotoSel = document.getElementById("talkingPhotoSel");
+      const imageInput = document.getElementById("imageInput");
+      const tpHint = document.getElementById("tpHint");
+
+      function syncImageRequired() {
+        const usingExisting = !!talkingPhotoSel.value;
+        imageInput.required = !usingExisting;
+        imageInput.disabled = usingExisting;
+      }
+      talkingPhotoSel.addEventListener("change", syncImageRequired);
+
+      (async function loadTalkingPhotos() {
+        try {
+          const res = await fetch("/video/heygen/talking-photos");
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const { items } = await res.json();
+          if (!items || items.length === 0) {
+            tpHint.textContent = "No existing photo avatars on your account. Upload a new image below.";
+          } else {
+            for (const it of items) {
+              const opt = document.createElement("option");
+              opt.value = it.talking_photo_id;
+              const label = it.name || it.talking_photo_id.slice(0, 8);
+              opt.textContent = `${label} (${it.talking_photo_id.slice(0,8)}…)`;
+              talkingPhotoSel.appendChild(opt);
+            }
+            tpHint.textContent = `${items.length}/3 photo avatars on your account. Pick one to skip upload.`;
+          }
+        } catch (e) {
+          tpHint.textContent = `Could not load talking photos: ${e.message}`;
+        }
+        syncImageRequired();
+      })();
+
+      function render(state) {
+        statusBox.classList.remove("hidden");
+        const s = state.status || "queued";
+        const cls = s === "completed" ? "completed" : s === "failed" ? "failed" : "";
+        const summary = state.summary || {};
+        const localUrl = state.video_local_url;
+        const remoteUrl = summary.video_url;
+        const player = localUrl
+          ? `<video src="${localUrl}" controls></video>`
+          : "";
+        const links = [
+          localUrl ? `<a href="${localUrl}" download>local mp4</a>` : "",
+          remoteUrl ? `<a href="${remoteUrl}" target="_blank">heygen url (7d)</a>` : "",
+        ].filter(Boolean).join(" · ");
+
+        statusBox.innerHTML = `
+          <div><span class="badge ${cls}">${s}</span> ${state.stage_message || ""}</div>
+          <div style="margin-top:8px;color:#8b94a7;">job: <code>${state.job_id}</code></div>
+          ${state.error ? `<div style="color:#ff8b8b;margin-top:8px;">${state.error}</div>` : ""}
+          ${links ? `<div style="margin-top:8px;">${links}</div>` : ""}
+          ${player}
+          <pre>${JSON.stringify(summary, null, 2)}</pre>
+        `;
+      }
+
+      async function poll(jobId) {
+        try {
+          const res = await fetch(`/video/heygen/${jobId}`);
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const state = await res.json();
+          render(state);
+          if (state.status === "completed" || state.status === "failed") {
+            clearInterval(pollTimer);
+            submitBtn.disabled = false;
+          }
+        } catch (e) {
+          statusBox.innerHTML = `<div style="color:#ff8b8b;">Polling error: ${e.message}</div>`;
+        }
+      }
+
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        submitBtn.disabled = true;
+        statusBox.classList.remove("hidden");
+        statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
+        const fd = new FormData(form);
+        try {
+          const res = await fetch("/video/heygen", { method: "POST", body: fd });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          if (pollTimer) clearInterval(pollTimer);
+          pollTimer = setInterval(() => poll(data.job_id), 4000);
+          poll(data.job_id);
+        } catch (e) {
+          submitBtn.disabled = false;
+          statusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
+        }
+      });
+    </script>
+  </body>
+</html>
