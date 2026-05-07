@@ -16,8 +16,8 @@ class VideoJobSpec(BaseModel):
     video_prompt: str | None = None
     motion_prompt: str | None = None
     talking_photo_id: str | None = None
-    width: int = 1080
-    height: int = 1920
+    width: int | None = None
+    height: int | None = None
     video_title: str = "HeyGen Avatar IV Job"
 
 

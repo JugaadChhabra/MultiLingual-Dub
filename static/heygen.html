@@ -124,27 +124,6 @@
           </label>
         </div>
 
-        <div class="row">
-          <label>
-            Orientation
-            <select name="orientation" id="orientation">
-              <option value="portrait" selected>Portrait (9:16) — Reels</option>
-              <option value="landscape">Landscape (16:9)</option>
-              <option value="square">Square (1:1)</option>
-            </select>
-          </label>
-          <label>
-            Resolution
-            <select name="resolution" id="resolution">
-              <option value="720">720p</option>
-              <option value="1080" selected>1080p (HD)</option>
-              <option value="1440">1440p (2K)</option>
-            </select>
-          </label>
-        </div>
-        <input type="hidden" name="width" id="width" />
-        <input type="hidden" name="height" id="height" />
-
         <button type="submit" id="submitBtn">Generate video</button>
       </form>
 
@@ -155,30 +134,7 @@
       const form = document.getElementById("form");
       const statusBox = document.getElementById("status");
       const submitBtn = document.getElementById("submitBtn");
-      const orientationSel = document.getElementById("orientation");
-      const resolutionSel = document.getElementById("resolution");
-      const widthInput = document.getElementById("width");
-      const heightInput = document.getElementById("height");
       let pollTimer = null;
-
-      // Map (orientation, resolution) -> {width, height}.
-      // Resolution = the short edge for portrait, long edge for landscape, both for square.
-      function computeDimensions() {
-        const o = orientationSel.value;
-        const r = parseInt(resolutionSel.value, 10);
-        const long = { 720: 1280, 1080: 1920, 1440: 2560 }[r] || 1920;
-        if (o === "portrait")  return { width: r,    height: long };
-        if (o === "landscape") return { width: long, height: r    };
-        return { width: r, height: r };
-      }
-      function syncDims() {
-        const { width, height } = computeDimensions();
-        widthInput.value = width;
-        heightInput.value = height;
-      }
-      orientationSel.addEventListener("change", syncDims);
-      resolutionSel.addEventListener("change", syncDims);
-      syncDims();
 
       const talkingPhotoSel = document.getElementById("talkingPhotoSel");
       const imageInput = document.getElementById("imageInput");

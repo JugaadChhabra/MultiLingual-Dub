@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 HEYGEN_API_BASE = "https://api.heygen.com"
 HEYGEN_UPLOAD_BASE = "https://upload.heygen.com"
 DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+UPLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
 
 
 def get_heygen_api_key(runtime_config: RuntimeConfig | None = None) -> str:
@@ -51,7 +52,7 @@ def _extract_asset(payload: dict) -> UploadResult:
 
 def upload_asset(*, api_key: str, content: bytes, content_type: str) -> UploadResult:
     headers = {"X-Api-Key": api_key, "Content-Type": content_type}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
+    with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
         resp = client.post(f"{HEYGEN_UPLOAD_BASE}/v1/asset", headers=headers, content=content)
         resp.raise_for_status()
         return _extract_asset(resp.json())
@@ -127,7 +128,7 @@ QUOTA_EXCEEDED_CODE = 401028
 
 def _post_talking_photo(*, api_key: str, content: bytes, content_type: str) -> httpx.Response:
     headers = {"X-Api-Key": api_key, "Content-Type": content_type}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
+    with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
         return client.post(f"{HEYGEN_UPLOAD_BASE}/v1/talking_photo", headers=headers, content=content)
 
 
@@ -167,8 +168,8 @@ def create_avatar_iv_video(
     talking_photo_id: str,
     audio_asset_id: str,
     motion_prompt: str | None,
-    width: int,
-    height: int,
+    width: int | None = None,
+    height: int | None = None,
     video_title: str,
     callback_id: str | None,
 ) -> str:
@@ -191,9 +192,10 @@ def create_avatar_iv_video(
                 },
             }
         ],
-        "dimension": {"width": width, "height": height},
         "caption": False,
     }
+    if width and height:
+        body["dimension"] = {"width": width, "height": height}
     if callback_id:
         body["callback_id"] = callback_id
 
