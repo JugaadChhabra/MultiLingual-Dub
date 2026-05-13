@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 HEYGEN_API_BASE = "https://api.heygen.com"
 HEYGEN_UPLOAD_BASE = "https://upload.heygen.com"
-DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
-UPLOAD_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=10.0)
+DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=30.0)
+UPLOAD_TIMEOUT = httpx.Timeout(connect=60.0, read=300.0, write=300.0, pool=30.0)
 
 
 def get_heygen_api_key(runtime_config: RuntimeConfig | None = None) -> str:
@@ -126,10 +126,20 @@ def delete_avatar_group(*, api_key: str, group_id: str) -> None:
 QUOTA_EXCEEDED_CODE = 401028
 
 
-def _post_talking_photo(*, api_key: str, content: bytes, content_type: str) -> httpx.Response:
+def _post_talking_photo(*, api_key: str, content: bytes, content_type: str, retries: int = 2) -> httpx.Response:
     headers = {"X-Api-Key": api_key, "Content-Type": content_type}
-    with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
-        return client.post(f"{HEYGEN_UPLOAD_BASE}/v1/talking_photo", headers=headers, content=content)
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
+                return client.post(f"{HEYGEN_UPLOAD_BASE}/v1/talking_photo", headers=headers, content=content)
+        except (httpx.ConnectTimeout, httpx.ConnectError) as exc:
+            last_exc = exc
+            if attempt < retries:
+                logger.warning("HeyGen upload connect failed (attempt %d/%d): %s", attempt + 1, retries + 1, exc)
+            else:
+                raise
+    raise last_exc  # unreachable but satisfies type checker
 
 
 def upload_talking_photo(*, api_key: str, content: bytes, content_type: str) -> str:
@@ -230,10 +240,25 @@ async def poll_until_done(
     video_id: str,
     interval_seconds: float = 6.0,
     timeout_seconds: float = 1500.0,
+    max_network_retries: int = 5,
 ) -> dict:
     elapsed = 0.0
+    network_failures = 0
     while elapsed < timeout_seconds:
-        data = await asyncio.to_thread(get_video_status, api_key=api_key, video_id=video_id)
+        try:
+            data = await asyncio.to_thread(get_video_status, api_key=api_key, video_id=video_id)
+            network_failures = 0
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            network_failures += 1
+            if network_failures > max_network_retries:
+                raise
+            logger.warning(
+                "HeyGen status poll network error (attempt %d/%d): %s — retrying",
+                network_failures, max_network_retries, exc,
+            )
+            await asyncio.sleep(interval_seconds)
+            elapsed += interval_seconds
+            continue
         status = data.get("status")
         if status == "completed":
             return data
