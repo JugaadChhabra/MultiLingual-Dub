@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HeyGen Avatar IV Pipeline</title>
+    <title>HeyGen Pipeline</title>
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -13,14 +13,36 @@
         background: #0d0f14;
         color: #e6e8ee;
         min-height: 100vh;
-        padding: 32px 20px;
+        padding: 40px 20px;
       }
-      .wrap { max-width: 760px; margin: 0 auto; }
-      h1 { font-size: 22px; margin: 0 0 6px; }
-      .sub { color: #8b94a7; font-size: 13px; margin: 0 0 24px; }
-      form { display: grid; gap: 14px; }
+      .wrap { max-width: 600px; margin: 0 auto; }
+
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 28px;
+      }
+      .header-left h1 { font-size: 20px; margin: 0 0 4px; }
+      .header-left p { color: #8b94a7; font-size: 13px; margin: 0; }
+      .settings-btn {
+        background: #1a1f2c;
+        border: 1px solid #262b38;
+        color: #8b94a7;
+        padding: 7px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .settings-btn:hover { background: #1f2535; color: #e6e8ee; }
+
+      form { display: grid; gap: 16px; }
       label { display: grid; gap: 6px; font-size: 13px; color: #b6bdcc; }
-      input[type=text], input[type=number], textarea {
+
+      textarea, input[type=text] {
         background: #161a23;
         border: 1px solid #262b38;
         color: #e6e8ee;
@@ -28,23 +50,42 @@
         border-radius: 8px;
         font-size: 14px;
         font-family: inherit;
+        width: 100%;
       }
       textarea { resize: vertical; min-height: 80px; }
       input[type=file] { font-size: 13px; color: #b6bdcc; }
-      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-      button {
+
+      .hint { color: #8b94a7; font-size: 12px; }
+
+      .upload-area {
+        border: 1.5px dashed #2a3040;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.15s;
+      }
+      .upload-area:hover, .upload-area.dragover { border-color: #4f7cff; }
+      .upload-area input[type=file] { display: none; }
+      .upload-area .upload-label { font-size: 14px; color: #8b94a7; }
+      .upload-area .upload-label strong { color: #4f7cff; }
+      .upload-area .file-name { font-size: 13px; color: #6cd594; margin-top: 6px; }
+
+      .generate-btn {
         background: #4f7cff;
         border: 0;
         color: white;
-        padding: 11px 16px;
+        padding: 12px 16px;
         border-radius: 8px;
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 600;
         cursor: pointer;
+        width: 100%;
       }
-      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
       .status {
-        margin-top: 22px;
+        margin-top: 24px;
         padding: 14px 16px;
         background: #141823;
         border: 1px solid #232936;
@@ -76,99 +117,184 @@
       }
       video { width: 100%; margin-top: 14px; border-radius: 10px; background: black; }
       a { color: #8da2ff; }
+
+      /* Settings modal */
+      .modal-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-backdrop.open { display: flex; }
+      .modal {
+        background: #141823;
+        border: 1px solid #262b38;
+        border-radius: 12px;
+        padding: 24px;
+        width: 100%;
+        max-width: 480px;
+        margin: 20px;
+      }
+      .modal h2 { font-size: 16px; margin: 0 0 18px; }
+      .modal-fields { display: grid; gap: 14px; }
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .btn-secondary {
+        background: #1a1f2c;
+        border: 1px solid #262b38;
+        color: #b6bdcc;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn-save {
+        background: #4f7cff;
+        border: 0;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .saved-indicator {
+        font-size: 12px;
+        color: #6cd594;
+        opacity: 0;
+        transition: opacity 0.3s;
+        align-self: center;
+      }
+      .saved-indicator.show { opacity: 1; }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>HeyGen Avatar IV Pipeline</h1>
-      <p class="sub">Script → ElevenLabs (eleven_v3) → HeyGen Avatar IV → lip-synced video.</p>
+      <div class="header">
+        <div class="header-left">
+          <h1>HeyGen Pipeline</h1>
+          <p>Script → ElevenLabs → HeyGen Avatar IV → lip-synced video</p>
+        </div>
+        <button class="settings-btn" id="settingsBtn">⚙ Prompts</button>
+      </div>
 
       <form id="form">
         <label>
-          Existing talking photo (your HeyGen account)
-          <select name="talking_photo_id" id="talkingPhotoSel">
-            <option value="">— upload new image instead —</option>
-          </select>
-          <span style="color:#8b94a7;font-size:12px;" id="tpHint">Loading your talking photos…</span>
-        </label>
-
-        <label id="imageLabel">
-          Or upload a new reference image
-          <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/webp" />
-          <span style="color:#c8a86a;font-size:12px;">HeyGen caps you at 3 photo avatars. If you're already at 3, the oldest is auto-deleted to make room. Crop the photo to your target orientation before uploading.</span>
+          Reference image
+          <div class="upload-area" id="uploadArea">
+            <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/webp" required />
+            <div class="upload-label"><strong>Choose file</strong> or drag here</div>
+            <div class="file-name" id="fileName"></div>
+          </div>
+          <span class="hint">PNG, JPEG, or WebP. Crop to your target orientation first. Oldest avatar auto-removed if at the 3-photo cap.</span>
         </label>
 
         <label>
-          Script (what the avatar will say)
-          <textarea name="script" rows="4" required placeholder="Type the line the avatar should speak…"></textarea>
+          Script
+          <textarea name="script" rows="5" required placeholder="Type the line the avatar should speak…"></textarea>
         </label>
 
-        <label>
-          Video prompt (how the video should look / feel — optional)
-          <textarea name="video_prompt" rows="3" placeholder="e.g. calm, slight head movement, soft natural expression"></textarea>
-        </label>
-
-        <label>
-          Motion prompt (avatar motion only — optional, advanced)
-          <input type="text" name="motion_prompt" placeholder="[body part] + [action] + [emotion/intensity]" />
-        </label>
-
-        <div class="row">
-          <label>
-            Voice ID (optional, defaults to ISHWARI_VOICE_ID)
-            <input type="text" name="voice_id" placeholder="leave blank for default" />
-          </label>
-          <label>
-            Video title
-            <input type="text" name="video_title" value="HeyGen Avatar IV Job" />
-          </label>
-        </div>
-
-        <button type="submit" id="submitBtn">Generate video</button>
+        <button type="submit" class="generate-btn" id="submitBtn">Generate video</button>
       </form>
 
       <div id="status" class="status hidden"></div>
     </div>
 
+    <!-- Settings modal -->
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal" id="modal">
+        <h2>Prompt Settings</h2>
+        <div class="modal-fields">
+          <label>
+            Video prompt <span class="hint">(how the video should look / feel)</span>
+            <textarea id="settingsVideoPrompt" rows="3" placeholder="e.g. calm, slight head movement, soft natural expression"></textarea>
+          </label>
+          <label>
+            Motion prompt <span class="hint">(optional, advanced)</span>
+            <input type="text" id="settingsMotionPrompt" placeholder="[body part] + [action] + [emotion/intensity]" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <span class="saved-indicator" id="savedIndicator">Saved</span>
+          <button class="btn-secondary" id="cancelBtn">Close</button>
+          <button class="btn-save" id="saveSettingsBtn">Save</button>
+        </div>
+      </div>
+    </div>
+
     <script>
+      // --- Upload area ---
+      const uploadArea = document.getElementById("uploadArea");
+      const imageInput = document.getElementById("imageInput");
+      const fileName = document.getElementById("fileName");
+
+      uploadArea.addEventListener("click", () => imageInput.click());
+      uploadArea.addEventListener("dragover", (e) => { e.preventDefault(); uploadArea.classList.add("dragover"); });
+      uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
+      uploadArea.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          imageInput.files = dt.files;
+          fileName.textContent = file.name;
+        }
+      });
+      imageInput.addEventListener("change", () => {
+        fileName.textContent = imageInput.files[0] ? imageInput.files[0].name : "";
+      });
+
+      // --- Settings modal ---
+      const SETTINGS_KEY = "heygen_prompt_settings";
+
+      function loadSettings() {
+        try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { return {}; }
+      }
+      function saveSettings(data) {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+      }
+
+      const modalBackdrop = document.getElementById("modalBackdrop");
+      const settingsVideoPrompt = document.getElementById("settingsVideoPrompt");
+      const settingsMotionPrompt = document.getElementById("settingsMotionPrompt");
+      const savedIndicator = document.getElementById("savedIndicator");
+
+      document.getElementById("settingsBtn").addEventListener("click", () => {
+        const s = loadSettings();
+        settingsVideoPrompt.value = s.video_prompt || "";
+        settingsMotionPrompt.value = s.motion_prompt || "";
+        modalBackdrop.classList.add("open");
+      });
+
+      function closeModal() { modalBackdrop.classList.remove("open"); }
+
+      document.getElementById("cancelBtn").addEventListener("click", closeModal);
+      modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeModal(); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+
+      document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+        saveSettings({
+          video_prompt: settingsVideoPrompt.value.trim(),
+          motion_prompt: settingsMotionPrompt.value.trim(),
+        });
+        savedIndicator.classList.add("show");
+        setTimeout(() => savedIndicator.classList.remove("show"), 1500);
+      });
+
+      // --- Form submission ---
       const form = document.getElementById("form");
       const statusBox = document.getElementById("status");
       const submitBtn = document.getElementById("submitBtn");
       let pollTimer = null;
-
-      const talkingPhotoSel = document.getElementById("talkingPhotoSel");
-      const imageInput = document.getElementById("imageInput");
-      const tpHint = document.getElementById("tpHint");
-
-      function syncImageRequired() {
-        const usingExisting = !!talkingPhotoSel.value;
-        imageInput.required = !usingExisting;
-        imageInput.disabled = usingExisting;
-      }
-      talkingPhotoSel.addEventListener("change", syncImageRequired);
-
-      (async function loadTalkingPhotos() {
-        try {
-          const res = await fetch("/video/heygen/talking-photos");
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const { items } = await res.json();
-          if (!items || items.length === 0) {
-            tpHint.textContent = "No existing photo avatars on your account. Upload a new image below.";
-          } else {
-            for (const it of items) {
-              const opt = document.createElement("option");
-              opt.value = it.talking_photo_id;
-              const label = it.name || it.talking_photo_id.slice(0, 8);
-              opt.textContent = `${label} (${it.talking_photo_id.slice(0,8)}…)`;
-              talkingPhotoSel.appendChild(opt);
-            }
-            tpHint.textContent = `${items.length}/3 photo avatars on your account. Pick one to skip upload.`;
-          }
-        } catch (e) {
-          tpHint.textContent = `Could not load talking photos: ${e.message}`;
-        }
-        syncImageRequired();
-      })();
 
       function render(state) {
         statusBox.classList.remove("hidden");
@@ -177,11 +303,9 @@
         const summary = state.summary || {};
         const localUrl = state.video_local_url;
         const remoteUrl = summary.video_url;
-        const player = localUrl
-          ? `<video src="${localUrl}" controls></video>`
-          : "";
+        const player = localUrl ? `<video src="${localUrl}" controls></video>` : "";
         const links = [
-          localUrl ? `<a href="${localUrl}" download>local mp4</a>` : "",
+          localUrl ? `<a href="${localUrl}" download>download mp4</a>` : "",
           remoteUrl ? `<a href="${remoteUrl}" target="_blank">heygen url (7d)</a>` : "",
         ].filter(Boolean).join(" · ");
 
@@ -189,7 +313,7 @@
           <div><span class="badge ${cls}">${s}</span> ${state.stage_message || ""}</div>
           <div style="margin-top:8px;color:#8b94a7;">job: <code>${state.job_id}</code></div>
           ${state.error ? `<div style="color:#ff8b8b;margin-top:8px;">${state.error}</div>` : ""}
-          ${links ? `<div style="margin-top:8px;">${links}</div>` : ""}
+          ${links ? `<div style="margin-top:10px;">${links}</div>` : ""}
           ${player}
           <pre>${JSON.stringify(summary, null, 2)}</pre>
         `;
@@ -215,7 +339,12 @@
         submitBtn.disabled = true;
         statusBox.classList.remove("hidden");
         statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
+
         const fd = new FormData(form);
+        const s = loadSettings();
+        if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
+        if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
+
         try {
           const res = await fetch("/video/heygen", { method: "POST", body: fd });
           if (!res.ok) {
