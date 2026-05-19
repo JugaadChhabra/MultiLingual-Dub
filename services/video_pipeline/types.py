@@ -29,6 +29,7 @@ class VideoJobSummary(BaseModel):
     heygen_video_id: str | None = None
     video_url: str | None = None
     video_path: str | None = None
+    nas_path: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     duration_ms: int | None = None
@@ -36,7 +37,7 @@ class VideoJobSummary(BaseModel):
 
 class VideoJobState(BaseModel):
     job_id: str
-    status: str = Field(pattern="^(queued|tts|uploading|generating|polling|downloading|completed|failed)$")
+    status: str = Field(pattern="^(queued|tts|uploading|generating|polling|downloading|nas_upload|completed|failed)$")
     stage_message: str = ""
     summary: VideoJobSummary = Field(default_factory=VideoJobSummary)
     error: str | None = None

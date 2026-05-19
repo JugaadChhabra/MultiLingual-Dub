@@ -27,6 +27,10 @@ from batch.service import run_excel_batch_job
 from services.elevenlabs import ElevenLabsTTSConfig, get_elevenlabs_api_key, synthesize_speech_bytes
 from batch.store import JobsStore
 from services.video_pipeline import VideoJobSpec, VideoJobsStore, run_video_job
+from services.nas import NasService, get_nas_config
+from services.video_pipeline.batch_excel import BatchExcelError, read_heygen_batch_rows
+from services.video_pipeline.batch_runner import run_video_batch_job
+from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.heygen_client import get_heygen_api_key, list_talking_photos
 from services.stt import transcribe_audio
 from services.tts import text_to_speech
@@ -52,6 +56,10 @@ install_log_handler()
 async def lifespan(app: FastAPI):
     _, s3_error = validate_s3_env()
     app.state.s3_config_error = s3_error
+    try:
+        NasService(get_nas_config()).ensure_base_folders()
+    except Exception as exc:
+        logging.warning("NAS base folder init failed (non-fatal): %s", exc)
     yield
 
 
@@ -68,6 +76,7 @@ if STATIC_DIR.is_dir():
 
 jobs_store = JobsStore()
 video_jobs_store = VideoJobsStore()
+video_batch_jobs_store = VideoBatchJobsStore()
 session_config_store = SessionConfigStore()
 
 VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
@@ -194,6 +203,73 @@ async def get_heygen_video_job(job_id: str):
         rel = to_output_url(state.summary.video_path, OUTPUT_DIR)
         payload["video_local_url"] = rel
     return payload
+
+
+@app.post("/video/heygen/batch", status_code=202)
+async def create_heygen_batch_job(
+    request: Request,
+    image: UploadFile = File(...),
+    excel: UploadFile = File(...),
+    video_prompt: str | None = Form(default=None),
+    motion_prompt: str | None = Form(default=None),
+):
+    runtime_config = await _runtime_config_for_request(request)
+
+    ensure_file_extension(excel.filename, ".xlsx", "Only .xlsx files are allowed")
+    if not (image and image.filename):
+        raise HTTPException(status_code=400, detail="image file is required")
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="image upload was empty")
+
+    excel_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    excel_path = Path(excel_tmp.name)
+    excel_tmp.close()
+    await save_upload_file(excel, excel_path)
+
+    try:
+        rows = await asyncio.to_thread(read_heygen_batch_rows, excel_path)
+    except BatchExcelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        excel_path.unlink(missing_ok=True)
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="Excel has no non-empty script rows")
+
+    batch_id = uuid.uuid4().hex
+    batch_rows = [
+        BatchRowState(row_index=r.row_index, script=r.script, video_title=r.video_title)
+        for r in rows
+    ]
+    await video_batch_jobs_store.create(batch_id, batch_rows)
+
+    asyncio.create_task(
+        run_video_batch_job(
+            batch_id=batch_id,
+            rows=rows,
+            image_bytes=image_bytes,
+            image_filename=image.filename,
+            video_prompt=video_prompt or None,
+            motion_prompt=motion_prompt or None,
+            output_dir=VIDEO_OUTPUT_DIR,
+            output_base_dir=OUTPUT_DIR,
+            batch_store=video_batch_jobs_store,
+            video_jobs_store=video_jobs_store,
+            runtime_config=runtime_config,
+        )
+    )
+
+    return {"batch_id": batch_id, "status": "queued", "total": len(rows)}
+
+
+@app.get("/video/heygen/batch/{batch_id}")
+async def get_heygen_batch_job(batch_id: str):
+    state = await video_batch_jobs_store.get(batch_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Batch job not found")
+    return state.model_dump(mode="json")
 
 
 @app.get("/health")

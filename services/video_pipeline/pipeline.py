@@ -22,6 +22,7 @@ from services.video_pipeline.heygen_client import (
     upload_asset,
     upload_talking_photo,
 )
+from services.nas import NasService, get_nas_config
 from services.video_pipeline.store import VideoJobsStore
 from services.video_pipeline.types import VideoJobSpec
 
@@ -267,6 +268,15 @@ async def run_video_job(
             video_url=video_url,
             video_path=str(video_path),
         )
+
+        # 6. Upload to NAS
+        await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
+        nas_config = get_nas_config(runtime_config=runtime_config)
+        nas = NasService(nas_config)
+        nas_path = await asyncio.to_thread(
+            nas.upload_video, job_id, spec.video_title, str(video_path)
+        )
+        await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
         await jobs_store.complete(job_id)
     except Exception as exc:

@@ -21,7 +21,7 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        margin-bottom: 28px;
+        margin-bottom: 20px;
       }
       .header-left h1 { font-size: 20px; margin: 0 0 4px; }
       .header-left p { color: #8b94a7; font-size: 13px; margin: 0; }
@@ -38,6 +38,32 @@
         margin-top: 2px;
       }
       .settings-btn:hover { background: #1f2535; color: #e6e8ee; }
+
+      /* Mode toggle */
+      .mode-toggle {
+        display: flex;
+        background: #161a23;
+        border: 1px solid #262b38;
+        border-radius: 8px;
+        padding: 3px;
+        margin-bottom: 20px;
+        width: fit-content;
+      }
+      .mode-btn {
+        background: none;
+        border: none;
+        color: #8b94a7;
+        padding: 6px 18px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .mode-btn.active {
+        background: #4f7cff;
+        color: #fff;
+      }
 
       form { display: grid; gap: 16px; }
       label { display: grid; gap: 6px; font-size: 13px; color: #b6bdcc; }
@@ -84,6 +110,7 @@
       }
       .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+      /* Status boxes */
       .status {
         margin-top: 24px;
         padding: 14px 16px;
@@ -94,6 +121,7 @@
         line-height: 1.6;
       }
       .status.hidden { display: none; }
+
       .badge {
         display: inline-block;
         padding: 2px 8px;
@@ -105,7 +133,9 @@
         color: #8da2ff;
       }
       .badge.completed { background: #1d3a25; color: #6cd594; }
-      .badge.failed { background: #3a1d1d; color: #ff8b8b; }
+      .badge.partial   { background: #3a2d1d; color: #ffb347; }
+      .badge.failed    { background: #3a1d1d; color: #ff8b8b; }
+
       pre {
         margin: 8px 0 0;
         background: #0a0c11;
@@ -117,6 +147,28 @@
       }
       video { width: 100%; margin-top: 14px; border-radius: 10px; background: black; }
       a { color: #8da2ff; }
+
+      /* Batch rows table */
+      .batch-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+        font-size: 12px;
+      }
+      .batch-table th {
+        text-align: left;
+        color: #8b94a7;
+        font-weight: 500;
+        padding: 4px 8px 6px;
+        border-bottom: 1px solid #232936;
+      }
+      .batch-table td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #1a1f2c;
+        vertical-align: middle;
+      }
+      .batch-table tr:last-child td { border-bottom: none; }
+      .batch-table .title-cell { color: #c8d0df; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
       /* Settings modal */
       .modal-backdrop {
@@ -184,7 +236,14 @@
         <button class="settings-btn" id="settingsBtn">⚙ Prompts</button>
       </div>
 
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeSingle" type="button">Single</button>
+        <button class="mode-btn" id="modeBatch" type="button">Batch</button>
+      </div>
+
       <form id="form">
+        <!-- Shared: image upload -->
         <label>
           Reference image
           <div class="upload-area" id="uploadArea">
@@ -195,15 +254,28 @@
           <span class="hint">PNG, JPEG, or WebP. Crop to your target orientation first. Oldest avatar auto-removed if at the 3-photo cap.</span>
         </label>
 
-        <label>
+        <!-- Single mode: script -->
+        <label id="scriptLabel">
           Script
-          <textarea name="script" rows="5" required placeholder="Type the line the avatar should speak…"></textarea>
+          <textarea name="script" id="scriptInput" rows="5" required placeholder="Type the line the avatar should speak…"></textarea>
+        </label>
+
+        <!-- Batch mode: Excel upload -->
+        <label id="excelLabel" style="display:none;">
+          Scripts Excel
+          <div class="upload-area" id="excelUploadArea">
+            <input type="file" name="excel" id="excelInput" accept=".xlsx" />
+            <div class="upload-label"><strong>Choose .xlsx file</strong> or drag here</div>
+            <div class="file-name" id="excelFileName"></div>
+          </div>
+          <span class="hint">Required columns: <code>script</code>, <code>video_title</code> (optional). One row per video.</span>
         </label>
 
         <button type="submit" class="generate-btn" id="submitBtn">Generate video</button>
       </form>
 
       <div id="status" class="status hidden"></div>
+      <div id="batchStatus" class="status hidden"></div>
     </div>
 
     <!-- Settings modal -->
@@ -229,7 +301,36 @@
     </div>
 
     <script>
-      // --- Upload area ---
+      // --- Mode toggle ---
+      let isBatch = false;
+      const modeSingleBtn = document.getElementById("modeSingle");
+      const modeBatchBtn = document.getElementById("modeBatch");
+      const scriptLabel = document.getElementById("scriptLabel");
+      const scriptInput = document.getElementById("scriptInput");
+      const excelLabel = document.getElementById("excelLabel");
+      const excelInput = document.getElementById("excelInput");
+      const submitBtn = document.getElementById("submitBtn");
+      const statusBox = document.getElementById("status");
+      const batchStatusBox = document.getElementById("batchStatus");
+
+      function setMode(batch) {
+        isBatch = batch;
+        modeSingleBtn.classList.toggle("active", !batch);
+        modeBatchBtn.classList.toggle("active", batch);
+        scriptLabel.style.display = batch ? "none" : "";
+        excelLabel.style.display = batch ? "" : "none";
+        scriptInput.required = !batch;
+        excelInput.required = batch;
+        submitBtn.textContent = batch ? "Generate batch" : "Generate video";
+        statusBox.classList.add("hidden");
+        batchStatusBox.classList.add("hidden");
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      }
+
+      modeSingleBtn.addEventListener("click", () => setMode(false));
+      modeBatchBtn.addEventListener("click", () => setMode(true));
+
+      // --- Image upload area ---
       const uploadArea = document.getElementById("uploadArea");
       const imageInput = document.getElementById("imageInput");
       const fileName = document.getElementById("fileName");
@@ -252,11 +353,33 @@
         fileName.textContent = imageInput.files[0] ? imageInput.files[0].name : "";
       });
 
-      // --- Settings modal ---
+      // --- Excel upload area ---
+      const excelUploadArea = document.getElementById("excelUploadArea");
+      const excelFileName = document.getElementById("excelFileName");
+
+      excelUploadArea.addEventListener("click", (e) => { if (e.target !== excelInput) excelInput.click(); });
+      excelUploadArea.addEventListener("dragover", (e) => { e.preventDefault(); excelUploadArea.classList.add("dragover"); });
+      excelUploadArea.addEventListener("dragleave", () => excelUploadArea.classList.remove("dragover"));
+      excelUploadArea.addEventListener("drop", (e) => {
+        e.preventDefault();
+        excelUploadArea.classList.remove("dragover");
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          excelInput.files = dt.files;
+          excelFileName.textContent = file.name;
+        }
+      });
+      excelInput.addEventListener("change", () => {
+        excelFileName.textContent = excelInput.files[0] ? excelInput.files[0].name : "";
+      });
+
+      // --- Settings ---
       const SETTINGS_KEY = "heygen_prompt_settings";
       const DEFAULT_SETTINGS = {
-        video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
-        motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
+        video_prompt: "calm, slight head movement, soft natural expression, devotional mood",
+        motion_prompt: "",
       };
 
       function loadSettings() {
@@ -286,7 +409,6 @@
       });
 
       function closeModal() { modalBackdrop.classList.remove("open"); }
-
       document.getElementById("cancelBtn").addEventListener("click", closeModal);
       modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeModal(); });
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
@@ -300,13 +422,10 @@
         setTimeout(() => savedIndicator.classList.remove("show"), 1500);
       });
 
-      // --- Form submission ---
-      const form = document.getElementById("form");
-      const statusBox = document.getElementById("status");
-      const submitBtn = document.getElementById("submitBtn");
+      // --- Single mode poll & render ---
       let pollTimer = null;
 
-      function render(state) {
+      function renderSingle(state) {
         statusBox.classList.remove("hidden");
         const s = state.status || "queued";
         const cls = s === "completed" ? "completed" : s === "failed" ? "failed" : "";
@@ -329,14 +448,15 @@
         `;
       }
 
-      async function poll(jobId) {
+      async function pollSingle(jobId) {
         try {
           const res = await fetch(`/video/heygen/${jobId}`);
           if (!res.ok) throw new Error(`status ${res.status}`);
           const state = await res.json();
-          render(state);
+          renderSingle(state);
           if (state.status === "completed" || state.status === "failed") {
             clearInterval(pollTimer);
+            pollTimer = null;
             submitBtn.disabled = false;
           }
         } catch (e) {
@@ -344,30 +464,120 @@
         }
       }
 
+      // --- Batch mode poll & render ---
+      const BATCH_STATUS_LABELS = { queued: "", running: "running", completed: "completed", partial: "partial", failed: "failed" };
+
+      function badgeCls(s) {
+        if (s === "completed") return "completed";
+        if (s === "failed") return "failed";
+        if (s === "partial") return "partial";
+        return "";
+      }
+
+      function renderBatch(state) {
+        batchStatusBox.classList.remove("hidden");
+        const overall = state.status || "queued";
+        const rowsHtml = (state.rows || []).map(row => {
+          const s = row.status || "pending";
+          const link = row.video_local_url
+            ? `<a href="${row.video_local_url}" download>download</a>`
+            : row.error ? `<span style="color:#ff8b8b;font-size:11px;">${row.error}</span>` : "—";
+          return `<tr>
+            <td style="color:#8b94a7;">${row.row_index}</td>
+            <td class="title-cell">${row.video_title}</td>
+            <td><span class="badge ${badgeCls(s)}">${s}</span></td>
+            <td>${link}</td>
+          </tr>`;
+        }).join("");
+
+        batchStatusBox.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div><span class="badge ${badgeCls(overall)}">${overall}</span> ${state.done}/${state.total} complete${state.failed_count ? ` · ${state.failed_count} failed` : ""}</div>
+            <div style="color:#8b94a7;font-size:11px;">batch: <code>${state.batch_id}</code></div>
+          </div>
+          ${rowsHtml ? `<table class="batch-table" style="margin-top:12px;">
+            <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Download</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>` : ""}
+        `;
+      }
+
+      async function pollBatch(batchId) {
+        try {
+          const res = await fetch(`/video/heygen/batch/${batchId}`);
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const state = await res.json();
+          renderBatch(state);
+          const done = ["completed", "partial", "failed"].includes(state.status);
+          if (done) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+            submitBtn.disabled = false;
+          }
+        } catch (e) {
+          batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">Polling error: ${e.message}</div>`;
+        }
+      }
+
+      // --- Form submit ---
+      const form = document.getElementById("form");
+
       form.addEventListener("submit", async (ev) => {
         ev.preventDefault();
         submitBtn.disabled = true;
-        statusBox.classList.remove("hidden");
-        statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
-        const fd = new FormData(form);
         const s = getEffectiveSettings();
-        if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
-        if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
 
-        try {
-          const res = await fetch("/video/heygen", { method: "POST", body: fd });
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || `HTTP ${res.status}`);
+        if (!isBatch) {
+          // Single mode
+          statusBox.classList.remove("hidden");
+          statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
+          batchStatusBox.classList.add("hidden");
+
+          const fd = new FormData(form);
+          if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
+          if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
+
+          try {
+            const res = await fetch("/video/heygen", { method: "POST", body: fd });
+            if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`); }
+            const data = await res.json();
+            pollTimer = setInterval(() => pollSingle(data.job_id), 4000);
+            pollSingle(data.job_id);
+          } catch (e) {
+            submitBtn.disabled = false;
+            statusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
           }
-          const data = await res.json();
-          if (pollTimer) clearInterval(pollTimer);
-          pollTimer = setInterval(() => poll(data.job_id), 4000);
-          poll(data.job_id);
-        } catch (e) {
-          submitBtn.disabled = false;
-          statusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
+
+        } else {
+          // Batch mode
+          batchStatusBox.classList.remove("hidden");
+          batchStatusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
+          statusBox.classList.add("hidden");
+
+          if (!excelInput.files[0]) {
+            batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">Please select an Excel file.</div>`;
+            submitBtn.disabled = false;
+            return;
+          }
+
+          const fd = new FormData();
+          fd.append("image", imageInput.files[0]);
+          fd.append("excel", excelInput.files[0]);
+          if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
+          if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
+
+          try {
+            const res = await fetch("/video/heygen/batch", { method: "POST", body: fd });
+            if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`); }
+            const data = await res.json();
+            pollTimer = setInterval(() => pollBatch(data.batch_id), 4000);
+            pollBatch(data.batch_id);
+          } catch (e) {
+            submitBtn.disabled = false;
+            batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
+          }
         }
       });
     </script>
