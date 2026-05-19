@@ -234,7 +234,7 @@
       const imageInput = document.getElementById("imageInput");
       const fileName = document.getElementById("fileName");
 
-      uploadArea.addEventListener("click", () => imageInput.click());
+      uploadArea.addEventListener("click", (e) => { if (e.target !== imageInput) imageInput.click(); });
       uploadArea.addEventListener("dragover", (e) => { e.preventDefault(); uploadArea.classList.add("dragover"); });
       uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
       uploadArea.addEventListener("drop", (e) => {
@@ -254,12 +254,23 @@
 
       // --- Settings modal ---
       const SETTINGS_KEY = "heygen_prompt_settings";
+      const DEFAULT_SETTINGS = {
+        video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
+        motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
+      };
 
       function loadSettings() {
         try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { return {}; }
       }
       function saveSettings(data) {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+      }
+      function getEffectiveSettings() {
+        const saved = loadSettings();
+        return {
+          video_prompt: saved.video_prompt ?? DEFAULT_SETTINGS.video_prompt,
+          motion_prompt: saved.motion_prompt ?? DEFAULT_SETTINGS.motion_prompt,
+        };
       }
 
       const modalBackdrop = document.getElementById("modalBackdrop");
@@ -268,9 +279,9 @@
       const savedIndicator = document.getElementById("savedIndicator");
 
       document.getElementById("settingsBtn").addEventListener("click", () => {
-        const s = loadSettings();
-        settingsVideoPrompt.value = s.video_prompt || "";
-        settingsMotionPrompt.value = s.motion_prompt || "";
+        const s = getEffectiveSettings();
+        settingsVideoPrompt.value = s.video_prompt;
+        settingsMotionPrompt.value = s.motion_prompt;
         modalBackdrop.classList.add("open");
       });
 
@@ -340,7 +351,7 @@
         statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
 
         const fd = new FormData(form);
-        const s = loadSettings();
+        const s = getEffectiveSettings();
         if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
         if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
 
