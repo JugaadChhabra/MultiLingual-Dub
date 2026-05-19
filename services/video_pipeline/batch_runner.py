@@ -45,6 +45,7 @@ async def run_video_batch_job(
     image_filename: str,
     video_prompt: str | None,
     motion_prompt: str | None,
+    publish_date: str | None,
     output_dir: Path,
     output_base_dir: Path,
     batch_store: VideoBatchJobsStore,
@@ -64,6 +65,7 @@ async def run_video_batch_job(
             video_title=row.video_title,
             video_prompt=video_prompt or None,
             motion_prompt=motion_prompt or None,
+            publish_date=publish_date or None,
         )
 
         try:

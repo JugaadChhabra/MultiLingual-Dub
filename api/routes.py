@@ -212,6 +212,7 @@ async def create_heygen_batch_job(
     excel: UploadFile = File(...),
     video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
+    publish_date: str | None = Form(default=None),
 ):
     runtime_config = await _runtime_config_for_request(request)
 
@@ -253,6 +254,7 @@ async def create_heygen_batch_job(
             image_filename=image.filename,
             video_prompt=video_prompt or None,
             motion_prompt=motion_prompt or None,
+            publish_date=publish_date or None,
             output_dir=VIDEO_OUTPUT_DIR,
             output_base_dir=OUTPUT_DIR,
             batch_store=video_batch_jobs_store,

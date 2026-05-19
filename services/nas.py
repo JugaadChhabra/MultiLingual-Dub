@@ -13,9 +13,6 @@ try:
 except Exception:
     smbclient = None
 
-VIDEOS_ROOT = "videos"
-
-
 @dataclass(frozen=True)
 class NasConfig:
     mode: str
@@ -48,6 +45,15 @@ def get_nas_config(runtime_config: RuntimeConfig | None = None) -> NasConfig:
         domain=get_config_value("NAS_DOMAIN", runtime_config=runtime_config),
         port=port,
     )
+
+
+def _normalise_date_folder(date_str: str) -> str:
+    """Accept YYYY-MM-DD (HTML date input) or DD-MM-YYYY, always return DD-MM-YYYY."""
+    parts = date_str.strip().split("-")
+    if len(parts) == 3 and len(parts[0]) == 4:
+        # YYYY-MM-DD → DD-MM-YYYY
+        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    return date_str  # already DD-MM-YYYY or unrecognised — pass through
 
 
 class NasService:
@@ -141,18 +147,23 @@ class NasService:
     # ------------------------------------------------------------------
 
     def ensure_base_folders(self) -> None:
-        self.makedirs(VIDEOS_ROOT)
+        """Verify connectivity — the root share folder is assumed to already exist."""
+        if self.config.mode == "local":
+            self.local_root.mkdir(parents=True, exist_ok=True)
 
-    def build_video_path(self, job_id: str, video_title: str) -> str:
+    def build_video_path(self, publish_date: str, video_title: str) -> str:
+        """Return relative path: DD-MM-YYYY/title.mp4"""
+        # Normalise date: accept YYYY-MM-DD (HTML date input) or DD-MM-YYYY
+        date_folder = _normalise_date_folder(publish_date)
         safe_title = video_title.replace("/", "_").replace("\\", "_")
         if not safe_title.lower().endswith(".mp4"):
             safe_title = f"{safe_title}.mp4"
-        return str(PurePosixPath(VIDEOS_ROOT, job_id, safe_title))
+        return str(PurePosixPath(date_folder, safe_title))
 
-    def upload_video(self, job_id: str, video_title: str, local_path: str) -> str:
+    def upload_video(self, publish_date: str, video_title: str, local_path: str) -> str:
         """Read local .mp4 and write to NAS. Returns the relative NAS path."""
         content = Path(local_path).read_bytes()
-        nas_path = self.build_video_path(job_id, video_title)
+        nas_path = self.build_video_path(publish_date, video_title)
         self.write_file(nas_path, content)
         logger.info("NAS upload OK: %s → %s (mode=%s)", local_path, nas_path, self.config.mode)
         return nas_path

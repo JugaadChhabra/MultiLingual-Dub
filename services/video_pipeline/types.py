@@ -19,6 +19,7 @@ class VideoJobSpec(BaseModel):
     width: int | None = None
     height: int | None = None
     video_title: str = "HeyGen Avatar IV Job"
+    publish_date: str | None = None
 
 
 class VideoJobSummary(BaseModel):

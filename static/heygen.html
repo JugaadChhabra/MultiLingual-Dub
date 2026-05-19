@@ -260,7 +260,13 @@
           <textarea name="script" id="scriptInput" rows="5" required placeholder="Type the line the avatar should speak…"></textarea>
         </label>
 
-        <!-- Batch mode: Excel upload -->
+        <!-- Batch mode: date + Excel upload -->
+        <label id="publishDateLabel" style="display:none;">
+          Publish date
+          <input type="date" id="publishDateInput" />
+          <span class="hint">Videos will be saved in a folder named DD-MM-YYYY on the NAS.</span>
+        </label>
+
         <label id="excelLabel" style="display:none;">
           Scripts Excel
           <div class="upload-area" id="excelUploadArea">
@@ -307,20 +313,27 @@
       const modeBatchBtn = document.getElementById("modeBatch");
       const scriptLabel = document.getElementById("scriptLabel");
       const scriptInput = document.getElementById("scriptInput");
+      const publishDateLabel = document.getElementById("publishDateLabel");
+      const publishDateInput = document.getElementById("publishDateInput");
       const excelLabel = document.getElementById("excelLabel");
       const excelInput = document.getElementById("excelInput");
       const submitBtn = document.getElementById("submitBtn");
       const statusBox = document.getElementById("status");
       const batchStatusBox = document.getElementById("batchStatus");
 
+      // Default date picker to today
+      publishDateInput.value = new Date().toISOString().slice(0, 10);
+
       function setMode(batch) {
         isBatch = batch;
         modeSingleBtn.classList.toggle("active", !batch);
         modeBatchBtn.classList.toggle("active", batch);
         scriptLabel.style.display = batch ? "none" : "";
+        publishDateLabel.style.display = batch ? "" : "none";
         excelLabel.style.display = batch ? "" : "none";
         scriptInput.required = !batch;
         excelInput.required = batch;
+        publishDateInput.required = batch;
         submitBtn.textContent = batch ? "Generate batch" : "Generate video";
         statusBox.classList.add("hidden");
         batchStatusBox.classList.add("hidden");
@@ -565,6 +578,7 @@
           const fd = new FormData();
           fd.append("image", imageInput.files[0]);
           fd.append("excel", excelInput.files[0]);
+          if (publishDateInput.value) fd.append("publish_date", publishDateInput.value);
           if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
           if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
 

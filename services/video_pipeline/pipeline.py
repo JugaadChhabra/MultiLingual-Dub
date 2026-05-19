@@ -273,8 +273,10 @@ async def run_video_job(
         await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
         nas_config = get_nas_config(runtime_config=runtime_config)
         nas = NasService(nas_config)
+        from datetime import date as _date
+        publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
         nas_path = await asyncio.to_thread(
-            nas.upload_video, job_id, spec.video_title, str(video_path)
+            nas.upload_video, publish_date, spec.video_title, str(video_path)
         )
         await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
