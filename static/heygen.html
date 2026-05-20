@@ -236,15 +236,21 @@
         <button class="settings-btn" id="settingsBtn">⚙ Prompts</button>
       </div>
 
-      <!-- Mode toggle -->
-      <div class="mode-toggle">
-        <button class="mode-btn active" id="modeSingle" type="button">Single</button>
-        <button class="mode-btn" id="modeBatch" type="button">Batch</button>
+      <!-- Toggles row -->
+      <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+        <div class="mode-toggle" style="margin-bottom:0;">
+          <button class="mode-btn active" id="modeSingle" type="button">Single</button>
+          <button class="mode-btn" id="modeBatch" type="button">Batch</button>
+        </div>
+        <div class="mode-toggle" style="margin-bottom:0;">
+          <button class="mode-btn active" id="contentSunsign" type="button">राशिफल</button>
+          <button class="mode-btn" id="contentSatsang" type="button">Satsang</button>
+        </div>
       </div>
 
       <form id="form">
         <!-- Shared: image upload -->
-        <label>
+        <div style="display:grid;gap:6px;font-size:13px;color:#b6bdcc;">
           Reference image
           <div class="upload-area" id="uploadArea">
             <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/webp" required />
@@ -252,7 +258,7 @@
             <div class="file-name" id="fileName"></div>
           </div>
           <span class="hint">PNG, JPEG, or WebP. Crop to your target orientation first. Oldest avatar auto-removed if at the 3-photo cap.</span>
-        </label>
+        </div>
 
         <!-- Single mode: script -->
         <label id="scriptLabel">
@@ -267,7 +273,7 @@
           <span class="hint">Videos will be saved in a folder named DD-MM-YYYY on the NAS.</span>
         </label>
 
-        <label id="excelLabel" style="display:none;">
+        <div id="excelLabel" style="display:none;gap:6px;font-size:13px;color:#b6bdcc;">
           Scripts Excel
           <div class="upload-area" id="excelUploadArea">
             <input type="file" name="excel" id="excelInput" accept=".xlsx" />
@@ -275,7 +281,7 @@
             <div class="file-name" id="excelFileName"></div>
           </div>
           <span class="hint">Required columns: <code>script</code>, <code>video_title</code> (optional). One row per video.</span>
-        </label>
+        </div>
 
         <button type="submit" class="generate-btn" id="submitBtn">Generate video</button>
       </form>
@@ -287,7 +293,7 @@
     <!-- Settings modal -->
     <div class="modal-backdrop" id="modalBackdrop">
       <div class="modal" id="modal">
-        <h2>Prompt Settings</h2>
+        <h2 id="modalTitle">Prompt Settings</h2>
         <div class="modal-fields">
           <label>
             Video prompt <span class="hint">(how the video should look / feel)</span>
@@ -329,8 +335,8 @@
         modeSingleBtn.classList.toggle("active", !batch);
         modeBatchBtn.classList.toggle("active", batch);
         scriptLabel.style.display = batch ? "none" : "";
-        publishDateLabel.style.display = batch ? "" : "none";
-        excelLabel.style.display = batch ? "" : "none";
+        publishDateLabel.style.display = batch ? "grid" : "none";
+        excelLabel.style.display = batch ? "grid" : "none";
         scriptInput.required = !batch;
         excelInput.required = batch;
         publishDateInput.required = batch;
@@ -388,24 +394,40 @@
         excelFileName.textContent = excelInput.files[0] ? excelInput.files[0].name : "";
       });
 
-      // --- Settings ---
-      const SETTINGS_KEY = "heygen_prompt_settings";
+      // --- Content type toggle ---
+      let contentType = "sunsign";
       const DEFAULT_SETTINGS = {
-        video_prompt: "The character is delivering a profound spiritual discourse to a live gathering (Satsang), speaking with a calm, soothing, and divine resonance. Visuals: Soft cinematic lighting with a warm, divine glow on the face, suggesting an ambient, peaceful gathering space. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts, reflecting deep wisdom. Expressions: A serene, compassionate, and divine smile with micro-expressions of empathy and enlightenment. Eyes: Soft, warm eye contact that occasionally sweeps slowly to the left and right, simulating a deep connection with a live, seated audience, along with natural blinking to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi/Hinglish lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a life-like presence. Incorporate slow, slightly expansive, welcoming open-palm hand gestures to engage a crowd and convey peace, avoiding stiffness.",
-        motion_prompt: "A serene spiritual guide addressing a public gathering or followers. Movement style: Graceful, slow, and highly engaging yet deeply peaceful. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom and empathy. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes: Should remain warm, utilizing a 'smiling eyes' (Duchenne smile) effect. The gaze should slowly pan occasionally to acknowledge a wider audience around the room before returning center. Mouth: Movements must be highly articulated for Hindi/Hinglish phonemes, showing realistic jaw tension and natural teeth visibility. Hands: Should move in fluid, non-repetitive, welcoming 'open-palm' gestures that are slightly more expansive to address a crowd, while remaining dignified and calm. The overall presence should project an aura of divine authority, approachability, and deep tranquility.",
+        sunsign: {
+          video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
+          motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
+        },
+        satsang: {
+          video_prompt: "The character is delivering a profound spiritual discourse to a live gathering (Satsang), speaking with a calm, soothing, and divine resonance. Visuals: Soft cinematic lighting with a warm, divine glow on the face, suggesting an ambient, peaceful gathering space. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts, reflecting deep wisdom. Expressions: A serene, compassionate, and divine smile with micro-expressions of empathy and enlightenment. Eyes: Soft, warm eye contact that occasionally sweeps slowly to the left and right, simulating a deep connection with a live, seated audience, along with natural blinking to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi/Hinglish lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a life-like presence. Incorporate slow, slightly expansive, welcoming open-palm hand gestures to engage a crowd and convey peace, avoiding stiffness.",
+          motion_prompt: "A serene spiritual guide addressing a public gathering or followers. Movement style: Graceful, slow, and highly engaging yet deeply peaceful. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom and empathy. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes: Should remain warm, utilizing a 'smiling eyes' (Duchenne smile) effect. The gaze should slowly pan occasionally to acknowledge a wider audience around the room before returning center. Mouth: Movements must be highly articulated for Hindi/Hinglish phonemes, showing realistic jaw tension and natural teeth visibility. Hands: Should move in fluid, non-repetitive, welcoming 'open-palm' gestures that are slightly more expansive to address a crowd, while remaining dignified and calm. The overall presence should project an aura of divine authority, approachability, and deep tranquility.",
+        },
       };
 
+      document.getElementById("contentSunsign").addEventListener("click", () => setContentType("sunsign"));
+      document.getElementById("contentSatsang").addEventListener("click", () => setContentType("satsang"));
+
+      function setContentType(type) {
+        contentType = type;
+        document.getElementById("contentSunsign").classList.toggle("active", type === "sunsign");
+        document.getElementById("contentSatsang").classList.toggle("active", type === "satsang");
+      }
+
+      // --- Settings (per content type) ---
+      function settingsKey() { return `heygen_prompt_settings_${contentType}`; }
       function loadSettings() {
-        try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { return {}; }
+        try { return JSON.parse(localStorage.getItem(settingsKey())) || {}; } catch { return {}; }
       }
-      function saveSettings(data) {
-        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
-      }
+      function saveSettings(data) { localStorage.setItem(settingsKey(), JSON.stringify(data)); }
       function getEffectiveSettings() {
         const saved = loadSettings();
+        const defaults = DEFAULT_SETTINGS[contentType];
         return {
-          video_prompt: saved.video_prompt ?? DEFAULT_SETTINGS.video_prompt,
-          motion_prompt: saved.motion_prompt ?? DEFAULT_SETTINGS.motion_prompt,
+          video_prompt: saved.video_prompt ?? defaults.video_prompt,
+          motion_prompt: saved.motion_prompt ?? defaults.motion_prompt,
         };
       }
 
@@ -413,8 +435,10 @@
       const settingsVideoPrompt = document.getElementById("settingsVideoPrompt");
       const settingsMotionPrompt = document.getElementById("settingsMotionPrompt");
       const savedIndicator = document.getElementById("savedIndicator");
+      const modalTitle = document.getElementById("modalTitle");
 
       document.getElementById("settingsBtn").addEventListener("click", () => {
+        modalTitle.textContent = `Prompt Settings — ${contentType === "sunsign" ? "राशिफल" : "Satsang"}`;
         const s = getEffectiveSettings();
         settingsVideoPrompt.value = s.video_prompt;
         settingsMotionPrompt.value = s.motion_prompt;
