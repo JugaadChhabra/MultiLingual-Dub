@@ -386,6 +386,7 @@ async def create_excel_job(
             jobs_store=jobs_store,
             runtime_config=runtime_config,
             teaching_mode=teaching_mode,
+            output_dir=OUTPUT_DIR,
         )
     )
 

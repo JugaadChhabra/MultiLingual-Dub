@@ -1,4 +1,5 @@
 import asyncio
+import zipfile
 
 from batch.models import ExcelRow, JobSummary
 from batch.naming import _build_s3_key
@@ -13,6 +14,7 @@ def _identity_qc_batch(
     *,
     metadata=None,
     runtime_config=None,
+    teaching_mode=False,
 ) -> dict[str, str]:
     return dict(translations)
 
@@ -681,3 +683,109 @@ def test_run_excel_batch_job_requires_english_voice_for_english_targets(monkeypa
     assert state is not None
     assert state.status == "failed"
     assert "ENGLISH_VOICE is required when generating English batch audio" in (state.error or "")
+
+
+def test_run_excel_batch_job_writes_local_archives_when_s3_disabled(monkeypatch, tmp_path) -> None:
+    rows = [
+        ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
+    ]
+
+    async def fake_translate_async(text: str, language: str):
+        return language, f"translated:{text}:{language}", None
+
+    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr(
+        "batch.service._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, runtime_config=None: b"fake-audio",
+    )
+    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
+    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
+
+    store = JobsStore()
+    job_id = "job-local-fallback-disabled"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["hi-IN"],
+            jobs_store=store,
+            output_dir=tmp_path,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert state.summary.uploads_skipped == 1
+    assert state.summary.local_archives_succeeded == 1
+    assert len(state.summary.archive_downloads) == 1
+
+    archive = state.summary.archive_downloads[0]
+    assert archive.reason == "s3_disabled"
+    assert archive.filename == "act_1-Hindi.zip"
+    assert archive.url.endswith("/batch_archives/job-local-fallback-disabled/act_1/act_1-Hindi.zip")
+
+    with zipfile.ZipFile(archive.path) as zf:
+        assert zf.namelist() == ["a1.mp3"]
+        assert zf.read("a1.mp3") == b"fake-audio"
+
+
+def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypatch, tmp_path) -> None:
+    rows = [
+        ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
+    ]
+
+    async def fake_translate_async(text: str, language: str):
+        return language, f"translated:{text}:{language}", None
+
+    class FailingS3Client:
+        def __init__(self, _config):
+            pass
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            raise RuntimeError("network down")
+
+    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr(
+        "batch.service._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, runtime_config=None: b"fake-audio",
+    )
+    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
+    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
+    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
+    monkeypatch.setattr("batch.service.S3Client", FailingS3Client)
+
+    store = JobsStore()
+    job_id = "job-local-fallback-failed"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["hi-IN"],
+            jobs_store=store,
+            output_dir=tmp_path,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+    assert state is not None
+    assert state.status == "completed"
+    assert state.summary.uploads_failed == 1
+    assert state.summary.local_archives_succeeded == 1
+    assert len(state.summary.archive_downloads) == 1
+
+    archive = state.summary.archive_downloads[0]
+    assert archive.reason == "s3_failed"
+    assert archive.error == "network down"
+
+    with zipfile.ZipFile(archive.path) as zf:
+        assert zf.namelist() == ["a1.mp3"]
+        assert zf.read("a1.mp3") == b"fake-audio"

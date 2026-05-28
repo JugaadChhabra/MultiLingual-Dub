@@ -12,6 +12,15 @@ class ExcelRow(BaseModel):
     audio_type: str = ""
 
 
+class ArchiveDownload(BaseModel):
+    activity_name: str
+    language: str
+    filename: str
+    path: str
+    url: str
+    reason: str
+    error: str | None = None
+
 
 class JobSummary(BaseModel):
     total_rows: int = 0
@@ -27,6 +36,11 @@ class JobSummary(BaseModel):
     unexpected_row_errors: int = 0
     uploads_succeeded: int = 0
     uploads_failed: int = 0
+    uploads_skipped: int = 0
+    local_archives_succeeded: int = 0
+    local_archives_failed: int = 0
+    upload_warning: str | None = None
+    archive_downloads: list[ArchiveDownload] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
     duration_ms: int | None = None

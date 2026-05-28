@@ -27,6 +27,8 @@
       let logPollTimer = null;
       let lastLogId = 0;
       const logLines = [];
+      let uploadFallbackNotified = false;
+      const autoDownloadedArchiveUrls = new Set();
 
       // ── Toast System ──
 
@@ -45,6 +47,43 @@
           toast.classList.add("toast-out");
           toast.addEventListener("animationend", () => toast.remove());
         }, durationMs);
+      }
+
+      function triggerArchiveDownload(archive) {
+        if (!archive?.url) return;
+        const link = document.createElement("a");
+        link.href = archive.url;
+        link.download = archive.filename || "";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      function handleArchiveFallback(summary) {
+        if (!summary) return;
+
+        const archives = Array.isArray(summary.archive_downloads) ? summary.archive_downloads : [];
+        const uploadIssue =
+          Boolean(summary.upload_warning) ||
+          (summary.uploads_failed || 0) > 0 ||
+          (summary.uploads_skipped || 0) > 0 ||
+          archives.length > 0;
+
+        if (uploadIssue && !uploadFallbackNotified) {
+          uploadFallbackNotified = true;
+          showToast(
+            summary.upload_warning || "Cloud upload issue detected. Local ZIP downloads are being prepared.",
+            "error",
+            9000
+          );
+        }
+
+        archives.forEach((archive, index) => {
+          if (!archive?.url || autoDownloadedArchiveUrls.has(archive.url)) return;
+          autoDownloadedArchiveUrls.add(archive.url);
+          setTimeout(() => triggerArchiveDownload(archive), index * 350);
+        });
       }
 
       // ── Sound Feedback ──
@@ -283,12 +322,13 @@
       const METRIC_KEYS = [
         "total_rows", "rows_processed", "rows_succeeded", "rows_failed",
         "language_tasks_total", "language_tasks_succeeded",
-        "placeholder_audio_generated", "uploads_succeeded",
+        "placeholder_audio_generated", "uploads_succeeded", "uploads_failed",
+        "uploads_skipped", "local_archives_succeeded",
         "filename_collisions_resolved"
       ];
 
-      const PULSE_GREEN_KEYS = new Set(["rows_succeeded", "language_tasks_succeeded", "uploads_succeeded"]);
-      const PULSE_RED_KEYS = new Set(["rows_failed"]);
+      const PULSE_GREEN_KEYS = new Set(["rows_succeeded", "language_tasks_succeeded", "uploads_succeeded", "local_archives_succeeded"]);
+      const PULSE_RED_KEYS = new Set(["rows_failed", "uploads_failed", "uploads_skipped"]);
 
       function applyMetricAnimations() {
         const isFirstRender = Object.keys(prevMetrics).length === 0;
@@ -328,6 +368,28 @@
         const failureBlock = errorMessage
           ? `<div class="status error" style="margin-top:8px;">${escapeHtml(errorMessage)}</div>`
           : "";
+        const uploadWarningBlock = s.upload_warning
+          ? `<div class="status error" style="margin-top:8px;">${escapeHtml(s.upload_warning)}</div>`
+          : "";
+        const archives = Array.isArray(s.archive_downloads) ? s.archive_downloads : [];
+        const archiveBlock = archives.length ? `
+          <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+            <div class="summary-top">
+              <div>
+                <div class="summary-title">Fallback ZIP Downloads</div>
+                <div class="status" style="margin-top:4px;">Auto-download starts when each archive is ready</div>
+              </div>
+              <span class="status-pill failed">${archives.length} ready</span>
+            </div>
+            <div style="display:grid;gap:8px;margin-top:10px;">
+              ${archives.map((archive) => `
+                <a href="${escapeHtml(archive.url)}" download="${escapeHtml(archive.filename || "")}" style="color:var(--accent);font-size:12px;">
+                  ${escapeHtml(archive.filename || archive.url)}
+                </a>
+              `).join("")}
+            </div>
+          </div>
+        ` : "";
 
         const total = s.total_rows || 0;
         const succeeded = s.rows_succeeded || 0;
@@ -372,10 +434,15 @@
               <div class="metric" data-metric="language_tasks_succeeded"><span class="label">Tasks OK</span><span class="value" data-to="${s.language_tasks_succeeded ?? 0}">${prevMetrics.language_tasks_succeeded ?? 0}</span></div>
               <div class="metric" data-metric="placeholder_audio_generated"><span class="label">Placeholders</span><span class="value" data-to="${s.placeholder_audio_generated ?? 0}">${prevMetrics.placeholder_audio_generated ?? 0}</span></div>
               <div class="metric" data-metric="uploads_succeeded"><span class="label">Uploads OK</span><span class="value" data-to="${s.uploads_succeeded ?? 0}">${prevMetrics.uploads_succeeded ?? 0}</span></div>
+              <div class="metric" data-metric="uploads_failed"><span class="label">Uploads Failed</span><span class="value" data-to="${s.uploads_failed ?? 0}">${prevMetrics.uploads_failed ?? 0}</span></div>
+              <div class="metric" data-metric="uploads_skipped"><span class="label">Uploads Skipped</span><span class="value" data-to="${s.uploads_skipped ?? 0}">${prevMetrics.uploads_skipped ?? 0}</span></div>
+              <div class="metric" data-metric="local_archives_succeeded"><span class="label">Local ZIPs</span><span class="value" data-to="${s.local_archives_succeeded ?? 0}">${prevMetrics.local_archives_succeeded ?? 0}</span></div>
               <div class="metric" data-metric="filename_collisions_resolved"><span class="label">Name Collisions</span><span class="value" data-to="${s.filename_collisions_resolved ?? 0}">${prevMetrics.filename_collisions_resolved ?? 0}</span></div>
               <div class="metric"><span class="label">Duration</span><span class="value">${duration}</span></div>
             </div>
+            ${uploadWarningBlock}
             ${failureBlock}
+            ${archiveBlock}
           </div>
         `;
 
@@ -714,6 +781,7 @@
             consecutiveNotFound = 0;
 
             renderBatchSummary(payload.summary, payload.job_id, payload.status, payload.error || "");
+            handleArchiveFallback(payload.summary);
             updateRowFeed(payload.summary);
             recordJob(payload.job_id, payload.status, payload.summary);
 
@@ -890,6 +958,8 @@
         result.textContent = "";
         renderEmptyState();
         latestJobState = null;
+        uploadFallbackNotified = false;
+        autoDownloadedArchiveUrls.clear();
         stopDurationTicker();
 
         try {
@@ -942,6 +1012,7 @@
           stopSpinner();
 
           renderBatchSummary(final.summary, final.job_id || jobId, final.status, final.error || "");
+          handleArchiveFallback(final.summary);
           flashSummaryCard(final.status);
           recordJob(final.job_id || jobId, final.status, final.summary);
 
@@ -949,10 +1020,20 @@
           isCancelling = false;
           setProgressShimmer(false);
           if (final.status === "completed") {
+            const finalSummary = final.summary || {};
+            const completedWithUploadIssue =
+              Boolean(finalSummary.upload_warning) ||
+              (finalSummary.uploads_failed || 0) > 0 ||
+              (finalSummary.uploads_skipped || 0) > 0;
             setOrbState("completed");
             setMorphBtn("done");
-            setStatus(submitStatusWrap, `Job ${jobId} completed.`, false, true);
-            showToast("Batch job completed successfully", "success");
+            if (completedWithUploadIssue) {
+              setStatus(submitStatusWrap, `Job ${jobId} completed with local ZIP fallback.`, false, true);
+              showToast("Batch completed with local ZIP fallback", "error", 9000);
+            } else {
+              setStatus(submitStatusWrap, `Job ${jobId} completed.`, false, true);
+              showToast("Batch job completed successfully", "success");
+            }
             playSuccessSound();
             burstFromElement(document.getElementById("summaryCard"), "completed");
           } else {

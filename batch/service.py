@@ -275,6 +275,7 @@ async def run_excel_batch_job(
     jobs_store: JobsStore,
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
+    output_dir: Path | None = None,
 ) -> None:
     """
     Run a batch job to completion without a fixed global timeout.
@@ -291,6 +292,7 @@ async def run_excel_batch_job(
             summary,
             runtime_config=runtime_config,
             teaching_mode=teaching_mode,
+            output_dir=output_dir,
         )
     except Exception as exc:
         logger.exception("Job %s crashed unexpectedly: %s", job_id, exc)
@@ -306,12 +308,18 @@ async def _run_batch_job_impl(
     summary: JobSummary,
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
+    output_dir: Path | None = None,
 ) -> None:
     summary.started_at = await jobs_store.start(job_id)
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
 
     try:
         upload_to_s3 = _should_upload_to_s3(runtime_config=runtime_config)
+        if not upload_to_s3:
+            summary.upload_warning = (
+                "Cloud upload is disabled because BATCH_ENABLE_S3_UPLOAD is not true. "
+                "Local ZIP downloads will be prepared instead."
+            )
         _validate_english_voice_if_needed(target_languages, runtime_config=runtime_config)
         _validate_qc_is_enabled(runtime_config=runtime_config)
         s3_client: S3Client | None = None
@@ -357,10 +365,8 @@ async def _run_batch_job_impl(
 
     current_activity_name: str | None = None
     activity_upload_counts: dict[str, int] = {}
-    language_audio_files: dict[str, dict[str, bytes]] | None = (
-        _new_language_audio_buffers(target_languages) if s3_client else None
-    )
-    current_activity_failed_tasks: list[FailedLanguageTask] | None = [] if s3_client else None
+    language_audio_files: dict[str, dict[str, bytes]] = _new_language_audio_buffers(target_languages)
+    current_activity_failed_tasks: list[FailedLanguageTask] = []
     row_unresolved_failures: Counter[int] = Counter()
     recoverable_failed_rows: set[int] = set()
     translation_parallelism = _resolve_language_parallelism(
@@ -379,36 +385,35 @@ async def _run_batch_job_impl(
             row_had_task_failure = False
             try:
                 row_activity_name = _resolve_activity_segment_name(row.activity_name, current_activity_name)
-                if s3_client is not None and language_audio_files is not None:
-                    if current_activity_name is None:
-                        current_activity_name = row_activity_name
-                    elif row_activity_name != current_activity_name:
-                        if current_activity_failed_tasks is not None:
-                            await _retry_failed_activity_tasks(
-                                job_id=job_id,
-                                activity_name=current_activity_name,
-                                failed_tasks=current_activity_failed_tasks,
-                                language_audio_files=language_audio_files,
-                                summary=summary,
-                                jobs_store=jobs_store,
-                                row_unresolved_failures=row_unresolved_failures,
-                                recoverable_failed_rows=recoverable_failed_rows,
-                                runtime_config=runtime_config,
-                                teaching_mode=teaching_mode,
-                            )
-                        await _upload_activity_archives(
-                            job_id=job_id,
-                            activity_name=current_activity_name,
-                            target_languages=target_languages,
-                            language_audio_files=language_audio_files,
-                            s3_client=s3_client,
-                            jobs_store=jobs_store,
-                            summary=summary,
-                            activity_upload_counts=activity_upload_counts,
-                        )
-                        language_audio_files = _new_language_audio_buffers(target_languages)
-                        current_activity_failed_tasks = [] if current_activity_failed_tasks is not None else None
-                        current_activity_name = row_activity_name
+                if current_activity_name is None:
+                    current_activity_name = row_activity_name
+                elif row_activity_name != current_activity_name:
+                    await _retry_failed_activity_tasks(
+                        job_id=job_id,
+                        activity_name=current_activity_name,
+                        failed_tasks=current_activity_failed_tasks,
+                        language_audio_files=language_audio_files,
+                        summary=summary,
+                        jobs_store=jobs_store,
+                        row_unresolved_failures=row_unresolved_failures,
+                        recoverable_failed_rows=recoverable_failed_rows,
+                        runtime_config=runtime_config,
+                        teaching_mode=teaching_mode,
+                    )
+                    await _upload_activity_archives(
+                        job_id=job_id,
+                        activity_name=current_activity_name,
+                        target_languages=target_languages,
+                        language_audio_files=language_audio_files,
+                        s3_client=s3_client,
+                        jobs_store=jobs_store,
+                        summary=summary,
+                        activity_upload_counts=activity_upload_counts,
+                        output_dir=output_dir,
+                    )
+                    language_audio_files = _new_language_audio_buffers(target_languages)
+                    current_activity_failed_tasks = []
+                    current_activity_name = row_activity_name
 
                 logger.info(
                     "Job %s | row %d: translating into %d languages (parallelism=%d)",
@@ -454,8 +459,7 @@ async def _run_batch_job_impl(
                         summary.language_tasks_failed += 1
                         row_had_task_failure = True
                         row_unresolved_failures[row.row_index] += 1
-                        if current_activity_failed_tasks is not None:
-                            current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
+                        current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                         logger.error(
                             "Job %s | row %d | lang %s: translation failed; skipping TTS (%s)",
                             job_id,
@@ -511,8 +515,7 @@ async def _run_batch_job_impl(
                             summary.language_tasks_failed += 1
                             row_had_task_failure = True
                             row_unresolved_failures[row.row_index] += 1
-                            if current_activity_failed_tasks is not None:
-                                current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
+                            current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                             logger.error(
                                 "Job %s | row %d | lang %s: skipping TTS because QC did not produce output (%s)",
                                 job_id,
@@ -537,8 +540,7 @@ async def _run_batch_job_impl(
                         summary.language_tasks_failed += 1
                         row_had_task_failure = True
                         row_unresolved_failures[row.row_index] += 1
-                        if current_activity_failed_tasks is not None:
-                            current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
+                        current_activity_failed_tasks.append(_make_failed_task(row, language, failure_reason))
                         logger.error(
                             "Job %s | row %d | lang %s: TTS failed; skipping audio output (%s)",
                             job_id,
@@ -549,7 +551,7 @@ async def _run_batch_job_impl(
                         await jobs_store.update_summary(job_id, summary)
                         continue
 
-                    if s3_client is not None:
+                    if s3_client is not None or output_dir is not None:
                         audio_bytes = compress_mp3_bytes(audio_bytes)
 
                     filename = _build_output_filename(
@@ -558,43 +560,33 @@ async def _run_batch_job_impl(
                         language=language,
                     )
 
-                    if s3_client is None:
-                        summary.language_tasks_succeeded += 1
-                        logger.info(
-                            "Job %s | row %d | lang %s: done (discarded audio; no upload)",
+                    final_name_for_log = filename
+                    final_filename, had_collision = _dedupe_filename(
+                        filename,
+                        language_audio_files[language],
+                        row.row_index,
+                    )
+                    if had_collision:
+                        summary.filename_collisions_resolved += 1
+                        logger.warning(
+                            "Job %s | row %d | lang %s: duplicate filename '%s' renamed to '%s'",
                             job_id,
                             row.row_index,
                             language,
+                            filename,
+                            final_filename,
                         )
-                    else:
-                        final_name_for_log = filename
-                        if language_audio_files is not None:
-                            final_filename, had_collision = _dedupe_filename(
-                                filename,
-                                language_audio_files[language],
-                                row.row_index,
-                            )
-                            if had_collision:
-                                summary.filename_collisions_resolved += 1
-                                logger.warning(
-                                    "Job %s | row %d | lang %s: duplicate filename '%s' renamed to '%s'",
-                                    job_id,
-                                    row.row_index,
-                                    language,
-                                    filename,
-                                    final_filename,
-                                )
-                            language_audio_files[language][final_filename] = audio_bytes
-                            final_name_for_log = final_filename
+                    language_audio_files[language][final_filename] = audio_bytes
+                    final_name_for_log = final_filename
 
-                        summary.language_tasks_succeeded += 1
-                        logger.info(
-                            "Job %s | row %d | lang %s: ready for zip -> %s",
-                            job_id,
-                            row.row_index,
-                            language,
-                            final_name_for_log,
-                        )
+                    summary.language_tasks_succeeded += 1
+                    logger.info(
+                        "Job %s | row %d | lang %s: ready for zip -> %s",
+                        job_id,
+                        row.row_index,
+                        language,
+                        final_name_for_log,
+                    )
                     await jobs_store.update_summary(job_id, summary)
             except Exception as exc:
                 row_ok = False
@@ -618,20 +610,19 @@ async def _run_batch_job_impl(
                 )
                 await jobs_store.update_summary(job_id, summary)
 
-        if s3_client is not None and language_audio_files is not None and current_activity_name is not None:
-            if current_activity_failed_tasks is not None:
-                await _retry_failed_activity_tasks(
-                    job_id=job_id,
-                    activity_name=current_activity_name,
-                    failed_tasks=current_activity_failed_tasks,
-                    language_audio_files=language_audio_files,
-                    summary=summary,
-                    jobs_store=jobs_store,
-                    row_unresolved_failures=row_unresolved_failures,
-                    recoverable_failed_rows=recoverable_failed_rows,
-                    runtime_config=runtime_config,
-                    teaching_mode=teaching_mode,
-                )
+        if current_activity_name is not None:
+            await _retry_failed_activity_tasks(
+                job_id=job_id,
+                activity_name=current_activity_name,
+                failed_tasks=current_activity_failed_tasks,
+                language_audio_files=language_audio_files,
+                summary=summary,
+                jobs_store=jobs_store,
+                row_unresolved_failures=row_unresolved_failures,
+                recoverable_failed_rows=recoverable_failed_rows,
+                runtime_config=runtime_config,
+                teaching_mode=teaching_mode,
+            )
             await _upload_activity_archives(
                 job_id=job_id,
                 activity_name=current_activity_name,
@@ -641,6 +632,7 @@ async def _run_batch_job_impl(
                 jobs_store=jobs_store,
                 summary=summary,
                 activity_upload_counts=activity_upload_counts,
+                output_dir=output_dir,
             )
 
         await jobs_store.complete(job_id, summary)
