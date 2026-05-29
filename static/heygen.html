@@ -3,305 +3,1176 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ishwari Kumari Pipeline</title>
+    <title>Bhaktidhaam · Content Pipeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
-      :root { color-scheme: dark; }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0d0f14;
-        color: #e6e8ee;
-        min-height: 100vh;
-        padding: 40px 20px;
-      }
-      .wrap { max-width: 600px; margin: 0 auto; }
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
 
-      .header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        margin-bottom: 20px;
-      }
-      .header-left h1 { font-size: 20px; margin: 0 0 4px; }
-      .header-left p { color: #8b94a7; font-size: 13px; margin: 0; }
-      .settings-btn {
-        background: #1a1f2c;
-        border: 1px solid #262b38;
-        color: #8b94a7;
-        padding: 7px 12px;
-        border-radius: 8px;
-        font-size: 13px;
-        cursor: pointer;
-        white-space: nowrap;
-        flex-shrink: 0;
-        margin-top: 2px;
-      }
-      .settings-btn:hover { background: #1f2535; color: #e6e8ee; }
+          :root {
+            color-scheme: dark;
+            /* --bg: #080812; */
+            --bg: #040816;
+            --card: rgba(255, 255, 255, 0.04);
+            --card2: rgba(255, 255, 255, 0.07);
+            --border: rgba(120, 80, 255, 0.18);
+            --border-hi: rgba(120, 80, 255, 0.45);
+            --violet: #7c3aed;
+            --violet-l: rgba(124, 58, 237, 0.18);
+            --amber: #d97706;
+            --amber-l: rgba(217, 119, 6, 0.18);
+            --pink: #ec4899;
+            --orange: #f97316;
+            --green: #34d399;
+            --red: #f87171;
+            --t1: #f1f5f9;
+            --t2: #94a3b8;
+            --t3: #4b5563;
+            --r: 14px;
+            --r-sm: 10px;
+          }
 
-      /* Mode toggle */
-      .mode-toggle {
-        display: flex;
-        background: #161a23;
-        border: 1px solid #262b38;
-        border-radius: 8px;
-        padding: 3px;
-        margin-bottom: 20px;
-        width: fit-content;
-      }
-      .mode-btn {
-        background: none;
-        border: none;
-        color: #8b94a7;
-        padding: 6px 18px;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.12s, color 0.12s;
-      }
-      .mode-btn.active {
-        background: #4f7cff;
-        color: #fff;
-      }
+          body {
+            font-family:
+              "Inter",
+              -apple-system,
+              sans-serif;
+            background: var(--bg);
+            color: var(--t1);
+            min-height: 100vh;
+            padding: 44px 20px 80px;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+          }
 
-      form { display: grid; gap: 16px; }
-      label { display: grid; gap: 6px; font-size: 13px; color: #b6bdcc; }
+          /* ── Background glows ── */
+          /* body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+              radial-gradient(ellipse 70% 50% at 0% 100%,   rgba(220,60,20,0.22) 0%, transparent 60%),
+              radial-gradient(ellipse 50% 40% at 100% 0%,   rgba(80,40,180,0.18) 0%, transparent 60%),
+              radial-gradient(ellipse 40% 30% at 50% 50%,   rgba(80,30,160,0.08) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+          } */
 
-      textarea, input[type=text] {
-        background: #161a23;
-        border: 1px solid #262b38;
-        color: #e6e8ee;
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-family: inherit;
-        width: 100%;
-      }
-      textarea { resize: vertical; min-height: 80px; }
-      input[type=file] { font-size: 13px; color: #b6bdcc; }
+          body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background:
+      /* Purple glow - top left */
+              radial-gradient(
+                circle at 8% 12%,
+                rgba(168, 85, 247, 0.28) 0%,
+                rgba(168, 85, 247, 0.15) 20%,
+                transparent 45%
+              ),
+              /* Orange glow - bottom left */
+              radial-gradient(
+                  circle at 0% 100%,
+                  rgba(255, 98, 0, 0.25) 0%,
+                  rgba(255, 98, 0, 0.12) 18%,
+                  transparent 40%
+                ),
+              /* Center purple glow */
+              radial-gradient(
+                  circle at 50% 50%,
+                  rgba(124, 58, 237, 0.12) 0%,
+                  transparent 45%
+                ),
+              /* Top right subtle glow */
+              radial-gradient(
+                  circle at 90% 10%,
+                  rgba(236, 72, 153, 0.08) 0%,
+                  transparent 35%
+                ),
+              linear-gradient(
+                135deg,
+                #040816 0%,
+                #060b22 35%,
+                #0a1030 70%,
+                #090d1f 100%
+              );
+            filter: blur(80px);
+            pointer-events: none;
+            z-index: 0;
+          }
 
-      .hint { color: #8b94a7; font-size: 12px; }
+          /* ॐ watermark */
+          .bg-watermark {
+            position: fixed;
+            left: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 320px;
+            color: rgba(120, 80, 255, 0.06);
+            pointer-events: none;
+            user-select: none;
+            z-index: 0;
+            line-height: 1;
+          }
 
-      .upload-area {
-        border: 1.5px dashed #2a3040;
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        cursor: pointer;
-        transition: border-color 0.15s;
-      }
-      .upload-area:hover, .upload-area.dragover { border-color: #4f7cff; }
-      .upload-area input[type=file] { display: none; }
-      .upload-area .upload-label { font-size: 14px; color: #8b94a7; }
-      .upload-area .upload-label strong { color: #4f7cff; }
-      .upload-area .file-name { font-size: 13px; color: #6cd594; margin-top: 6px; }
+          .wrap {
+            max-width: 680px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+          }
 
-      .generate-btn {
-        background: #4f7cff;
-        border: 0;
-        color: white;
-        padding: 12px 16px;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        width: 100%;
-      }
-      .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+          /* ── Header ── */
+          .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            gap: 16px;
+          }
 
-      /* Status boxes */
-      .status {
-        margin-top: 24px;
-        padding: 14px 16px;
-        background: #141823;
-        border: 1px solid #232936;
-        border-radius: 10px;
-        font-size: 13px;
-        line-height: 1.6;
-      }
-      .status.hidden { display: none; }
+          .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+          }
 
-      .badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: #1f2533;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #8da2ff;
-      }
-      .badge.completed { background: #1d3a25; color: #6cd594; }
-      .badge.partial   { background: #3a2d1d; color: #ffb347; }
-      .badge.failed    { background: #3a1d1d; color: #ff8b8b; }
+          .brand-icon-wrap {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            flex-shrink: 0;
+            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.35);
+            user-select: none;
+          }
 
-      pre {
-        margin: 8px 0 0;
-        background: #0a0c11;
-        padding: 10px;
-        border-radius: 6px;
-        overflow: auto;
-        font-size: 12px;
-        color: #aab2c2;
-      }
-      video { width: 100%; margin-top: 14px; border-radius: 10px; background: black; }
-      a { color: #8da2ff; }
+          .header-left h1 {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.4px;
+            color: var(--t1);
+            margin: 0 0 3px;
+          }
+          .header-left p {
+            font-size: 13px;
+            color: var(--t3);
+            margin: 0;
+          }
 
-      /* Batch rows table */
-      .batch-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-        font-size: 12px;
-      }
-      .batch-table th {
-        text-align: left;
-        color: #8b94a7;
-        font-weight: 500;
-        padding: 4px 8px 6px;
-        border-bottom: 1px solid #232936;
-      }
-      .batch-table td {
-        padding: 6px 8px;
-        border-bottom: 1px solid #1a1f2c;
-        vertical-align: middle;
-      }
-      .batch-table tr:last-child td { border-bottom: none; }
-      .batch-table .title-cell { color: #c8d0df; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .settings-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--t2);
+            padding: 9px 18px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.15s;
+          }
+          .settings-btn:hover {
+            border-color: var(--border-hi);
+            color: var(--t1);
+            background: var(--card);
+          }
 
-      /* Settings modal */
-      .modal-backdrop {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.6);
-        z-index: 100;
-        align-items: center;
-        justify-content: center;
-      }
-      .modal-backdrop.open { display: flex; }
-      .modal {
-        background: #141823;
-        border: 1px solid #262b38;
-        border-radius: 12px;
-        padding: 24px;
-        width: 100%;
-        max-width: 480px;
-        margin: 20px;
-      }
-      .modal h2 { font-size: 16px; margin: 0 0 18px; }
-      .modal-fields { display: grid; gap: 14px; }
-      .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        margin-top: 20px;
-      }
-      .btn-secondary {
-        background: #1a1f2c;
-        border: 1px solid #262b38;
-        color: #b6bdcc;
-        padding: 8px 14px;
-        border-radius: 8px;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      .btn-save {
-        background: #4f7cff;
-        border: 0;
-        color: white;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .saved-indicator {
-        font-size: 12px;
-        color: #6cd594;
-        opacity: 0;
-        transition: opacity 0.3s;
-        align-self: center;
-      }
-      .saved-indicator.show { opacity: 1; }
+          /* ── Main card ── */
+          .main-card {
+            /* background: rgba(16, 12, 42, 0.65); */
+            /* background: rgba(10, 14, 40, 0.75); */
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            backdrop-filter: blur(20px);
+            /* box-shadow:
+              0 0 0 1px rgba(120, 80, 255, 0.05),
+              0 32px 64px rgba(0, 0, 0, 0.4); */
+            box-shadow:
+              0 0 0 1px rgba(255, 255, 255, 0.03),
+              0 20px 60px rgba(0, 0, 0, 0.45),
+              0 0 80px rgba(124, 58, 237, 0.12);
+          }
+
+          /* ── Toggle buttons ── */
+          .mode-toggle {
+            display: flex;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            gap: 8px;
+            margin-bottom: 0;
+            width: fit-content;
+          }
+
+          .mode-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--t2);
+            padding: 9px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.18s;
+            white-space: nowrap;
+
+            isolation: isolate;
+            position: relative;
+            overflow: visible;
+          }
+
+          .mode-btn.active {
+            border: 1px solid rgba(255,255,255,0.20);
+          }
+
+          .mode-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.09);
+            color: var(--t1);
+            border-color: rgba(255, 255, 255, 0.18);
+          }
+
+          /* Type toggles (Single/Batch) active = violet */
+          /* .mode-toggle--type .mode-btn.active {
+            background: var(--violet);
+            border-color: var(--violet);
+            color: #fff;
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+          } */
+
+
+          .mode-toggle--type .mode-btn.active {
+              background: linear-gradient(
+                135deg,
+                #b86cff 0%,
+                #9333ea 55%,
+                #7c3aed 100%
+              );
+              backdrop-filter: blur(12px);
+
+              border: 1px solid rgba(220,190,255,0.35);
+
+              color: #fff;
+              font-weight: 600;
+
+              box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.22),
+                inset 0 0 12px rgba(255,255,255,0.04),
+                0 0 6px rgba(255,255,255,0.05),
+                0 0 16px rgba(168,85,247,0.12);
+
+              position: relative;
+          }
+
+          .mode-btn.active::before {
+            content: "";
+            position: absolute;
+            inset: 0px;
+            border-radius: inherit;
+            background: inherit;
+            filter: blur(6px);
+            opacity: 0.25;
+            z-index: -1;
+          }
+
+          .mode-btn.active::after {
+            content: "";
+            position: absolute;
+            inset: 1px;
+            border-radius: inherit;
+
+            background: linear-gradient(
+              180deg,
+              rgba(255,255,255,0.18) 0%,
+              rgba(255,255,255,0.06) 25%,
+              transparent 50%
+            );
+
+            pointer-events: none;
+          }
+
+
+          /* Content toggles (राशिफल/Satsang) active = amber */
+          /* .mode-toggle--content .mode-btn.active {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: #fff;
+            font-weight: 600;
+            box-shadow: 0 4px 16px rgba(217, 119, 6, 0.4);
+          } */
+
+          .mode-toggle--content .mode-btn.active {
+            background: linear-gradient(
+              135deg,
+              #fbbf24 0%,
+              #f59e0b 50%,
+              #d97706 100%
+            );
+
+            border: 1px solid rgba(255,220,150,0.35);
+
+            color: #fff;
+
+            box-shadow:
+              inset 0 1px 0 rgba(255,255,255,0.22),
+              inset 0 0 12px rgba(255,255,255,0.04),
+              0 0 6px rgba(255,255,255,0.05),
+              0 0 16px rgba(245,158,11,0.10);
+          }
+
+          /* Divider */
+          .toggles-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 28px 0;
+          }
+
+          /* ── Form ── */
+          form {
+            display: grid;
+            gap: 24px;
+          }
+
+          label {
+            display: grid;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--t2);
+          }
+
+          textarea,
+          input[type="text"],
+          input[type="date"] {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--t1);
+            padding: 13px 16px;
+            border-radius: var(--r-sm);
+            font-size: 14px;
+            font-family: inherit;
+            width: 100%;
+            outline: none;
+            transition:
+              border-color 0.15s,
+              box-shadow 0.15s;
+            appearance: none;
+            -webkit-appearance: none;
+          }
+          textarea:focus,
+          input[type="text"]:focus,
+          input[type="date"]:focus {
+            border-color: var(--border-hi);
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+          }
+          textarea {
+            resize: vertical;
+            min-height: 90px;
+            line-height: 1.6;
+            background: transparent;
+          }
+          input[type="file"] {
+            font-size: 13px;
+            color: var(--t2);
+          }
+          input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.5);
+            cursor: pointer;
+          }
+
+          .hint {
+            color: var(--t3);
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .hint code {
+            background: var(--card2);
+            border: 1px solid var(--border);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #a78bfa;
+          }
+
+          /* Field label row */
+          .field-label-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--t1);
+            margin-bottom: 6px;
+          }
+          .req-pill {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--violet-l);
+            color: #a78bfa;
+          }
+
+          /* ── Upload area ── */
+          .upload-area {
+            border: 1.5px dashed rgba(120, 80, 255, 0.3);
+            border-radius: var(--r);
+            padding: 40px 24px 32px;
+            text-align: center;
+            cursor: pointer;
+            transition:
+              border-color 0.18s,
+              background 0.18s;
+            background: transparent
+            position: relative;
+          }
+          .upload-area:hover,
+          .upload-area.dragover {
+            border-color: rgba(124, 58, 237, 0.7);
+            background: rgba(124, 58, 237, 0.06);
+          }
+          .upload-area input[type="file"] {
+            display: none;
+          }
+
+          /* Cloud upload icon */
+          .upload-cloud-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(124, 58, 237, 0.12);
+            border: 1.5px solid rgba(124, 58, 237, 0.3);
+            margin-bottom: 16px;
+            color: #a78bfa;
+            transition: all 0.18s;
+            pointer-events: none;
+          }
+          .upload-area:hover .upload-cloud-icon,
+          .upload-area.dragover .upload-cloud-icon {
+            background: rgba(124, 58, 237, 0.22);
+            border-color: rgba(124, 58, 237, 0.6);
+            color: #c4b5fd;
+          }
+
+          /* Lotus decoration in corner */
+          .upload-lotus {
+            position: absolute;
+            bottom: 12px;
+            right: 16px;
+            font-size: 22px;
+            opacity: 0.25;
+            pointer-events: none;
+            transition: opacity 0.18s;
+          }
+          .upload-area:hover .upload-lotus {
+            opacity: 0.45;
+          }
+
+          .upload-label {
+            font-size: 15px;
+            color: var(--t2);
+            line-height: 1.5;
+          }
+          .upload-label strong {
+            color: #a78bfa;
+            font-weight: 600;
+          }
+          .file-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--green);
+            margin-top: 10px;
+            word-break: break-all;
+          }
+
+          /* ── Script field with counter ── */
+          .script-field-wrap {
+            position: relative;
+          }
+          .script-field-wrap textarea {
+            padding-bottom: 36px;
+          }
+          .script-footer {
+            position: absolute;
+            bottom: 12px;
+            left: 0;
+            right: 0;
+            padding: 0 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            pointer-events: none;
+          }
+          .char-count {
+            font-size: 11px;
+            color: var(--t3);
+            font-weight: 500;
+          }
+          .sparkle-corner {
+            font-size: 14px;
+            color: var(--t3);
+            opacity: 0.6;
+          }
+
+          /* Script label row */
+          .script-label-inner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--t1);
+          }
+          .script-label-inner .label-icon {
+            width: 26px;
+            height: 26px;
+            background: var(--violet-l);
+            border: 1px solid rgba(124, 58, 237, 0.25);
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            flex-shrink: 0;
+          }
+
+          /* ── Generate button ── */
+          .generate-btn {
+            background: linear-gradient(90deg, #c026d3 0%, #e879f9 30%, #f97316 100%);
+            border: none;
+            color: #fff;
+            padding: 16px 24px;
+            border-radius: var(--r-sm);
+            font-size: 16px;
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            letter-spacing: 0.2px;
+            transition:
+              transform 0.18s,
+              box-shadow 0.18s,
+              opacity 0.18s;
+            box-shadow: 0 4px 28px rgba(192, 38, 211, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+          }
+          .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 36px rgba(192, 38, 211, 0.45);
+          }
+          .generate-btn:active:not(:disabled) {
+            transform: translateY(0);
+          }
+          .generate-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+          }
+
+          /* ── Status boxes ── */
+          .status {
+            margin-top: 20px;
+            padding: 20px 22px;
+            background: rgba(16, 12, 42, 0.7);
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            font-size: 13px;
+            line-height: 1.7;
+            backdrop-filter: blur(12px);
+          }
+          .status.hidden {
+            display: none;
+          }
+
+          .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(148, 163, 184, 0.1);
+            color: var(--t2);
+          }
+          .badge.completed {
+            background: rgba(52, 211, 153, 0.12);
+            color: var(--green);
+          }
+          .badge.partial {
+            background: rgba(217, 119, 6, 0.12);
+            color: #fbbf24;
+          }
+          .badge.failed {
+            background: rgba(248, 113, 113, 0.12);
+            color: var(--red);
+          }
+
+          pre {
+            margin: 12px 0 0;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 14px;
+            border-radius: var(--r-sm);
+            overflow: auto;
+            font-size: 12px;
+            color: var(--t3);
+            border: 1px solid var(--border);
+            line-height: 1.6;
+          }
+          video {
+            width: 100%;
+            margin-top: 14px;
+            border-radius: var(--r);
+            background: #000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+          }
+          a {
+            color: #a78bfa;
+            text-decoration: none;
+          }
+          a:hover {
+            text-decoration: underline;
+          }
+
+          /* ── Batch table ── */
+          .batch-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+            font-size: 13px;
+          }
+          .batch-table th {
+            text-align: left;
+            color: var(--t3);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 5px 10px 8px;
+            border-bottom: 1px solid var(--border);
+          }
+          .batch-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+          }
+          .batch-table tr:last-child td {
+            border-bottom: none;
+          }
+          .batch-table .title-cell {
+            color: var(--t2);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          /* ── Footer stats ── */
+          .footer-stats {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 28px;
+            flex-wrap: wrap;
+          }
+          .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .stat-icon-wrap {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--violet-l);
+            border: 1px solid rgba(124, 58, 237, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #a78bfa;
+            flex-shrink: 0;
+          }
+          .stat-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--t2);
+            line-height: 1.3;
+          }
+          .stat-sub {
+            font-size: 11px;
+            color: var(--t3);
+            margin-top: 1px;
+          }
+
+          /* ── Modal ── */
+          .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          .modal-backdrop.open {
+            display: flex;
+          }
+
+          .modal {
+            background: #0e0b22;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 30px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+            animation: modal-pop 0.2s ease;
+          }
+          @keyframes modal-pop {
+            from {
+              opacity: 0;
+              transform: scale(0.95) translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: none;
+            }
+          }
+
+          .modal h2 {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--t1);
+            margin: 0 0 24px;
+          }
+          .modal-fields {
+            display: grid;
+            gap: 18px;
+          }
+          .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+            margin-top: 26px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+          }
+
+          .btn-secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--t2);
+            padding: 9px 18px;
+            border-radius: var(--r-sm);
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+          }
+          .btn-secondary:hover {
+            background: var(--card2);
+            color: var(--t1);
+          }
+
+          .btn-save {
+            background: var(--violet);
+            border: none;
+            color: #fff;
+            padding: 9px 20px;
+            border-radius: var(--r-sm);
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.15s;
+          }
+          .btn-save:hover {
+            opacity: 0.88;
+          }
+
+          .saved-indicator {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--green);
+            opacity: 0;
+            transition: opacity 0.3s;
+            align-self: center;
+            margin-right: auto;
+          }
+          .saved-indicator.show {
+            opacity: 1;
+          }
     </style>
   </head>
   <body>
+    <!-- Background ॐ watermark
+    <div class="bg-watermark" aria-hidden="true">ॐ</div>
+    <img
+      src="https://chatgpt.com/backend-api/estuary/content?id=file_0000000084707208854adce8078307c9&ts=494459&p=fs&cid=1&sig=7f1ba901d41714f2a1adecb5e31705d1893389fdcf5ad331ebc897c928e455e8&v=0"
+      alt=""
+    /> -->
+
     <div class="wrap">
+      <!-- Header -->
       <div class="header">
         <div class="header-left">
-          <h1>Bhaktidhaam Content Pipeline</h1>
+          <div class="brand-icon-wrap" aria-hidden="true">ॐ</div>
+          <div>
+            <h1>Bhaktidhaam Content Pipeline</h1>
+            <p>AI-powered video generation &amp; automation</p>
+          </div>
         </div>
-        <button class="settings-btn" id="settingsBtn">⚙ Prompts</button>
+        <button class="settings-btn" id="settingsBtn">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            />
+          </svg>
+          Prompts
+        </button>
       </div>
 
-      <!-- Toggles row -->
-      <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
-        <div class="mode-toggle" style="margin-bottom:0;">
-          <button class="mode-btn active" id="modeSingle" type="button">Single</button>
-          <button class="mode-btn" id="modeBatch" type="button">Batch</button>
+      <!-- Main card -->
+      <div class="main-card">
+        <!-- Toggles — IDs and mode-btn/mode-toggle classes unchanged -->
+        <div
+          style="display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap"
+        >
+          <div class="mode-toggle mode-toggle--type" style="margin-bottom: 0">
+            <button class="mode-btn active" id="modeSingle" type="button">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"
+                />
+              </svg>
+              Single
+            </button>
+            <button class="mode-btn" id="modeBatch" type="button">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <rect x="2" y="7" width="20" height="3" rx="1" />
+                <rect x="2" y="14" width="20" height="3" rx="1" />
+                <rect x="2" y="3" width="20" height="2" rx="1" opacity="0.5" />
+              </svg>
+              Batch
+            </button>
+          </div>
+          <div
+            class="mode-toggle mode-toggle--content"
+            style="margin-bottom: 0"
+          >
+            <button class="mode-btn active" id="contentSunsign" type="button">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <polygon
+                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                />
+              </svg>
+              राशिफल
+            </button>
+            <button class="mode-btn" id="contentSatsang" type="button">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  d="M12 2C8 6 6 9 6 13a6 6 0 0 0 12 0c0-4-2-7-6-11zm0 16a4 4 0 0 1-4-4c0-2.5 1.2-4.8 4-8 2.8 3.2 4 5.5 4 8a4 4 0 0 1-4 4z"
+                />
+              </svg>
+              Satsang
+            </button>
+          </div>
         </div>
-        <div class="mode-toggle" style="margin-bottom:0;">
-          <button class="mode-btn active" id="contentSunsign" type="button">राशिफल</button>
-          <button class="mode-btn" id="contentSatsang" type="button">Satsang</button>
-        </div>
+
+        <div class="toggles-divider"></div>
+
+        <form id="form">
+          <!-- Reference image — upload-area id/classes unchanged -->
+          <div style="display: grid; gap: 10px">
+            <div class="field-label-row">
+              Reference image <span class="req-pill">Required</span>
+            </div>
+            <div class="upload-area" id="uploadArea">
+              <input
+                type="file"
+                name="image"
+                id="imageInput"
+                accept="image/png,image/jpeg,image/webp"
+                required
+              />
+              <div class="upload-cloud-icon" aria-hidden="true">
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <polyline points="16 16 12 12 8 16" />
+                  <line x1="12" y1="12" x2="12" y2="21" />
+                  <path
+                    d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"
+                  />
+                </svg>
+              </div>
+              <div class="upload-label">
+                <strong>Click to upload</strong> or drag &amp; drop
+              </div>
+              <div class="file-name" id="fileName"></div>
+              <span class="upload-lotus" aria-hidden="true">🪷</span>
+            </div>
+            <span class="hint"
+              >PNG, JPEG, or WebP. Crop to your target orientation first. Oldest
+              avatar auto-removed if at the 3-photo cap.</span
+            >
+          </div>
+
+          <!-- Single mode: script — id="scriptLabel" unchanged -->
+          <label id="scriptLabel">
+            <div class="script-label-inner">
+              <span class="label-icon" aria-hidden="true">✏️</span>
+              Script
+            </div>
+            <div class="script-field-wrap">
+              <textarea
+                name="script"
+                id="scriptInput"
+                rows="4"
+                required
+                placeholder="Type the line the avatar should speak…"
+              ></textarea>
+              <div class="script-footer">
+                <span class="char-count" id="charCount">0/1000</span>
+                <span class="sparkle-corner" aria-hidden="true">✦</span>
+              </div>
+            </div>
+          </label>
+
+          <!-- Batch mode: date — id="publishDateLabel" unchanged -->
+          <label id="publishDateLabel" style="display: none">
+            Publish date
+            <input type="date" id="publishDateInput" />
+            <span class="hint"
+              >Videos will be saved in a folder named DD-MM-YYYY on the
+              NAS.</span
+            >
+          </label>
+
+          <!-- Batch mode: Excel — id="excelLabel" unchanged -->
+          <div
+            id="excelLabel"
+            style="display: none; gap: 10px; font-size: 13px; color: #94a3b8"
+          >
+            <div class="field-label-row">
+              Scripts Excel <span class="req-pill">Required</span>
+            </div>
+            <div class="upload-area" id="excelUploadArea">
+              <input type="file" name="excel" id="excelInput" accept=".xlsx" />
+              <div class="upload-cloud-icon" aria-hidden="true">
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <path
+                    d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                  />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+              </div>
+              <div class="upload-label">
+                <strong>Choose .xlsx file</strong> or drag here
+              </div>
+              <div class="file-name" id="excelFileName"></div>
+              <span class="upload-lotus" aria-hidden="true">📊</span>
+            </div>
+            <span class="hint"
+              >Required columns: <code>script</code>,
+              <code>video_title</code> (optional). One row per video.</span
+            >
+          </div>
+
+          <!-- Submit — generate-btn class and id unchanged -->
+          <button type="submit" class="generate-btn" id="submitBtn">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"
+              />
+            </svg>
+            Generate video
+          </button>
+        </form>
       </div>
-
-      <form id="form">
-        <!-- Shared: image upload -->
-        <div style="display:grid;gap:6px;font-size:13px;color:#b6bdcc;">
-          Reference image
-          <div class="upload-area" id="uploadArea">
-            <input type="file" name="image" id="imageInput" accept="image/png,image/jpeg,image/webp" required />
-            <div class="upload-label"><strong>Choose file</strong> or drag here</div>
-            <div class="file-name" id="fileName"></div>
-          </div>
-          <span class="hint">PNG, JPEG, or WebP. Crop to your target orientation first. Oldest avatar auto-removed if at the 3-photo cap.</span>
-        </div>
-
-        <!-- Single mode: script -->
-        <label id="scriptLabel">
-          Script
-          <textarea name="script" id="scriptInput" rows="5" required placeholder="Type the line the avatar should speak…"></textarea>
-        </label>
-
-        <!-- Batch mode: date + Excel upload -->
-        <label id="publishDateLabel" style="display:none;">
-          Publish date
-          <input type="date" id="publishDateInput" />
-          <span class="hint">Videos will be saved in a folder named DD-MM-YYYY on the NAS.</span>
-        </label>
-
-        <div id="excelLabel" style="display:none;gap:6px;font-size:13px;color:#b6bdcc;">
-          Scripts Excel
-          <div class="upload-area" id="excelUploadArea">
-            <input type="file" name="excel" id="excelInput" accept=".xlsx" />
-            <div class="upload-label"><strong>Choose .xlsx file</strong> or drag here</div>
-            <div class="file-name" id="excelFileName"></div>
-          </div>
-          <span class="hint">Required columns: <code>script</code>, <code>video_title</code> (optional). One row per video.</span>
-        </div>
-
-        <button type="submit" class="generate-btn" id="submitBtn">Generate video</button>
-      </form>
 
       <div id="status" class="status hidden"></div>
       <div id="batchStatus" class="status hidden"></div>
+
+      <!-- Footer stats -->
+      <div class="footer-stats">
+        <div class="stat-item">
+          <div class="stat-icon-wrap" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+            >
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+          </div>
+          <div>
+            <div class="stat-title">AI-Powered</div>
+            <div class="stat-sub">Smart &amp; accurate</div>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon-wrap" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+          <div>
+            <div class="stat-title">Fast Processing</div>
+            <div class="stat-sub">Ready in minutes</div>
+          </div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon-wrap" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+            >
+              <circle cx="12" cy="8" r="6" />
+              <path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
+            </svg>
+          </div>
+          <div>
+            <div class="stat-title">High Quality</div>
+            <div class="stat-sub">HD output</div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Settings modal -->
+    <!-- Settings modal — all IDs/classes unchanged -->
     <div class="modal-backdrop" id="modalBackdrop">
       <div class="modal" id="modal">
         <h2 id="modalTitle">Prompt Settings</h2>
         <div class="modal-fields">
           <label>
-            Video prompt <span class="hint">(how the video should look / feel)</span>
-            <textarea id="settingsVideoPrompt" rows="3" placeholder="e.g. calm, slight head movement, soft natural expression"></textarea>
+            Video prompt
+            <span class="hint">(how the video should look / feel)</span>
+            <textarea
+              id="settingsVideoPrompt"
+              rows="4"
+              placeholder="e.g. calm, slight head movement, soft natural expression"
+            ></textarea>
           </label>
           <label>
             Motion prompt <span class="hint">(optional, advanced)</span>
-            <input type="text" id="settingsMotionPrompt" placeholder="[body part] + [action] + [emotion/intensity]" />
+            <textarea
+              id="settingsMotionPrompt"
+              rows="4"
+              placeholder="[body part] + [action] + [emotion/intensity]"
+            ></textarea>
           </label>
         </div>
         <div class="modal-actions">
@@ -340,23 +1211,44 @@
         scriptInput.required = !batch;
         excelInput.required = batch;
         publishDateInput.required = batch;
-        submitBtn.textContent = batch ? "Generate batch" : "Generate video";
+        submitBtn.querySelector("span")
+          ? (submitBtn.querySelector("span").textContent = batch
+              ? "Generate batch"
+              : "Generate video")
+          : (submitBtn.childNodes[submitBtn.childNodes.length - 1].textContent =
+              batch ? " Generate batch" : " Generate video");
         statusBox.classList.add("hidden");
         batchStatusBox.classList.add("hidden");
-        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
       }
 
       modeSingleBtn.addEventListener("click", () => setMode(false));
       modeBatchBtn.addEventListener("click", () => setMode(true));
+
+      // --- Character counter ---
+      const charCount = document.getElementById("charCount");
+      scriptInput.addEventListener("input", () => {
+        charCount.textContent = `${scriptInput.value.length}/1000`;
+      });
 
       // --- Image upload area ---
       const uploadArea = document.getElementById("uploadArea");
       const imageInput = document.getElementById("imageInput");
       const fileName = document.getElementById("fileName");
 
-      uploadArea.addEventListener("click", (e) => { if (e.target !== imageInput) imageInput.click(); });
-      uploadArea.addEventListener("dragover", (e) => { e.preventDefault(); uploadArea.classList.add("dragover"); });
-      uploadArea.addEventListener("dragleave", () => uploadArea.classList.remove("dragover"));
+      uploadArea.addEventListener("click", (e) => {
+        if (e.target !== imageInput) imageInput.click();
+      });
+      uploadArea.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadArea.classList.add("dragover");
+      });
+      uploadArea.addEventListener("dragleave", () =>
+        uploadArea.classList.remove("dragover"),
+      );
       uploadArea.addEventListener("drop", (e) => {
         e.preventDefault();
         uploadArea.classList.remove("dragover");
@@ -369,16 +1261,25 @@
         }
       });
       imageInput.addEventListener("change", () => {
-        fileName.textContent = imageInput.files[0] ? imageInput.files[0].name : "";
+        fileName.textContent = imageInput.files[0]
+          ? imageInput.files[0].name
+          : "";
       });
 
       // --- Excel upload area ---
       const excelUploadArea = document.getElementById("excelUploadArea");
       const excelFileName = document.getElementById("excelFileName");
 
-      excelUploadArea.addEventListener("click", (e) => { if (e.target !== excelInput) excelInput.click(); });
-      excelUploadArea.addEventListener("dragover", (e) => { e.preventDefault(); excelUploadArea.classList.add("dragover"); });
-      excelUploadArea.addEventListener("dragleave", () => excelUploadArea.classList.remove("dragover"));
+      excelUploadArea.addEventListener("click", (e) => {
+        if (e.target !== excelInput) excelInput.click();
+      });
+      excelUploadArea.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        excelUploadArea.classList.add("dragover");
+      });
+      excelUploadArea.addEventListener("dragleave", () =>
+        excelUploadArea.classList.remove("dragover"),
+      );
       excelUploadArea.addEventListener("drop", (e) => {
         e.preventDefault();
         excelUploadArea.classList.remove("dragover");
@@ -391,37 +1292,59 @@
         }
       });
       excelInput.addEventListener("change", () => {
-        excelFileName.textContent = excelInput.files[0] ? excelInput.files[0].name : "";
+        excelFileName.textContent = excelInput.files[0]
+          ? excelInput.files[0].name
+          : "";
       });
 
       // --- Content type toggle ---
       let contentType = "sunsign";
       const DEFAULT_SETTINGS = {
         sunsign: {
-          video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
-          motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
+          video_prompt:
+            "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
+          motion_prompt:
+            "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
         },
         satsang: {
-          video_prompt: "The character is delivering a profound spiritual discourse to a live gathering (Satsang), speaking with a calm, soothing, and divine resonance. Visuals: Soft cinematic lighting with a warm, divine glow on the face, suggesting an ambient, peaceful gathering space. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts, reflecting deep wisdom. Expressions: A serene, compassionate, and divine smile with micro-expressions of empathy and enlightenment. Eyes: Soft, warm eye contact that occasionally sweeps slowly to the left and right, simulating a deep connection with a live, seated audience, along with natural blinking to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi/Hinglish lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a life-like presence. Incorporate slow, slightly expansive, welcoming open-palm hand gestures to engage a crowd and convey peace, avoiding stiffness.",
-          motion_prompt: "A serene spiritual guide addressing a public gathering or followers. Movement style: Graceful, slow, and highly engaging yet deeply peaceful. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom and empathy. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes: Should remain warm, utilizing a 'smiling eyes' (Duchenne smile) effect. The gaze should slowly pan occasionally to acknowledge a wider audience around the room before returning center. Mouth: Movements must be highly articulated for Hindi/Hinglish phonemes, showing realistic jaw tension and natural teeth visibility. Hands: Should move in fluid, non-repetitive, welcoming 'open-palm' gestures that are slightly more expansive to address a crowd, while remaining dignified and calm. The overall presence should project an aura of divine authority, approachability, and deep tranquility.",
+          video_prompt:
+            "The character is delivering a profound spiritual discourse to a live gathering (Satsang), speaking with a calm, soothing, and divine resonance. Visuals: Soft cinematic lighting with a warm, divine glow on the face, suggesting an ambient, peaceful gathering space. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts, reflecting deep wisdom. Expressions: A serene, compassionate, and divine smile with micro-expressions of empathy and enlightenment. Eyes: Soft, warm eye contact that occasionally sweeps slowly to the left and right, simulating a deep connection with a live, seated audience, along with natural blinking to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi/Hinglish lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a life-like presence. Incorporate slow, slightly expansive, welcoming open-palm hand gestures to engage a crowd and convey peace, avoiding stiffness.",
+          motion_prompt:
+            "A serene spiritual guide addressing a public gathering or followers. Movement style: Graceful, slow, and highly engaging yet deeply peaceful. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom and empathy. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes: Should remain warm, utilizing a 'smiling eyes' (Duchenne smile) effect. The gaze should slowly pan occasionally to acknowledge a wider audience around the room before returning center. Mouth: Movements must be highly articulated for Hindi/Hinglish phonemes, showing realistic jaw tension and natural teeth visibility. Hands: Should move in fluid, non-repetitive, welcoming 'open-palm' gestures that are slightly more expansive to address a crowd, while remaining dignified and calm. The overall presence should project an aura of divine authority, approachability, and deep tranquility.",
         },
       };
 
-      document.getElementById("contentSunsign").addEventListener("click", () => setContentType("sunsign"));
-      document.getElementById("contentSatsang").addEventListener("click", () => setContentType("satsang"));
+      document
+        .getElementById("contentSunsign")
+        .addEventListener("click", () => setContentType("sunsign"));
+      document
+        .getElementById("contentSatsang")
+        .addEventListener("click", () => setContentType("satsang"));
 
       function setContentType(type) {
         contentType = type;
-        document.getElementById("contentSunsign").classList.toggle("active", type === "sunsign");
-        document.getElementById("contentSatsang").classList.toggle("active", type === "satsang");
+        document
+          .getElementById("contentSunsign")
+          .classList.toggle("active", type === "sunsign");
+        document
+          .getElementById("contentSatsang")
+          .classList.toggle("active", type === "satsang");
       }
 
       // --- Settings (per content type) ---
-      function settingsKey() { return `heygen_prompt_settings_${contentType}`; }
-      function loadSettings() {
-        try { return JSON.parse(localStorage.getItem(settingsKey())) || {}; } catch { return {}; }
+      function settingsKey() {
+        return `heygen_prompt_settings_${contentType}`;
       }
-      function saveSettings(data) { localStorage.setItem(settingsKey(), JSON.stringify(data)); }
+      function loadSettings() {
+        try {
+          return JSON.parse(localStorage.getItem(settingsKey())) || {};
+        } catch {
+          return {};
+        }
+      }
+      function saveSettings(data) {
+        localStorage.setItem(settingsKey(), JSON.stringify(data));
+      }
       function getEffectiveSettings() {
         const saved = loadSettings();
         const defaults = DEFAULT_SETTINGS[contentType];
@@ -432,8 +1355,12 @@
       }
 
       const modalBackdrop = document.getElementById("modalBackdrop");
-      const settingsVideoPrompt = document.getElementById("settingsVideoPrompt");
-      const settingsMotionPrompt = document.getElementById("settingsMotionPrompt");
+      const settingsVideoPrompt = document.getElementById(
+        "settingsVideoPrompt",
+      );
+      const settingsMotionPrompt = document.getElementById(
+        "settingsMotionPrompt",
+      );
       const savedIndicator = document.getElementById("savedIndicator");
       const modalTitle = document.getElementById("modalTitle");
 
@@ -445,19 +1372,29 @@
         modalBackdrop.classList.add("open");
       });
 
-      function closeModal() { modalBackdrop.classList.remove("open"); }
-      document.getElementById("cancelBtn").addEventListener("click", closeModal);
-      modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeModal(); });
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
-
-      document.getElementById("saveSettingsBtn").addEventListener("click", () => {
-        saveSettings({
-          video_prompt: settingsVideoPrompt.value.trim(),
-          motion_prompt: settingsMotionPrompt.value.trim(),
-        });
-        savedIndicator.classList.add("show");
-        setTimeout(() => savedIndicator.classList.remove("show"), 1500);
+      function closeModal() {
+        modalBackdrop.classList.remove("open");
+      }
+      document
+        .getElementById("cancelBtn")
+        .addEventListener("click", closeModal);
+      modalBackdrop.addEventListener("click", (e) => {
+        if (e.target === modalBackdrop) closeModal();
       });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+      });
+
+      document
+        .getElementById("saveSettingsBtn")
+        .addEventListener("click", () => {
+          saveSettings({
+            video_prompt: settingsVideoPrompt.value.trim(),
+            motion_prompt: settingsMotionPrompt.value.trim(),
+          });
+          savedIndicator.classList.add("show");
+          setTimeout(() => savedIndicator.classList.remove("show"), 1500);
+        });
 
       // --- Single mode poll & render ---
       let pollTimer = null;
@@ -465,15 +1402,22 @@
       function renderSingle(state) {
         statusBox.classList.remove("hidden");
         const s = state.status || "queued";
-        const cls = s === "completed" ? "completed" : s === "failed" ? "failed" : "";
+        const cls =
+          s === "completed" ? "completed" : s === "failed" ? "failed" : "";
         const summary = state.summary || {};
         const localUrl = state.video_local_url;
         const remoteUrl = summary.video_url;
-        const player = localUrl ? `<video src="${localUrl}" controls></video>` : "";
+        const player = localUrl
+          ? `<video src="${localUrl}" controls></video>`
+          : "";
         const links = [
           localUrl ? `<a href="${localUrl}" download>download mp4</a>` : "",
-          remoteUrl ? `<a href="${remoteUrl}" target="_blank">heygen url (7d)</a>` : "",
-        ].filter(Boolean).join(" · ");
+          remoteUrl
+            ? `<a href="${remoteUrl}" target="_blank">heygen url (7d)</a>`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
         statusBox.innerHTML = `
           <div><span class="badge ${cls}">${s}</span> ${state.stage_message || ""}</div>
@@ -502,7 +1446,13 @@
       }
 
       // --- Batch mode poll & render ---
-      const BATCH_STATUS_LABELS = { queued: "", running: "running", completed: "completed", partial: "partial", failed: "failed" };
+      const BATCH_STATUS_LABELS = {
+        queued: "",
+        running: "running",
+        completed: "completed",
+        partial: "partial",
+        failed: "failed",
+      };
 
       function badgeCls(s) {
         if (s === "completed") return "completed";
@@ -514,28 +1464,36 @@
       function renderBatch(state) {
         batchStatusBox.classList.remove("hidden");
         const overall = state.status || "queued";
-        const rowsHtml = (state.rows || []).map(row => {
-          const s = row.status || "pending";
-          const link = row.video_local_url
-            ? `<a href="${row.video_local_url}" download>download</a>`
-            : row.error ? `<span style="color:#ff8b8b;font-size:11px;">${row.error}</span>` : "—";
-          return `<tr>
+        const rowsHtml = (state.rows || [])
+          .map((row) => {
+            const s = row.status || "pending";
+            const link = row.video_local_url
+              ? `<a href="${row.video_local_url}" download>download</a>`
+              : row.error
+                ? `<span style="color:#ff8b8b;font-size:11px;">${row.error}</span>`
+                : "—";
+            return `<tr>
             <td style="color:#8b94a7;">${row.row_index}</td>
             <td class="title-cell">${row.video_title}</td>
             <td><span class="badge ${badgeCls(s)}">${s}</span></td>
             <td>${link}</td>
           </tr>`;
-        }).join("");
+          })
+          .join("");
 
         batchStatusBox.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:space-between;">
             <div><span class="badge ${badgeCls(overall)}">${overall}</span> ${state.done}/${state.total} complete${state.failed_count ? ` · ${state.failed_count} failed` : ""}</div>
             <div style="color:#8b94a7;font-size:11px;">batch: <code>${state.batch_id}</code></div>
           </div>
-          ${rowsHtml ? `<table class="batch-table" style="margin-top:12px;">
+          ${
+            rowsHtml
+              ? `<table class="batch-table" style="margin-top:12px;">
             <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Download</th></tr></thead>
             <tbody>${rowsHtml}</tbody>
-          </table>` : ""}
+          </table>`
+              : ""
+          }
         `;
       }
 
@@ -545,7 +1503,9 @@
           if (!res.ok) throw new Error(`status ${res.status}`);
           const state = await res.json();
           renderBatch(state);
-          const done = ["completed", "partial", "failed"].includes(state.status);
+          const done = ["completed", "partial", "failed"].includes(
+            state.status,
+          );
           if (done) {
             clearInterval(pollTimer);
             pollTimer = null;
@@ -562,7 +1522,10 @@
       form.addEventListener("submit", async (ev) => {
         ev.preventDefault();
         submitBtn.disabled = true;
-        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
 
         const s = getEffectiveSettings();
 
@@ -577,8 +1540,14 @@
           if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
 
           try {
-            const res = await fetch("/video/heygen", { method: "POST", body: fd });
-            if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`); }
+            const res = await fetch("/video/heygen", {
+              method: "POST",
+              body: fd,
+            });
+            if (!res.ok) {
+              const t = await res.text();
+              throw new Error(t || `HTTP ${res.status}`);
+            }
             const data = await res.json();
             pollTimer = setInterval(() => pollSingle(data.job_id), 4000);
             pollSingle(data.job_id);
@@ -586,7 +1555,6 @@
             submitBtn.disabled = false;
             statusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
           }
-
         } else {
           // Batch mode
           batchStatusBox.classList.remove("hidden");
@@ -602,13 +1570,20 @@
           const fd = new FormData();
           fd.append("image", imageInput.files[0]);
           fd.append("excel", excelInput.files[0]);
-          if (publishDateInput.value) fd.append("publish_date", publishDateInput.value);
+          if (publishDateInput.value)
+            fd.append("publish_date", publishDateInput.value);
           if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
           if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
 
           try {
-            const res = await fetch("/video/heygen/batch", { method: "POST", body: fd });
-            if (!res.ok) { const t = await res.text(); throw new Error(t || `HTTP ${res.status}`); }
+            const res = await fetch("/video/heygen/batch", {
+              method: "POST",
+              body: fd,
+            });
+            if (!res.ok) {
+              const t = await res.text();
+              throw new Error(t || `HTTP ${res.status}`);
+            }
             const data = await res.json();
             pollTimer = setInterval(() => pollBatch(data.batch_id), 4000);
             pollBatch(data.batch_id);
