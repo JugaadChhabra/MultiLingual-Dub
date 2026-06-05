@@ -12,6 +12,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
+      HEYGEN_ISHWARI: ${HEYGEN_ISHWARI}
+
       ELEVEN_LABS: ${ELEVEN_LABS}
       AI_STUDIO_VOICE: ${AI_STUDIO_VOICE}
       DESI_VOCAL_VOICE: ${DESI_VOCAL_VOICE}
