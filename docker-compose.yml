@@ -12,6 +12,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
+      ISHWARI_VOICE_ID: ${ISHWARI_VOICE_ID}
       HEYGEN_ISHWARI: ${HEYGEN_ISHWARI}
 
       ELEVEN_LABS: ${ELEVEN_LABS}
