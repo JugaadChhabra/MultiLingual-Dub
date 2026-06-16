@@ -112,7 +112,7 @@ class S3Client:
     ) -> dict[str, str]:
         """
         Create and upload a zip file containing all audio files for a language.
-        
+
         :param language: Language code (e.g., "hi-IN", "en-IN")
         :param audio_files: Dict of {filename: audio_bytes}
         :param folder_name: Folder path in S3 (e.g., "batch/job_id")
@@ -143,3 +143,93 @@ class S3Client:
             return {"bucket": self._config.bucket, "key": s3_key, "etag": etag}
 
         return retry_call(_call, operation="S3 upload zip")
+
+    def list_zip_filenames(self, folder_name: str, language: str) -> set[str]:
+        """Return the set of filenames inside {folder_name}/{language}.zip on S3.
+
+        Returns an empty set if the zip does not exist.
+        """
+        s3_key = f"{folder_name}/{language}.zip"
+
+        def _call() -> set[str]:
+            try:
+                response = self._client.get_object(Bucket=self._config.bucket, Key=s3_key)
+            except self._client.exceptions.NoSuchKey:
+                return set()
+            except Exception as exc:
+                if "NoSuchKey" in type(exc).__name__:
+                    return set()
+                raise
+
+            existing_bytes = response["Body"].read()
+            with zipfile.ZipFile(io.BytesIO(existing_bytes)) as zf:
+                return {info.filename for info in zf.infolist() if not info.is_dir()}
+
+        return retry_call(_call, operation="S3 list zip filenames")
+
+    def folder_exists(self, folder_name: str) -> bool:
+        """True if any object exists under the given prefix."""
+        prefix = folder_name.rstrip("/") + "/"
+
+        def _call() -> bool:
+            response = self._client.list_objects_v2(
+                Bucket=self._config.bucket,
+                Prefix=prefix,
+                MaxKeys=1,
+            )
+            return response.get("KeyCount", 0) > 0 or bool(response.get("Contents"))
+
+        return retry_call(_call, operation="S3 folder exists check")
+
+    def append_to_language_zip(
+        self, language: str, new_files: dict[str, bytes], folder_name: str
+    ) -> dict[str, str]:
+        """
+        Merge new audio files into an existing language zip on S3 and re-upload.
+
+        If the zip does not exist yet, behaves like upload_language_zip. On
+        filename collisions inside the zip, the new file overwrites the old.
+        """
+        s3_key = f"{folder_name}/{language}.zip"
+
+        def _call() -> dict[str, str]:
+            existing_files: dict[str, bytes] = {}
+            try:
+                response = self._client.get_object(Bucket=self._config.bucket, Key=s3_key)
+                existing_bytes = response["Body"].read()
+                with zipfile.ZipFile(io.BytesIO(existing_bytes)) as zf:
+                    for info in zf.infolist():
+                        if info.is_dir():
+                            continue
+                        existing_files[info.filename] = zf.read(info.filename)
+            except self._client.exceptions.NoSuchKey:
+                existing_files = {}
+            except Exception as exc:
+                if "NoSuchKey" not in type(exc).__name__:
+                    raise
+
+            merged = {**existing_files, **new_files}
+
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for filename, audio_bytes in merged.items():
+                    zf.writestr(filename, audio_bytes)
+
+            self._ensure_folder_for_key(s3_key)
+            response = self._client.put_object(
+                Bucket=self._config.bucket,
+                Key=s3_key,
+                Body=zip_buffer.getvalue(),
+                ContentType="application/zip",
+            )
+            etag = str(response.get("ETag", "")).strip('"')
+            return {
+                "bucket": self._config.bucket,
+                "key": s3_key,
+                "etag": etag,
+                "added_files": str(len(new_files)),
+                "total_files": str(len(merged)),
+                "overwritten_files": str(len(set(existing_files) & set(new_files))),
+            }
+
+        return retry_call(_call, operation="S3 append zip")

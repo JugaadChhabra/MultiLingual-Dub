@@ -121,8 +121,12 @@ async def _upload_activity_archives(
     summary: JobSummary,
     activity_upload_counts: dict[str, int],
     output_dir: Path | None = None,
+    append_mode: bool = False,
 ) -> None:
-    folder_name = _next_activity_folder_name(activity_name, activity_upload_counts)
+    if append_mode:
+        folder_name = activity_name
+    else:
+        folder_name = _next_activity_folder_name(activity_name, activity_upload_counts)
     logger.info(
         "Job %s | activity %s: archiving zip files for %d languages under %s",
         job_id,
@@ -168,21 +172,40 @@ async def _upload_activity_archives(
                 )
                 continue
 
-            result = await asyncio.to_thread(
-                s3_client.upload_language_zip,
-                language_label,
-                audio_files,
-                folder_name,
-            )
-            summary.uploads_succeeded += 1
-            logger.info(
-                "Job %s | activity %s | lang %s: uploaded zip with %d files -> %s",
-                job_id,
-                activity_name,
-                language_label,
-                len(audio_files),
-                result["key"],
-            )
+            if append_mode:
+                result = await asyncio.to_thread(
+                    s3_client.append_to_language_zip,
+                    language_label,
+                    audio_files,
+                    folder_name,
+                )
+                summary.uploads_succeeded += 1
+                logger.info(
+                    "Job %s | activity %s | lang %s: appended %s file(s) into zip (overwrote %s, total now %s) -> %s",
+                    job_id,
+                    activity_name,
+                    language_label,
+                    result.get("added_files", len(audio_files)),
+                    result.get("overwritten_files", "0"),
+                    result.get("total_files", "?"),
+                    result["key"],
+                )
+            else:
+                result = await asyncio.to_thread(
+                    s3_client.upload_language_zip,
+                    language_label,
+                    audio_files,
+                    folder_name,
+                )
+                summary.uploads_succeeded += 1
+                logger.info(
+                    "Job %s | activity %s | lang %s: uploaded zip with %d files -> %s",
+                    job_id,
+                    activity_name,
+                    language_label,
+                    len(audio_files),
+                    result["key"],
+                )
         except Exception as exc:
             summary.uploads_failed += 1
             if summary.upload_warning is None:

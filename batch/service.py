@@ -21,6 +21,7 @@ from services.elevenlabs import get_batch_config_for_language, get_elevenlabs_ap
 from services.qc import QCError, qc_translations_batch
 from services.runtime_config import RuntimeConfig, get_config_value
 from services.translation import translate_with_fallback
+from services.languages import LANGUAGE_NAMES
 from services.s3 import S3Client, S3ConfigError, get_s3_config
 
 logger = logging.getLogger(__name__)
@@ -276,10 +277,16 @@ async def run_excel_batch_job(
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
     output_dir: Path | None = None,
+    mode: str = "create",
 ) -> None:
     """
     Run a batch job to completion without a fixed global timeout.
     Long-running jobs remain active until they finish or hit a terminal error.
+
+    mode="create" (default): generate audio and upload fresh language zips per activity.
+    mode="append": require that each activity name from the Excel already exists as a
+    folder on S3; merge the newly generated audio files into the existing language zips
+    (new files overwrite same-named entries).
     """
     summary = JobSummary()
     try:
@@ -293,6 +300,7 @@ async def run_excel_batch_job(
             runtime_config=runtime_config,
             teaching_mode=teaching_mode,
             output_dir=output_dir,
+            mode=mode,
         )
     except Exception as exc:
         logger.exception("Job %s crashed unexpectedly: %s", job_id, exc)
@@ -309,7 +317,9 @@ async def _run_batch_job_impl(
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
     output_dir: Path | None = None,
+    mode: str = "create",
 ) -> None:
+    append_mode = mode == "append"
     summary.started_at = await jobs_store.start(job_id)
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
 
@@ -352,6 +362,55 @@ async def _run_batch_job_impl(
             len(target_languages),
             summary.language_tasks_total,
         )
+
+        existing_files_by_folder: dict[str, dict[str, set[str]]] = {}
+        if append_mode:
+            if s3_client is None:
+                raise ValueError(
+                    "Append mode requires S3 upload to be enabled (BATCH_ENABLE_S3_UPLOAD=true)."
+                )
+            unique_folders: list[str] = []
+            seen: set[str] = set()
+            current_seg: str | None = None
+            for row in rows:
+                segment = _resolve_activity_segment_name(row.activity_name, current_seg)
+                current_seg = segment
+                if segment not in seen:
+                    seen.add(segment)
+                    unique_folders.append(segment)
+
+            missing_folders: list[str] = []
+            for folder in unique_folders:
+                exists = await asyncio.to_thread(s3_client.folder_exists, folder)
+                if not exists:
+                    missing_folders.append(folder)
+            if missing_folders:
+                raise ValueError(
+                    "Append mode: the following S3 folder(s) do not exist: "
+                    + ", ".join(missing_folders)
+                )
+            logger.info(
+                "Job %s | append mode | validated %d folder(s) exist on S3: %s",
+                job_id,
+                len(unique_folders),
+                ", ".join(unique_folders),
+            )
+
+            for folder in unique_folders:
+                per_lang: dict[str, set[str]] = {}
+                for language in target_languages:
+                    language_label = LANGUAGE_NAMES.get(language, language)
+                    existing = await asyncio.to_thread(
+                        s3_client.list_zip_filenames, folder, language_label
+                    )
+                    per_lang[language] = existing
+                existing_files_by_folder[folder] = per_lang
+                logger.info(
+                    "Job %s | append mode | preloaded existing entries for %s: %s",
+                    job_id,
+                    folder,
+                    ", ".join(f"{LANGUAGE_NAMES.get(l, l)}={len(per_lang[l])}" for l in target_languages),
+                )
     except S3ConfigError as exc:
         await jobs_store.fail(job_id, f"S3 config error: {exc}", summary)
         return
@@ -410,27 +469,69 @@ async def _run_batch_job_impl(
                         summary=summary,
                         activity_upload_counts=activity_upload_counts,
                         output_dir=output_dir,
+                        append_mode=append_mode,
                     )
                     language_audio_files = _new_language_audio_buffers(target_languages)
                     current_activity_failed_tasks = []
                     current_activity_name = row_activity_name
 
+                row_languages = list(target_languages)
+                if append_mode:
+                    skipped_langs: list[str] = []
+                    needed_langs: list[str] = []
+                    for language in target_languages:
+                        expected_filename = _build_output_filename(
+                            audio_type=row.audio_type,
+                            row_index=row.row_index,
+                            language=language,
+                        )
+                        existing_set = existing_files_by_folder.get(current_activity_name, {}).get(language, set())
+                        if expected_filename in existing_set:
+                            skipped_langs.append(language)
+                        else:
+                            needed_langs.append(language)
+
+                    if skipped_langs:
+                        summary.language_tasks_skipped += len(skipped_langs)
+                        logger.info(
+                            "Job %s | row %d: append mode skipping %d/%d languages already present in zip (%s)",
+                            job_id,
+                            row.row_index,
+                            len(skipped_langs),
+                            len(target_languages),
+                            ", ".join(skipped_langs),
+                        )
+                        await jobs_store.update_summary(job_id, summary)
+
+                    if not needed_langs:
+                        logger.info(
+                            "Job %s | row %d: append mode skipping entire row — all languages already present",
+                            job_id,
+                            row.row_index,
+                        )
+                        row_languages = []
+                    else:
+                        row_languages = needed_langs
+
+                if not row_languages:
+                    continue
+
                 logger.info(
                     "Job %s | row %d: translating into %d languages (parallelism=%d)",
                     job_id,
                     row.row_index,
-                    len(target_languages),
+                    len(row_languages),
                     translation_parallelism,
                 )
                 translation_raw_results = await _translate_row_languages(
                     text=row.text,
-                    target_languages=target_languages,
+                    target_languages=row_languages,
                     max_parallelism=translation_parallelism,
                     runtime_config=runtime_config,
                 )
                 translation_results: list[tuple[str, str | None, str | None]] = []
                 for index, result in enumerate(translation_raw_results):
-                    language = target_languages[index]
+                    language = row_languages[index]
                     if isinstance(result, Exception):
                         logger.error(
                             "Job %s | row %d | lang %s: translation task crashed: %s",
@@ -507,7 +608,7 @@ async def _run_batch_job_impl(
                         for language in translations_to_qc:
                             qc_failures_by_language[language] = reason
 
-                for language in target_languages:
+                for language in row_languages:
                     effective_text = qc_output_by_language.get(language, "")
                     if not effective_text:
                         if language in qc_failures_by_language:
@@ -633,6 +734,7 @@ async def _run_batch_job_impl(
                 summary=summary,
                 activity_upload_counts=activity_upload_counts,
                 output_dir=output_dir,
+                append_mode=append_mode,
             )
 
         await jobs_store.complete(job_id, summary)

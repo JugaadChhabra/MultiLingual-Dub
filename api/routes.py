@@ -360,11 +360,15 @@ async def create_excel_job(
     target_languages_json: str | None = Form(default=None),
     max_language_parallelism: int | None = Form(default=None),
     teaching_mode: bool | None = Form(default=False),
+    mode: str = Form(default="create"),
 ):
     runtime_config = await _runtime_config_for_request(request)
     filename = ensure_file_extension(file.filename, ".xlsx", "Only .xlsx files are allowed")
     if max_language_parallelism is not None and max_language_parallelism < 1:
         raise HTTPException(status_code=400, detail="max_language_parallelism must be >= 1")
+
+    if mode not in {"create", "append"}:
+        raise HTTPException(status_code=400, detail="mode must be 'create' or 'append'")
 
     parsed_languages = parse_target_languages(target_languages, target_languages_json)
 
@@ -387,6 +391,7 @@ async def create_excel_job(
             runtime_config=runtime_config,
             teaching_mode=teaching_mode,
             output_dir=OUTPUT_DIR,
+            mode=mode,
         )
     )
 

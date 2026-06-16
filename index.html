@@ -1,310 +1,107 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <link rel="icon" type="image/png" href="favicon.png" />
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoDub Studio</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&family=Nunito:wght@400;500;600;700;800&family=Quicksand:wght@500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="/static/style.css?v=5" />
-  </head>
-  <body>
-    <div class="ambient-layer" aria-hidden="true">
-      <div class="orb orb-a"></div>
-      <div class="orb orb-b"></div>
-      <div class="orb orb-c"></div>
-    </div>
+<head>
+<link rel="icon" href="favicon.png" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoDub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css?v=7" />
+</head>
+<body>
+<canvas id="wave"></canvas>
+  <div class="scrim"></div>
 
-    <div class="app-shell">
-      <header class="topbar glass">
-        <div class="brand">
-          <div class="brand-icon">AD</div>
-          <div class="brand-copy">
-            <h1>AutoDub Studio</h1>
-            <p>Multilingual dubbing control surface with live output</p>
-          </div>
-        </div>
-        <div class="top-meta">
-          <div class="meta-chip">
-            <span class="meta-label">Session Config</span>
-            <span class="badge pending" id="envBadge">Not loaded</span>
-          </div>
-          <div class="meta-chip">
-            <span class="meta-label">Pipeline</span>
-            <span class="badge neutral">Excel Batch</span>
-          </div>
-        </div>
-      </header>
+  <div class="app">
+    <header>
+      <div class="mark">autodub<span class="d">.</span><span class="eq" id="eq"><i></i><i></i><i></i><i></i></span></div>
+      <div class="hstat">
+        <span class="seg"><span class="dotled"></span> session ready</span>
+        <span class="seg hide-sm">config <b id="cfg">9/12</b></span>
+        <button class="snd" id="snd">♪ off</button>
+      </div>
+    </header>
 
-      <form id="uploadForm" class="workspace" data-col1="1.2fr" data-col2="0.95fr" data-col3="1.7fr">
-        <section class="panel glass" id="panel1">
-          <div class="panel-head" data-panel="panel1">
-            <h2>System + Upload</h2>
-            <p>Runtime config is read from server environment</p>
+    <main>
+      <!-- left -->
+      <div class="col">
+        <div class="lbl">source<span class="r"></span><span class="n">.xlsx</span></div>
+        <div class="drop" id="drop">
+          <span class="ic" id="dropIc">▤</span>
+          <div>
+            <div class="dm" id="dropMain">Drop .xlsx or click to browse</div>
+            <div class="ds" id="dropSub">source rows + target columns</div>
           </div>
-          <div class="panel-body scroll-zone">
-            <div>
-              <label class="field-label">Runtime Config Status</label>
-              <div class="result" id="envStatusBox">
-                <div class="health-dots" id="healthDots"></div>
-                <div class="status" id="envStatus">Checking runtime config status...</div>
+          <input type="file" id="file" accept=".xlsx" hidden />
+        </div>
+        <div class="teach" id="teach">
+          <span class="sw"></span>
+          <span class="tt">Teaching mode</span>
+          <span class="te">Full <span style="font-family:var(--native);font-style:normal">अनुवाद</span></span>
+          <span class="tst" id="teachSt">off</span>
+        </div>
+        <div class="teach" id="append" title="Merge new audio into existing S3 folders named by activity_name. Job fails if a folder is missing.">
+          <span class="sw"></span>
+          <span class="tt">Append mode</span>
+          <span class="te">Merge into existing folders</span>
+          <span class="tst" id="appendSt">off</span>
+        </div>
+
+        <div class="lbl">targets<span class="r"></span><span class="n" id="selN">3 / 16</span></div>
+        <div class="qs">
+          <button data-q="all">all</button>
+          <button data-q="indian">indian</button>
+          <button data-q="intl">intl</button>
+          <button data-q="none">clear</button>
+        </div>
+        <div class="mosaic" id="mosaic"></div>
+      </div>
+
+      <div class="vrule"></div>
+
+      <!-- right -->
+      <div class="col">
+        <div class="lbl">run<span class="r"></span><span class="n" id="echoN">3 targets</span></div>
+        <button class="run-btn" id="run">Run pipeline <span class="ret">⏎</span></button>
+        <div class="run-echo"><span class="p">$</span> POST /batch/excel-jobs</div>
+
+        <div class="lbl">console<span class="r"></span></div>
+        <div class="consolebox">
+        <div class="tabs">
+          <button class="tab on" data-tab="summary">summary</button>
+          <button class="tab" data-tab="feed">feed<span class="n" id="feedN">0</span></button>
+          <button class="tab" data-tab="logs">logs<span class="n" id="logN">0</span></button>
+        </div>
+        <div class="cbody">
+          <div data-pane="summary">
+            <div class="empty" id="sumEmpty">
+              <div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="big">Nothing dubbed yet.</div>
+              <div class="sm">pick your voices, then hit run.</div>
+            </div>
+            <div id="sumData" hidden>
+              <div class="metrics">
+                <div class="metric"><div class="v" data-m="rows">0</div><div class="l"><span class="g">+</span> rows</div></div>
+                <div class="metric"><div class="v acc" data-m="targets">0</div><div class="l"><span class="g">+</span> targets</div></div>
+                <div class="metric"><div class="v ok" data-m="done">0</div><div class="l"><span class="g">+</span> done</div></div>
+                <div class="metric"><div class="v er" data-m="failed">0</div><div class="l"><span class="g">+</span> failed</div></div>
               </div>
-            </div>
-
-            <div class="section-divider"></div>
-
-            <div class="input-section" style="margin-top: 6px;">
-              <label class="teaching-card" id="teachingCard" for="teachingMode">
-                <input type="checkbox" id="teachingMode" name="teaching_mode" value="true" />
-                <div class="teaching-card-inner">
-                  <div class="teaching-left">
-                    <div class="teaching-icon-wrap">
-                      <span class="teaching-icon-off">Aa</span>
-                      <span class="teaching-icon-on">A<span class="teaching-icon-native">अ</span></span>
-                    </div>
-                  </div>
-                  <div class="teaching-right">
-                    <span class="teaching-title">Teaching Mode</span>
-                    <div class="teaching-preview">
-                      <span class="teaching-preview-off">Normal: <em>पूरा अनुवाद</em></span>
-                      <span class="teaching-preview-on">Mixed: <em>Full <span class="teaching-native-word">अनुवाद</span></em></span>
-                    </div>
-                  </div>
-                  <div class="teaching-indicator">
-                    <span class="teaching-status-dot"></span>
-                    <span class="teaching-status-text">OFF</span>
-                  </div>
-                </div>
-                <div class="teaching-glow"></div>
-              </label>
-            </div>
-
-            <div id="excelInputSection" class="input-section">
-              <label class="field-label">Excel file (.xlsx)</label>
-              <div class="drop-zone" id="dropZone">
-                <input id="excelFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-                <div class="drop-zone-content" id="dropZoneContent">
-                  <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M2 17l.62 2.48A2 2 0 004.56 21h14.88a2 2 0 001.94-1.52L22 17"/></svg>
-                  <span class="drop-zone-text">Drop <strong>.xlsx</strong> here or click to browse</span>
-                </div>
-                <div class="drop-zone-file" id="dropZoneFile" hidden>
-                  <svg class="drop-zone-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
-                  <span id="dropFileName"></span>
-                  <span id="dropFileSize" class="drop-zone-size"></span>
-                  <button type="button" class="drop-zone-clear" id="dropClearBtn" title="Remove file">&times;</button>
-                </div>
-              </div>
-              <div class="status" id="excelStatus"></div>
-              <div id="excelPreview" class="excel-preview" hidden></div>
+              <div id="resList"></div>
             </div>
           </div>
-        </section>
-
-        <div class="resize-handle" id="resizeHandle1"></div>
-
-        <section class="panel glass" id="panel2">
-          <div class="panel-head" data-panel="panel2">
-            <h2>Language + Run</h2>
-            <p>Pick one or many output locales</p>
+          <div data-pane="feed" hidden>
+            <div class="feed" id="feed"><div class="empty"><div class="sm">live row activity appears here during a run.</div></div></div>
           </div>
-          <div class="panel-body">
-            <div class="lang-actions">
-              <button type="button" class="lang-action-btn" id="selectAll">All</button>
-              <button type="button" class="lang-action-btn" id="selectIndian">Indian</button>
-              <button type="button" class="lang-action-btn" id="selectIntl">International</button>
-              <button type="button" class="lang-action-btn" id="selectNone">Clear</button>
-            </div>
-            <div class="lang-grid" id="languageCheckboxes">
-              <div class="lang-chip"><input type="checkbox" id="lang-bn" name="target_language" value="bn-IN" /><label for="lang-bn"><span class="lang-en">Bengali</span><span class="lang-native">বাংলা</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-en" name="target_language" value="en-IN" /><label for="lang-en"><span class="lang-en">English</span><span class="lang-native">English</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-gu" name="target_language" value="gu-IN" /><label for="lang-gu"><span class="lang-en">Gujarati</span><span class="lang-native">ગુજરાતી</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-hi" name="target_language" value="hi-IN" checked /><label for="lang-hi"><span class="lang-en">Hindi</span><span class="lang-native">हिन्दी</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-kn" name="target_language" value="kn-IN" /><label for="lang-kn"><span class="lang-en">Kannada</span><span class="lang-native">ಕನ್ನಡ</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-ml" name="target_language" value="ml-IN" /><label for="lang-ml"><span class="lang-en">Malayalam</span><span class="lang-native">മലയാളം</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-mr" name="target_language" value="mr-IN" /><label for="lang-mr"><span class="lang-en">Marathi</span><span class="lang-native">मराठी</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-od" name="target_language" value="od-IN" /><label for="lang-od"><span class="lang-en">Odia</span><span class="lang-native">ଓଡ଼ିଆ</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-pa" name="target_language" value="pa-IN" /><label for="lang-pa"><span class="lang-en">Punjabi</span><span class="lang-native">ਪੰਜਾਬੀ</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-ta" name="target_language" value="ta-IN" /><label for="lang-ta"><span class="lang-en">Tamil</span><span class="lang-native">தமிழ்</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-te" name="target_language" value="te-IN" /><label for="lang-te"><span class="lang-en">Telugu</span><span class="lang-native">తెలుగు</span></label></div>
-
-              <div class="lang-divider" aria-hidden="true"></div>
-
-              <div class="lang-chip"><input type="checkbox" id="lang-de" name="target_language" value="de" /><label for="lang-de"><span class="lang-en">German</span><span class="lang-native">Deutsch</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-es" name="target_language" value="es" /><label for="lang-es"><span class="lang-en">Spanish</span><span class="lang-native">Español</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-fr" name="target_language" value="fr" /><label for="lang-fr"><span class="lang-en">French</span><span class="lang-native">Français</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-pt" name="target_language" value="pt" /><label for="lang-pt"><span class="lang-en">Portuguese</span><span class="lang-native">Português</span></label></div>
-              <div class="lang-chip"><input type="checkbox" id="lang-ru" name="target_language" value="ru" /><label for="lang-ru"><span class="lang-en">Russian</span><span class="lang-native">Русский</span></label></div>
-            </div>
-
-            <div class="action-wrap">
-              <button class="morph-btn" id="submitBtn" type="submit">
-                <span class="morph-btn-idle">Run Pipeline</span>
-                <span class="morph-btn-loading" hidden>
-                  <svg class="morph-btn-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20" /></svg>
-                  <span class="morph-btn-loading-text">Starting...</span>
-                </span>
-                <span class="morph-btn-done" hidden>
-                  <svg class="morph-btn-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>
-                  <span class="morph-btn-done-text">Completed</span>
-                </span>
-                <span class="morph-btn-failed" hidden>
-                  <svg class="morph-btn-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                  <span class="morph-btn-failed-text">Failed</span>
-                </span>
-              </button>
-              <div class="status status-inline" id="submitStatus">
-                <div class="spinner" id="spinner"></div>
-                <span id="submitStatusText"></span>
-              </div>
-            </div>
+          <div data-pane="logs" hidden>
+            <div class="logs" id="logs"><div class="row"><span class="p">$</span><span class="mut">waiting for batch run…</span></div></div>
           </div>
-        </section>
-
-        <div class="resize-handle" id="resizeHandle2"></div>
-
-        <section class="panel glass" id="panel3">
-          <div class="panel-head" data-panel="panel3">
-            <div style="display:flex;align-items:center;justify-content:space-between">
-              <div>
-                <h2>Output Console</h2>
-                <p>Live execution summary and important logs</p>
-              </div>
-              <button type="button" class="history-btn" id="historyBtn" title="Job history">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </button>
-            </div>
-            <div class="output-tabs">
-              <button type="button" class="output-tab active" data-tab="summary">Summary</button>
-              <button type="button" class="output-tab" data-tab="feed">Live Feed</button>
-            </div>
-          </div>
-          <div class="panel-body scroll-zone" id="outputScroll">
-            <div class="result" id="result" hidden></div>
-
-            <div class="tab-content" id="tabSummary">
-              <div id="multiResults" class="result-stack"></div>
-            </div>
-
-            <div class="tab-content" id="tabFeed" hidden>
-              <div id="rowFeed" class="row-feed"></div>
-            </div>
-
-            <div class="summary-card" id="logsCard">
-              <div class="summary-top">
-                <div>
-                  <div class="summary-title">Important Logs</div>
-                  <div class="status" id="logStatusText" style="margin-top:4px;">Waiting for batch run...</div>
-                </div>
-                <span class="status-pill running" id="logStatusBadge">idle</span>
-              </div>
-              <pre id="logOutput" class="log-output"></pre>
-            </div>
-          </div>
-        </section>
-      </form>
-    </div>
-
-    <!-- Job History Sidebar -->
-    <div class="history-sidebar" id="historySidebar" hidden>
-      <div class="history-sidebar-head">
-        <span class="history-sidebar-title">Job History</span>
-        <button class="theme-panel-close" id="historyClose" type="button">&times;</button>
-      </div>
-      <div class="history-list" id="historyList">
-        <div class="empty-state" style="padding:16px;border:none;background:none;">
-          <p>No jobs run this session.</p>
+        </div>
         </div>
       </div>
-    </div>
-
-    <!-- Command Palette -->
-    <div class="cmd-overlay" id="cmdOverlay" hidden>
-      <div class="cmd-palette">
-        <input class="cmd-input" id="cmdInput" type="text" placeholder="Type a command..." autocomplete="off" />
-        <div class="cmd-results" id="cmdResults"></div>
-      </div>
-    </div>
-
-    <!-- Theme Switcher -->
-    <button class="theme-fab" id="themeFab" type="button" title="Appearance">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-    </button>
-
-    <div class="theme-panel" id="themePanel" hidden>
-      <div class="theme-panel-head">
-        <span class="theme-panel-title">Appearance</span>
-        <button class="theme-panel-close" id="themePanelClose" type="button">&times;</button>
-      </div>
-
-      <div class="theme-section">
-        <span class="theme-section-label">Palette</span>
-        <div class="theme-swatches" id="palettePicker">
-          <button class="theme-swatch" data-palette="charcoal" title="Charcoal"><span style="background:#0d1117"></span><span style="background:#0f766e"></span></button>
-          <button class="theme-swatch" data-palette="indigo" title="Midnight Indigo"><span style="background:#0a0e1a"></span><span style="background:#a78bfa"></span></button>
-          <button class="theme-swatch" data-palette="obsidian" title="Warm Obsidian"><span style="background:#121010"></span><span style="background:#f59e0b"></span></button>
-          <button class="theme-swatch" data-palette="forest" title="Forest Noir"><span style="background:#0a1208"></span><span style="background:#34d399"></span></button>
-          <button class="theme-swatch" data-palette="arctic" title="Arctic Steel"><span style="background:#0f1216"></span><span style="background:#38bdf8"></span></button>
-          <button class="theme-swatch" data-palette="blood" title="Blood Moon"><span style="background:#110a0a"></span><span style="background:#fb7185"></span></button>
-        </div>
-      </div>
-
-      <div class="theme-section">
-        <span class="theme-section-label">Style</span>
-        <div class="theme-styles" id="stylePicker">
-          <button class="theme-style-btn" data-style="glass">Glass</button>
-          <button class="theme-style-btn" data-style="solid">Solid</button>
-          <button class="theme-style-btn" data-style="neon">Neon</button>
-          <button class="theme-style-btn" data-style="soft">Soft</button>
-          <button class="theme-style-btn" data-style="brutalist">Brutalist</button>
-        </div>
-      </div>
-
-      <div class="theme-section">
-        <span class="theme-section-label">Sound</span>
-        <div class="toggle-row" style="gap:8px">
-          <label class="toggle-switch" for="soundToggle" style="transform:scale(0.85)">
-            <input type="checkbox" id="soundToggle" />
-            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-          </label>
-          <span style="font-size:11px;color:var(--muted)">Audio feedback on completion</span>
-        </div>
-      </div>
-
-      <div class="theme-section">
-        <span class="theme-section-label">Preview</span>
-        <div class="theme-preview-row">
-          <div class="theme-preview-chip">Panel</div>
-          <div class="theme-preview-chip accent">Accent</div>
-          <div class="theme-preview-chip success">OK</div>
-          <div class="theme-preview-chip error">Err</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Toast Container -->
-    <div class="toast-stack" id="toastStack"></div>
-
-    <!-- Keyboard Shortcut Overlay -->
-    <div class="shortcut-overlay" id="shortcutOverlay" hidden>
-      <div class="shortcut-card">
-        <div class="shortcut-title">Keyboard Shortcuts</div>
-        <div class="shortcut-grid">
-          <kbd>Cmd+Enter</kbd><span>Run pipeline</span>
-          <kbd>Escape</kbd><span>Cancel job / close panels</span>
-          <kbd>Cmd+K</kbd><span>Command palette</span>
-          <kbd>Cmd+A</kbd><span>Select all languages</span>
-          <kbd>Cmd+Shift+A</kbd><span>Clear all languages</span>
-          <kbd>?</kbd><span>Toggle this help</span>
-        </div>
-        <div style="text-align:center;margin-top:12px;font-size:11px;color:var(--muted)">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
-      </div>
-    </div>
-
-    <script src="/static/app.js?v=5"></script>
-  </body>
+    </main>
+  </div>
+<script src="/static/app.js?v=7"></script>
+</body>
 </html>
