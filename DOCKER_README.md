@@ -19,7 +19,6 @@ Set all required keys in `.env`:
 - `BATCH_ENABLE_S3_UPLOAD`
 - `BATCH_ENABLE_QC`
 - `ELEVEN_LABS`
-- `AI_STUDIO_VOICE`
 - `DESI_VOCAL_VOICE`
 - `ENGLISH_VOICE`
 

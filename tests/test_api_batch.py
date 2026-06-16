@@ -180,7 +180,6 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
             "AWS_REGION=ap-south-1",
             "BATCH_ENABLE_S3_UPLOAD=true",
             "BATCH_ENABLE_QC=true",
-            "AI_STUDIO_VOICE=v1",
             "DESI_VOCAL_VOICE=v2",
             "ENGLISH_VOICE=v3",
         ]

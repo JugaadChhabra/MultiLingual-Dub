@@ -151,7 +151,7 @@
   function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
 
   // ── config status ──────────────────────────
-  const REQUIRED_ENV_KEYS = ["SARVAM_API_KEY","GEMINI_API_KEY","ELEVEN_LABS","DESI_VOCAL_VOICE","AI_STUDIO_VOICE","AWS_ACCESS_KEY","AWS_SECRET_KEY","AWS_BUCKET","AWS_REGION","AWS_ENDPOINT_URL","BATCH_ENABLE_S3_UPLOAD","BATCH_ENABLE_QC","GEMINI_QC_MODELS"];
+  const REQUIRED_ENV_KEYS = ["SARVAM_API_KEY","GEMINI_API_KEY","ELEVEN_LABS","DESI_VOCAL_VOICE","AWS_ACCESS_KEY","AWS_SECRET_KEY","AWS_BUCKET","AWS_REGION","AWS_ENDPOINT_URL","BATCH_ENABLE_S3_UPLOAD","BATCH_ENABLE_QC","GEMINI_QC_MODELS"];
   let envConfigured = false;
   async function refreshEnvStatus() {
     try {

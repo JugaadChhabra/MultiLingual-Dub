@@ -278,7 +278,7 @@ Accordion, 6–8 items:
 2. **Where does my data go?** Source rows stay in your container. Audio lands in your S3 bucket or local disk — your choice via env flag.
 3. **Can I add a language?** Yes — the European path is in-process translation; new locales are a small PR.
 4. **Does Pro give me a hosted version?** No. AutoDub is self-hosted by design. Pro buys you support, not infra.
-5. **Can I use my own voices?** Yes — set `AI_STUDIO_VOICE`, `DESI_VOCAL_VOICE`, `ENGLISH_VOICE` in `.env`.
+5. **Can I use my own voices?** Yes — set `DESI_VOCAL_VOICE`, `ENGLISH_VOICE` in `.env`.
 6. **Is there an API?** Yes — `POST /batch/excel-jobs`, `GET /batch/excel-jobs/{id}`, `GET /health`.
 7. **What's the license?** MIT. Fork it, ship it.
 8. **How do updates work?** `docker pull ghcr.io/jugaadchhabra/autodub:latest && docker compose up -d`.

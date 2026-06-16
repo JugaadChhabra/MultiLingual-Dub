@@ -25,11 +25,8 @@ def get_voice_id(voice_name: str = "desi", runtime_config: RuntimeConfig | None 
 
     Supported voice_name values:
     - "desi": DESI_VOCAL_VOICE (default)
-    - "studio": AI_STUDIO_VOICE
     - "english": ENGLISH_VOICE
     """
-    if voice_name == "studio":
-        return get_config_value("AI_STUDIO_VOICE", runtime_config=runtime_config) or "S1JBcZECEJJlf7lEDTbN"
     if voice_name == "english":
         voice_id = get_config_value("ENGLISH_VOICE", runtime_config=runtime_config)
         if not voice_id:
