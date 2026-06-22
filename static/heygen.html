@@ -171,7 +171,7 @@
 
 <div class="app">
   <header>
-    <div class="mark">autodub<span class="d">.</span><span class="eq" id="eq"><i></i><i></i><i></i><i></i></span></div>
+    <div class="mark">autodub<span class="d">.</span></div>
     <div class="hstat">
       <span class="seg"><span class="dotled"></span> session ready</span>
       <span class="seg hide-sm">studio <b>video</b></span>
@@ -186,7 +186,6 @@
         <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
         <div class="mbody" id="mbody">
           <div class="ph" id="mph">
-            <div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div>
             <div class="phbig">NO SIGNAL</div>
             <div class="phsm">drop an avatar to begin</div>
           </div>
@@ -294,7 +293,7 @@
   <div class="sub" id="drawerSub">video + motion prompt preset</div>
   <div class="fld">
     <div class="lbl" style="margin:0">name<span class="r"></span></div>
-    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. राशिफल · Horoscope" />
+    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. Horoscope" />
   </div>
   <div class="fld">
     <div class="lbl" style="margin:0">video prompt<span class="r"></span><span class="n">how it should look/feel</span></div>
@@ -327,24 +326,70 @@
 
   // ── seed categories (the old hardcoded presets) ──
   const SEED = [
-    { id: "sunsign", label: "राशिफल",
+    { id: "sunsign", label: "Horoscope",
       video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
       motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being." },
-    { id: "birthday", label: "जन्मदिन",
+    { id: "birthday", label: "Birthday",
       video_prompt: "The character is speaking directly to the camera in a warm, affectionate, and heartfelt tone, delivering a personal birthday greeting and an uplifting forecast for the year ahead. Visuals: Soft cinematic lighting with a warm, celebratory glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts that convey friendliness and care. Expressions: A genuine, joyful, and tender smile with micro-expressions shifting between celebratory warmth, thoughtful reflection, and encouraging optimism. Eyes: Soft, sparkling, and prolonged eye contact with the camera, natural blinking, and 'smiling eyes' (Duchenne smile) to convey sincere well-wishes. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures near the chest to convey affection, blessings, and warmth, avoiding stiffness.",
       motion_prompt: "A warm, affectionate presenter delivering a heartfelt birthday greeting and a hopeful year-ahead forecast. Movement style: Graceful, gentle, and emotionally engaged. Maintain a genuine, joyful smile throughout with micro-expressions that shift between celebratory warmth (for the wishes), thoughtful curiosity (for the trivia and traits), and encouraging optimism (for career, finance, relationships, and health segments). Head movements should be fluid—incorporating soft lateral tilts, slow nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile), softening further during the affectionate closing message. Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in fluid, non-repetitive 'open-palm' gestures near the chest area to convey blessings, sincerity, and care. The overall presence should feel personal, celebratory, and reassuring—like a close well-wisher offering heartfelt birthday blessings." },
   ];
 
   // ── category store (localStorage; DB later) ──
-  const CATS_KEY = "autodub_video_categories_v1";
+  // Code (SEED) is the source of truth for preset categories. localStorage holds
+  // only the user's *changes*: per-seed field overrides, deleted seed ids, and
+  // user-created categories. This lets us freely edit SEED labels/prompts in code
+  // and have them show up immediately — unless the user personally edited that one.
+  const STORE_KEY = "autodub_video_cat_store_v1";
+  const CATS_KEY = "autodub_video_categories_v1"; // legacy full-array key (migration only)
   const ACTIVE_KEY = "autodub_video_active_cat";
+  const CAT_FIELDS = ["label", "video_prompt", "motion_prompt"];
+  const SEED_IDS = new Set(SEED.map((c) => c.id));
+  const seedById = (id) => SEED.find((c) => c.id === id);
   let cats = [];
   let activeId = null;
-  function loadCats() {
-    try { const raw = JSON.parse(localStorage.getItem(CATS_KEY)); if (Array.isArray(raw) && raw.length) return raw; } catch (_) {}
-    return SEED.map((c) => ({ ...c }));
+
+  function loadStore() {
+    try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && typeof s === "object" && !Array.isArray(s)) return s; } catch (_) {}
+    // One-time migration from the legacy full-array store: keep user-created
+    // categories, but drop stale seed copies so the current code SEED wins.
+    try {
+      const old = JSON.parse(localStorage.getItem(CATS_KEY));
+      if (Array.isArray(old) && old.length) {
+        const user = old.filter((c) => c && c.id && !SEED_IDS.has(c.id)).map((c) => ({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt }));
+        const deleted = SEED.map((c) => c.id).filter((id) => !old.some((c) => c && c.id === id));
+        return { overrides: {}, deleted, user };
+      }
+    } catch (_) {}
+    return {};
   }
-  function persist() { localStorage.setItem(CATS_KEY, JSON.stringify(cats)); localStorage.setItem(ACTIVE_KEY, activeId || ""); }
+
+  function loadCats() {
+    const s = loadStore();
+    const deleted = new Set(Array.isArray(s.deleted) ? s.deleted : []);
+    const overrides = s.overrides && typeof s.overrides === "object" ? s.overrides : {};
+    const out = [];
+    SEED.forEach((c) => { if (!deleted.has(c.id)) out.push({ ...c, ...(overrides[c.id] || {}) }); });
+    if (Array.isArray(s.user)) s.user.forEach((c) => { if (c && c.id) out.push({ ...c }); });
+    return out;
+  }
+
+  function persist() {
+    const overrides = {}, user = [], presentSeeds = new Set();
+    cats.forEach((c) => {
+      if (SEED_IDS.has(c.id)) {
+        presentSeeds.add(c.id);
+        const base = seedById(c.id), diff = {};
+        CAT_FIELDS.forEach((k) => { if (c[k] !== base[k]) diff[k] = c[k]; });
+        if (Object.keys(diff).length) overrides[c.id] = diff;
+      } else {
+        user.push({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt });
+      }
+    });
+    const deleted = SEED.map((c) => c.id).filter((id) => !presentSeeds.has(id));
+    localStorage.setItem(STORE_KEY, JSON.stringify({ overrides, deleted, user }));
+    localStorage.removeItem(CATS_KEY); // legacy store superseded
+    localStorage.setItem(ACTIVE_KEY, activeId || "");
+  }
   function activeCat() { return cats.find((c) => c.id === activeId) || cats[0] || null; }
   function newId(label) { return (label || "cat").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) + "-" + Math.floor(Math.random() * 1e6).toString(36); }
 
@@ -418,7 +463,7 @@
   let stillURL = null;
   function showPlaceholder() {
     monitor.classList.remove("live");
-    mbody.innerHTML = `<div class="ph"><div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar to begin</div></div>`;
+    mbody.innerHTML = `<div class="ph"><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar to begin</div></div>`;
     mtag.textContent = "standby";
   }
   function showStill(tag) {
@@ -636,12 +681,12 @@
   function flash(msg) { const prev = isBatch ? "Generate batch" : "Generate video"; setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(prev); }, 1400); }
 
   function startRunUi(state) {
-    running = true; runBtn.disabled = true; energyTarget = 1; $("#eq").classList.add("run");
+    running = true; runBtn.disabled = true; energyTarget = 1;
     resetLogs(); startClock(); setTransport("submitting", "uploading…"); showRendering();
     setRunLabel(isBatch ? "Generating…" : "Rendering…");
   }
   function endRunUi() {
-    running = false; runBtn.disabled = false; energyTarget = 0; $("#eq").classList.remove("run");
+    running = false; runBtn.disabled = false; energyTarget = 0;
     setRunLabel(isBatch ? "Generate batch" : "Generate video"); stopClock();
   }
 
