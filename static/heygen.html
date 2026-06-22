@@ -87,8 +87,6 @@
   .chip.add:hover{ border-color:var(--accent); color:var(--accent); box-shadow:none; }
 
   .drop{ padding:13px 15px; }
-  .drop .ic.thumb{ padding:0; overflow:hidden; background:#0c0c10; }
-  .drop .ic.thumb img{ width:100%; height:100%; object-fit:cover; }
 
   .dateinp{ width:100%; font-family:var(--mono); font-size:12.5px; color:var(--ink); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:9px; padding:11px 14px; outline:none; transition:border-color .15s; }
   .dateinp:hover{ border-color:#2a2a31; }
@@ -124,6 +122,9 @@
 
   .run-btn .recdot{ width:9px; height:9px; border-radius:50%; background:#c0362b; box-shadow:0 0 6px rgba(192,54,43,.8); flex:none; }
   .run-btn:disabled .recdot{ background:#8a8377; box-shadow:none; }
+  .run-hint{ margin-top:10px; text-align:center; font-family:var(--mono); font-size:11px; color:var(--faint); cursor:pointer; }
+  .run-hint .lk{ color:var(--accent); text-decoration:underline; }
+  .run-hint:hover .lk{ filter:brightness(1.1); }
 
   /* result bits inside monitor/tray */
   .badge{ display:inline-flex; align-items:center; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; background:rgba(140,140,150,.12); color:var(--muted); }
@@ -154,6 +155,20 @@
   .drawer .saved{ font-family:var(--mono); font-size:11px; color:var(--ok); opacity:0; transition:opacity .25s; }
   .drawer .saved.show{ opacity:1; }
 
+  /* popup / alert */
+  .pop-scrim{ position:fixed; inset:0; z-index:50; background:rgba(4,4,6,.6); backdrop-filter:blur(4px); opacity:0; pointer-events:none; transition:opacity .2s; }
+  .pop-scrim.open{ opacity:1; pointer-events:auto; }
+  .pop{ position:fixed; z-index:51; top:50%; left:50%; width:min(380px,92vw); transform:translate(-50%,-46%) scale(.96); opacity:0; pointer-events:none; background:rgba(14,14,18,.97); backdrop-filter:blur(14px); border:1px solid var(--line); border-radius:14px; padding:26px 24px 20px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,.6); transition:opacity .2s, transform .2s cubic-bezier(.4,0,.2,1); }
+  .pop.open{ opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
+  .pop-ic{ width:44px; height:44px; margin:0 auto 14px; display:grid; place-items:center; border-radius:50%; background:var(--accent-dim); border:1px solid rgba(255,181,112,.35); color:var(--accent); font-family:var(--mono); font-size:20px; }
+  .pop-title{ font-family:var(--sans); font-weight:600; font-size:15px; color:var(--ink); margin-bottom:7px; }
+  .pop-msg{ font-size:12.5px; line-height:1.55; color:var(--muted); margin-bottom:20px; }
+  .pop-actions{ display:flex; gap:9px; justify-content:center; }
+  .pop-dismiss{ font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 16px; cursor:pointer; }
+  .pop-dismiss:hover{ color:var(--ink); border-color:#34343d; }
+  .pop-action{ font-family:var(--sans); font-weight:600; font-size:12px; color:#16130d; background:linear-gradient(#f4f1ea,#e3dfd4); border:none; border-radius:7px; padding:9px 16px; cursor:pointer; }
+  .pop-action:hover{ filter:brightness(1.03); }
+
   @media (max-width:880px){
     body{ overflow:auto; }
     .app{ height:auto; min-height:100vh; }
@@ -175,7 +190,6 @@
     <div class="hstat">
       <span class="seg"><span class="dotled"></span> session ready</span>
       <span class="seg hide-sm">studio <b>video</b></span>
-      <button class="snd" id="snd">♪ off</button>
     </div>
   </header>
 
@@ -279,8 +293,8 @@
       </div>
 
       <div class="railfoot">
-        <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate video</span><span class="ret">⏎</span></button>
-        <!-- <div class="run-echo"><span class="p">$</span> <span id="echoCmd">POST /video/heygen</span></div> -->
+        <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate video</span></button>
+        <div class="run-hint" id="runHint" hidden>No category yet — <span class="lk">create one</span> to start</div>
       </div>
     </aside>
   </main>
@@ -311,6 +325,18 @@
     <button type="button" class="savebtn" id="edSave">Save</button>
   </div>
 </aside>
+
+<!-- popup / alert -->
+<div class="pop-scrim" id="popScrim"></div>
+<div class="pop" id="pop" role="alertdialog" aria-modal="true" aria-labelledby="popTitle" aria-hidden="true">
+  <div class="pop-ic" id="popIc" aria-hidden="true">!</div>
+  <div class="pop-title" id="popTitle"></div>
+  <div class="pop-msg" id="popMsg"></div>
+  <div class="pop-actions">
+    <button type="button" class="pop-dismiss" id="popDismiss">Close</button>
+    <button type="button" class="pop-action" id="popAction" hidden></button>
+  </div>
+</div>
 
 <script>
 (() => {
@@ -412,6 +438,7 @@
     add.type = "button"; add.className = "chip add"; add.innerHTML = "+ new";
     add.addEventListener("click", () => openEditor(null));
     catsEl.appendChild(add);
+    refreshRunState();
   }
   function selectCat(id) {
     activeId = id;
@@ -423,7 +450,7 @@
 
   // ── mode (single / batch) ──
   let isBatch = false;
-  const modeN = $("#modeN"), echoN = $("#echoN"), echoCmd = $("#echoCmd");
+  const modeN = $("#modeN");
   const singleFields = $("#singleFields"), batchFields = $("#batchFields");
   const segInd = $("#segInd");
   function updateSegInd() { const on = $("#modeSeg button.on"); if (on && segInd) { segInd.style.left = on.offsetLeft + "px"; segInd.style.width = on.offsetWidth + "px"; } }
@@ -435,7 +462,6 @@
     updateSegInd();
     singleFields.hidden = batch; batchFields.hidden = !batch;
     modeN.textContent = batch ? "batch" : "single";
-    echoCmd.textContent = batch ? "POST /video/heygen/batch" : "POST /video/heygen";
     setRunLabel(batch ? "Generate batch" : "Generate video");
   }
 
@@ -474,7 +500,7 @@
   function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "rec ● rendering"; }
   function showVideo(url) {
     monitor.classList.remove("live");
-    mbody.innerHTML = `<video class="feed" src="${url}" controls autoplay muted playsinline></video>`;
+    mbody.innerHTML = `<video class="feed" src="${url}" controls autoplay playsinline></video>`;
     mtag.textContent = "playback";
   }
 
@@ -587,7 +613,7 @@
     edLabel.value = c ? c.label : "";
     edVideo.value = c ? c.video_prompt : "";
     edMotion.value = c ? c.motion_prompt : "";
-    edDelete.style.display = c && cats.length > 1 ? "" : "none";
+    edDelete.style.display = c ? "" : "none";
     drawer.classList.add("open"); drawerScrim.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
     setTimeout(() => edLabel.focus(), 60);
   }
@@ -604,11 +630,26 @@
     edSaved.classList.add("show"); setTimeout(() => edSaved.classList.remove("show"), 1400);
   });
   edDelete.addEventListener("click", () => {
-    if (!editingId || cats.length <= 1) return;
+    if (!editingId) return;
     cats = cats.filter((c) => c.id !== editingId);
     if (activeId === editingId) activeId = cats[0] ? cats[0].id : null;
     persist(); renderCats(); closeEditor();
   });
+
+  // ── popup / alert ──
+  const popScrim = $("#popScrim"), pop = $("#pop"), popTitle = $("#popTitle"), popMsg = $("#popMsg"), popAction = $("#popAction");
+  let popOnAction = null;
+  function showPopup(title, msg, actionLabel, onAction) {
+    popTitle.textContent = title; popMsg.textContent = msg;
+    if (actionLabel) { popAction.textContent = actionLabel; popAction.hidden = false; popOnAction = onAction || null; }
+    else { popAction.hidden = true; popOnAction = null; }
+    popScrim.classList.add("open"); pop.classList.add("open"); pop.setAttribute("aria-hidden", "false");
+  }
+  function closePopup() { popScrim.classList.remove("open"); pop.classList.remove("open"); pop.setAttribute("aria-hidden", "true"); }
+  popScrim.addEventListener("click", closePopup);
+  $("#popDismiss").addEventListener("click", closePopup);
+  popAction.addEventListener("click", () => { const fn = popOnAction; closePopup(); if (fn) fn(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop.classList.contains("open")) closePopup(); });
 
   // ── dithered iris background ──
   const cv = $("#wave"), ctx = cv.getContext("2d");
@@ -662,31 +703,30 @@
     else ping(RAMP[Math.floor(Math.random()*96)], 0.3, 1500);
   }, 1700);
 
-  // ── optional sound ──
-  let audioOn = false, actx = null;
-  const snd = $("#snd");
-  snd.addEventListener("click", () => {
-    audioOn = !audioOn; snd.classList.toggle("on", audioOn); snd.textContent = audioOn ? "♪ on" : "♪ off";
-    if (audioOn) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); note(4); } catch (e) {} }
-  });
+  // ── sound (always on; AudioContext unlocked on first user gesture per autoplay policy) ──
+  const audioOn = true; let actx = null;
+  function unlockAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {} }
+  ["pointerdown", "keydown"].forEach((e) => addEventListener(e, unlockAudio, { once: true }));
   const PENTA = [261.63,293.66,329.63,392.0,440.0,523.25,587.33,659.25,783.99,880.0,1046.5];
   function tone(freq, dur, type, gain) { if (!audioOn) return; try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination); const now = actx.currentTime; g.gain.setValueAtTime(gain, now); g.gain.exponentialRampToValueAtTime(0.0001, now+dur); o.start(now); o.stop(now+dur); } catch (e) {} }
   function note(i) { tone(PENTA[i % PENTA.length], 0.17, "sine", 0.05); }
   function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
 
   // ── run ──
-  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel");
+  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel"), runHint = $("#runHint");
   function setRunLabel(text) { rlabel.textContent = text; }
   let running = false;
+  function refreshRunState() { const empty = cats.length === 0; runBtn.disabled = empty || running; runHint.hidden = !empty || running; }
+  runHint.addEventListener("click", () => openEditor(null));
   function flash(msg) { const prev = isBatch ? "Generate batch" : "Generate video"; setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(prev); }, 1400); }
 
-  function startRunUi(state) {
-    running = true; runBtn.disabled = true; energyTarget = 1;
+  function startRunUi() {
+    running = true; energyTarget = 1; refreshRunState();
     resetLogs(); startClock(); setTransport("submitting", "uploading…"); showRendering();
     setRunLabel(isBatch ? "Generating…" : "Rendering…");
   }
   function endRunUi() {
-    running = false; runBtn.disabled = false; energyTarget = 0;
+    running = false; energyTarget = 0; refreshRunState();
     setRunLabel(isBatch ? "Generate batch" : "Generate video"); stopClock();
   }
 
@@ -696,8 +736,9 @@
 
   async function submit() {
     if (running) return;
+    if (!cats.length) { showPopup("No category yet", "Create a prompt category before you can generate a video — it sets the avatar's video and motion prompts.", "+ New category", () => openEditor(null)); return; }
     if (!imageFile) { flash("Drop an avatar image"); return; }
-    const c = activeCat(); if (!c) { flash("Pick a category"); return; }
+    const c = activeCat(); if (!c) { showPopup("No category selected", "Pick a category to continue.", null, null); return; }
 
     if (!isBatch) {
       if (!scriptInput.value.trim()) { flash("Write a script first"); return; }
@@ -713,7 +754,6 @@
         const res = await fetch("/video/heygen", { method: "POST", body: fd });
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
         const data = await res.json();
-        echoCmd.textContent = `job ${data.job_id || ""}`;
         addLog(`queued · job ${data.job_id}`, "ok");
         pollTimer = setInterval(() => pollSingle(data.job_id), 4000); pollSingle(data.job_id);
       } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); showStill("error"); endRunUi(); }
@@ -732,7 +772,6 @@
         const res = await fetch("/video/heygen/batch", { method: "POST", body: fd });
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
         const data = await res.json();
-        echoCmd.textContent = `batch ${data.batch_id || ""}`;
         addLog(`queued · batch ${data.batch_id}`, "ok");
         pollTimer = setInterval(() => pollBatch(data.batch_id), 4000); pollBatch(data.batch_id);
       } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); endRunUi(); }

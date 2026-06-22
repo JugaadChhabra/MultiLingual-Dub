@@ -3,6 +3,9 @@ version: '3.8'
 services:
   autodub:
     image: ghcr.io/jugaadchhabra/autodub:latest
+    # Always fetch the newest published image on `up` — users get updates
+    # automatically without ever running `docker compose pull`.
+    pull_policy: always
     ports:
       - "8080:8080"
     volumes:
@@ -46,7 +49,9 @@ services:
       start_period: 5s
 
 # Usage:
-# 1. docker pull ghcr.io/jugaadchhabra/autodub:latest
-# 2. Create/edit .env and fill all required keys
-# 3. docker compose up -d
-# 4. Access at http://localhost:8080
+# 1. Create/edit .env and fill all required keys
+# 2. docker compose up -d   (auto-pulls the latest image — no manual pull needed)
+# 3. Access at http://localhost:8080
+#
+# To update later: just run `docker compose up -d` again. `pull_policy: always`
+# fetches the newest image automatically before (re)starting.
