@@ -1,1598 +1,726 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bhaktidhaam · Content Pipeline</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-          *,
-          *::before,
-          *::after {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-          }
+<head>
+<link rel="icon" href="favicon.png" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoDub · Video Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css?v=8" />
+<style>
+  /* ── Studio Monitor layout — shares the AutoDub token system, fresh structure ── */
 
-          :root {
-            color-scheme: dark;
-            /* --bg: #080812; */
-            --bg: #040816;
-            --card: rgba(255, 255, 255, 0.04);
-            --card2: rgba(255, 255, 255, 0.07);
-            --border: rgba(120, 80, 255, 0.18);
-            --border-hi: rgba(120, 80, 255, 0.45);
-            --violet: #7c3aed;
-            --violet-l: rgba(124, 58, 237, 0.18);
-            --amber: #d97706;
-            --amber-l: rgba(217, 119, 6, 0.18);
-            --pink: #ec4899;
-            --orange: #f97316;
-            --green: #34d399;
-            --red: #f87171;
-            --t1: #f1f5f9;
-            --t2: #94a3b8;
-            --t3: #4b5563;
-            --r: 14px;
-            --r-sm: 10px;
-          }
+  /* iris background: radial mask + center-weighted scrim (overrides style.css wave/scrim) */
+  #wave{ -webkit-mask-image:radial-gradient(120% 120% at 40% 46%, #000 0%, #000 34%, rgba(0,0,0,.5) 66%, rgba(0,0,0,.12) 100%);
+                 mask-image:radial-gradient(120% 120% at 40% 46%, #000 0%, #000 34%, rgba(0,0,0,.5) 66%, rgba(0,0,0,.12) 100%); }
+  .scrim{ background:radial-gradient(120% 100% at 40% 46%, transparent 14%, rgba(10,10,12,.55) 52%, var(--bg) 100%); }
 
-          body {
-            font-family:
-              "Inter",
-              -apple-system,
-              sans-serif;
-            background: var(--bg);
-            color: var(--t1);
-            min-height: 100vh;
-            padding: 44px 20px 80px;
-            -webkit-font-smoothing: antialiased;
-            overflow-x: hidden;
-          }
+  main.studio{ flex:1; min-height:0; display:grid; grid-template-columns:1.5fr 1fr; gap:0 30px; align-content:stretch; padding-bottom:22px; }
 
-          /* ── Background glows ── */
-          /* body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background:
-              radial-gradient(ellipse 70% 50% at 0% 100%,   rgba(220,60,20,0.22) 0%, transparent 60%),
-              radial-gradient(ellipse 50% 40% at 100% 0%,   rgba(80,40,180,0.18) 0%, transparent 60%),
-              radial-gradient(ellipse 40% 30% at 50% 50%,   rgba(80,30,160,0.08) 0%, transparent 70%);
-            pointer-events: none;
-            z-index: 0;
-          } */
+  /* ── left: the stage (monitor + transport + tray) ── */
+  .stage{ display:flex; flex-direction:column; min-height:0; }
+  .monitor{ flex:1; min-height:240px; position:relative; border:1px solid var(--line); border-radius:14px; background:rgba(9,9,13,.46); backdrop-filter:blur(2px); overflow:hidden; box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
+  .monitor:has(.still),.monitor:has(.feed){ background:#000; backdrop-filter:none; }
+  .monitor .mbody{ position:absolute; inset:0; display:grid; place-items:center; }
+  .monitor img.still,.monitor video.feed{ max-width:100%; max-height:100%; width:auto; height:100%; object-fit:contain; background:#000; }
+  .monitor video.feed{ width:100%; }
+  .monitor .scan{ position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(255,255,255,.028) 0 1px, transparent 1px 3px); opacity:.55; mix-blend-mode:overlay; }
+  .monitor .tick{ position:absolute; width:16px; height:16px; border:1.5px solid var(--faint); opacity:.5; pointer-events:none; }
+  .monitor .tl{ top:11px; left:11px; border-right:none; border-bottom:none; }
+  .monitor .tr{ top:11px; right:11px; border-left:none; border-bottom:none; }
+  .monitor .bl{ bottom:11px; left:11px; border-right:none; border-top:none; }
+  .monitor .br{ bottom:11px; right:11px; border-left:none; border-top:none; }
+  .monitor .mtag{ position:absolute; top:13px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--faint); background:rgba(0,0,0,.42); padding:3px 10px; border-radius:5px; }
+  .monitor.live .mtag{ color:var(--err); }
+  .ph{ text-align:center; }
+  .ph .phbig{ font-family:var(--mono); font-size:12px; letter-spacing:.34em; color:var(--muted); margin-top:12px; }
+  .ph .phsm{ font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:7px; letter-spacing:.02em; }
 
-          body::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            background:
-      /* Purple glow - top left */
-              radial-gradient(
-                circle at 8% 12%,
-                rgba(168, 85, 247, 0.28) 0%,
-                rgba(168, 85, 247, 0.15) 20%,
-                transparent 45%
-              ),
-              /* Orange glow - bottom left */
-              radial-gradient(
-                  circle at 0% 100%,
-                  rgba(255, 98, 0, 0.25) 0%,
-                  rgba(255, 98, 0, 0.12) 18%,
-                  transparent 40%
-                ),
-              /* Center purple glow */
-              radial-gradient(
-                  circle at 50% 50%,
-                  rgba(124, 58, 237, 0.12) 0%,
-                  transparent 45%
-                ),
-              /* Top right subtle glow */
-              radial-gradient(
-                  circle at 90% 10%,
-                  rgba(236, 72, 153, 0.08) 0%,
-                  transparent 35%
-                ),
-              linear-gradient(
-                135deg,
-                #040816 0%,
-                #060b22 35%,
-                #0a1030 70%,
-                #090d1f 100%
-              );
-            filter: blur(80px);
-            pointer-events: none;
-            z-index: 0;
-          }
+  .transport{ flex:none; display:flex; align-items:center; gap:13px; margin-top:12px; padding:11px 15px; border:1px solid var(--line); border-radius:10px; background:rgba(12,12,16,.82); backdrop-filter:blur(5px); font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .rec{ width:9px; height:9px; border-radius:50%; background:#3a3a42; flex:none; }
+  .rec.on{ background:#ff5a4d; box-shadow:0 0 8px #ff5a4d; animation:recpulse 1s steps(1) infinite; }
+  @keyframes recpulse{ 50%{ opacity:.35; } }
+  .tstate{ color:var(--ink); letter-spacing:.06em; text-transform:uppercase; font-size:10px; }
+  .tstage{ color:var(--faint); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tcode{ color:var(--muted); letter-spacing:.08em; }
+  .logtoggle{ font-family:var(--mono); font-size:10.5px; color:var(--faint); background:none; border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; letter-spacing:.04em; }
+  .logtoggle:hover{ color:var(--muted); border-color:#2a2a31; }
+  .logtoggle .n{ color:var(--accent); margin-left:5px; }
 
-          /* ॐ watermark */
-          .bg-watermark {
-            position: fixed;
-            left: -30px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 320px;
-            color: rgba(120, 80, 255, 0.06);
-            pointer-events: none;
-            user-select: none;
-            z-index: 0;
-            line-height: 1;
-          }
+  .tray{ flex:none; margin-top:12px; max-height:0; overflow:hidden; border-radius:10px; transition:max-height .26s ease; }
+  .tray.open{ max-height:248px; border:1px solid var(--line); background:rgba(12,12,16,.82); backdrop-filter:blur(5px); }
+  .trayhead{ display:flex; gap:2px; border-bottom:1px solid var(--line); padding:0 8px; }
+  .trayhead .tt{ font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--muted); background:none; border:none; border-bottom:1.5px solid transparent; padding:9px 11px; cursor:pointer; }
+  .trayhead .tt.on{ color:var(--accent); border-bottom-color:var(--accent); }
+  .trayhead .tt .n{ color:var(--faint); margin-left:5px; }
+  .traybody{ max-height:200px; overflow:auto; padding:2px 14px 10px; }
 
-          .wrap {
-            max-width: 680px;
-            margin: 0 auto;
-            position: relative;
-            z-index: 1;
-          }
+  /* ── right: control rail ── */
+  .rail{ display:flex; flex-direction:column; min-height:0; }
+  .railscroll{ flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
+  .railscroll .lbl:not(:first-child){ margin-top:22px; }
+  .railfoot{ flex:none; padding-top:16px; }
 
-          /* ── Header ── */
-          .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 32px;
-            gap: 16px;
-          }
+  .seg2{ position:relative; display:inline-flex; padding:4px; border:1px solid var(--line); border-radius:10px; background:rgba(13,13,17,.72); }
+  .seg-ind{ position:absolute; top:4px; bottom:4px; left:4px; width:0; border-radius:7px; background:linear-gradient(var(--accent-dim),rgba(255,181,112,.04)); box-shadow:inset 0 0 0 1px var(--accent), 0 5px 16px -7px var(--accent); transition:left .24s cubic-bezier(.4,0,.2,1), width .24s cubic-bezier(.4,0,.2,1); pointer-events:none; }
+  .seg2 button{ position:relative; z-index:1; display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:none; border:none; border-radius:7px; padding:7px 18px; cursor:pointer; transition:color .16s; }
+  .seg2 button svg{ width:12px; height:12px; opacity:.85; }
+  .seg2 button:hover{ color:var(--ink); }
+  .seg2 button.on{ color:var(--accent); }
 
-          .header-left {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-          }
+  .miniedit{ font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--faint); background:none; border:1px solid var(--line); border-radius:6px; padding:3px 8px; cursor:pointer; }
+  .miniedit:hover{ color:var(--accent); border-color:var(--accent); }
 
-          .brand-icon-wrap {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
-            background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 26px;
-            flex-shrink: 0;
-            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.35);
-            user-select: none;
-          }
+  .chips{ display:flex; gap:8px; overflow-x:auto; padding-bottom:5px; }
+  .chip{ position:relative; flex:none; display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:10px; padding:9px 14px; cursor:pointer; white-space:nowrap; overflow:hidden; transition:border-color .14s, color .14s, box-shadow .18s, transform .08s; }
+  .chip .dots{ position:absolute; inset:0; opacity:0; transition:opacity .25s; background-image:radial-gradient(currentColor .9px, transparent 1.1px); background-size:7px 7px; color:var(--tile-hue,var(--accent)); -webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); pointer-events:none; }
+  .chip .swatch{ position:relative; width:7px; height:7px; border-radius:50%; background:var(--tile-hue,var(--faint)); box-shadow:0 0 7px var(--tile-hue,transparent); flex:none; }
+  .chip .big{ position:relative; font-family:var(--native); font-size:14px; letter-spacing:0; text-transform:none; color:var(--ink); }
+  .chip:hover{ border-color:#34343d; box-shadow:0 10px 26px -14px var(--tile-hue,#34343d); }
+  .chip:active{ transform:translateY(1px); }
+  .chip.on{ border-color:transparent; box-shadow:inset 0 0 0 1px var(--tile-hue,var(--accent)); color:var(--tile-hue,var(--accent)); }
+  .chip.on .dots{ opacity:.42; animation:tiledrift 7s linear infinite; }
+  .chip.on .big{ color:#fff; }
+  .chip.add{ border-style:dashed; border-color:#2a2a31; color:var(--faint); }
+  .chip.add:hover{ border-color:var(--accent); color:var(--accent); box-shadow:none; }
 
-          .header-left h1 {
-            font-size: 20px;
-            font-weight: 800;
-            letter-spacing: -0.4px;
-            color: var(--t1);
-            margin: 0 0 3px;
-          }
-          .header-left p {
-            font-size: 13px;
-            color: var(--t3);
-            margin: 0;
-          }
+  .drop{ padding:13px 15px; }
+  .drop .ic.thumb{ padding:0; overflow:hidden; background:#0c0c10; }
+  .drop .ic.thumb img{ width:100%; height:100%; object-fit:cover; }
 
-          .settings-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: var(--t2);
-            padding: 9px 18px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-family: inherit;
-            font-weight: 500;
-            cursor: pointer;
-            white-space: nowrap;
-            flex-shrink: 0;
-            transition: all 0.15s;
-          }
-          .settings-btn:hover {
-            border-color: var(--border-hi);
-            color: var(--t1);
-            background: var(--card);
-          }
+  .dateinp{ width:100%; font-family:var(--mono); font-size:12.5px; color:var(--ink); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:9px; padding:11px 14px; outline:none; transition:border-color .15s; }
+  .dateinp:hover{ border-color:#2a2a31; }
+  .dateinp:focus{ border-color:var(--accent); }
+  .dateinp::-webkit-calendar-picker-indicator{ filter:invert(.7) sepia(1) saturate(3) hue-rotate(330deg); cursor:pointer; }
 
-          /* ── Main card ── */
-          .main-card {
-            /* background: rgba(16, 12, 42, 0.65); */
-            /* background: rgba(10, 14, 40, 0.75); */
-            background: transparent;
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 32px;
-            backdrop-filter: blur(20px);
-            /* box-shadow:
-              0 0 0 1px rgba(120, 80, 255, 0.05),
-              0 32px 64px rgba(0, 0, 0, 0.4); */
-            box-shadow:
-              0 0 0 1px rgba(255, 255, 255, 0.03),
-              0 20px 60px rgba(0, 0, 0, 0.45),
-              0 0 80px rgba(124, 58, 237, 0.12);
-          }
+  .scriptbox{ width:100%; min-height:96px; resize:vertical; font-family:var(--sans); font-size:13.5px; line-height:1.55; color:var(--ink); background:linear-gradient(180deg,rgba(255,255,255,.018),transparent 36%), rgba(13,13,17,.82); backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:10px; padding:13px 15px; outline:none; transition:border-color .15s, box-shadow .15s; }
+  .scriptbox:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+  .scriptbox::placeholder{ color:var(--faint); }
+  .script-wrap{ position:relative; }
+  .script-wrap .scriptbox{ padding-bottom:34px; }
+  .script-foot{ position:absolute; left:14px; right:14px; bottom:11px; display:flex; align-items:center; justify-content:space-between; pointer-events:none; }
+  .script-foot .char{ font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+  .script-foot .spark{ font-size:12px; color:var(--accent); opacity:.5; }
 
-          /* ── Toggle buttons ── */
-          .mode-toggle {
-            display: flex;
-            background: transparent;
-            border: none;
-            border-radius: 0;
-            padding: 0;
-            gap: 8px;
-            margin-bottom: 0;
-            width: fit-content;
-          }
+  /* avatar dropzone */
+  .imgdrop{ position:relative; border:1.5px dashed #2a2a31; border-radius:12px; background:rgba(13,13,17,.5); cursor:pointer; overflow:hidden; min-height:120px; display:grid; place-items:center; transition:border-color .16s, background .16s; }
+  .imgdrop:hover,.imgdrop.over{ border-color:var(--accent); background:rgba(255,181,112,.05); }
+  .imgdrop.loaded{ display:block; border-style:solid; border-color:var(--line); cursor:default; background:#0c0c10; }
+  .imgempty{ text-align:center; padding:20px 18px; }
+  .up-ic{ display:inline-grid; place-items:center; width:46px; height:46px; border-radius:50%; background:var(--accent-dim); border:1px solid rgba(255,181,112,.3); color:var(--accent); margin-bottom:12px; transition:.16s; }
+  .imgdrop:hover .up-ic,.imgdrop.over .up-ic{ background:rgba(255,181,112,.18); border-color:rgba(255,181,112,.55); }
+  .up-main{ font-size:13px; color:var(--muted); }
+  .up-main b{ color:var(--accent); font-weight:600; }
+  .up-sub{ font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:6px; letter-spacing:.02em; }
+  .imgloaded{ position:relative; }
+  .imgthumb{ display:block; width:100%; max-height:210px; object-fit:cover; }
+  .imgmeta{ position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:10px; padding:9px 13px; background:linear-gradient(transparent,rgba(0,0,0,.8)); font-family:var(--mono); font-size:10.5px; }
+  .imgmeta .nm{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .imgmeta .sz{ color:var(--faint); margin-left:auto; flex:none; }
+  .imgrm{ position:absolute; top:9px; right:9px; width:25px; height:25px; border-radius:6px; background:rgba(10,10,12,.72); border:1px solid var(--line); color:var(--muted); font-family:var(--mono); font-size:15px; line-height:1; cursor:pointer; }
+  .imgrm:hover{ color:var(--err); border-color:var(--err); }
 
-          .mode-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--t2);
-            padding: 9px 20px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-family: inherit;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.18s;
-            white-space: nowrap;
+  .run-btn .recdot{ width:9px; height:9px; border-radius:50%; background:#c0362b; box-shadow:0 0 6px rgba(192,54,43,.8); flex:none; }
+  .run-btn:disabled .recdot{ background:#8a8377; box-shadow:none; }
 
-            isolation: isolate;
-            position: relative;
-            overflow: visible;
-          }
+  /* result bits inside monitor/tray */
+  .badge{ display:inline-flex; align-items:center; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; background:rgba(140,140,150,.12); color:var(--muted); }
+  .badge.completed{ background:rgba(124,245,196,.12); color:var(--ok); }
+  .badge.partial{ background:rgba(255,181,112,.14); color:var(--accent); }
+  .badge.failed{ background:rgba(255,138,128,.13); color:var(--err); }
+  .reslinks{ position:absolute; left:0; right:0; bottom:0; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; padding:9px 12px; background:linear-gradient(transparent,rgba(0,0,0,.7)); font-family:var(--mono); font-size:11px; }
+  .reslinks a{ color:var(--accent); text-decoration:none; }
+  .reslinks a:hover{ text-decoration:underline; }
 
-          .mode-btn.active {
-            border: 1px solid rgba(255,255,255,0.20);
-          }
+  /* category editor drawer */
+  .drawer-scrim{ position:fixed; inset:0; z-index:40; background:rgba(4,4,6,.55); backdrop-filter:blur(3px); opacity:0; pointer-events:none; transition:opacity .2s; }
+  .drawer-scrim.open{ opacity:1; pointer-events:auto; }
+  .drawer{ position:fixed; top:0; right:0; z-index:41; height:100vh; width:min(440px,92vw); background:rgba(12,12,16,.96); backdrop-filter:blur(14px); border-left:1px solid var(--line); padding:26px 26px 22px; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .26s cubic-bezier(.4,0,.2,1); overflow-y:auto; }
+  .drawer.open{ transform:translateX(0); }
+  .drawer h2{ font-family:var(--sans); font-weight:600; font-size:16px; letter-spacing:-.02em; margin-bottom:3px; }
+  .drawer .sub{ font-family:var(--mono); font-size:11px; color:var(--faint); margin-bottom:22px; }
+  .drawer .fld{ display:flex; flex-direction:column; gap:9px; margin-bottom:20px; }
+  .drawer .fld textarea{ min-height:120px; }
+  .drawer .actions{ margin-top:auto; padding-top:18px; border-top:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  .drawer .del{ font-family:var(--mono); font-size:11px; color:var(--faint); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 13px; cursor:pointer; transition:all .14s; }
+  .drawer .del:hover{ color:var(--err); border-color:var(--err); }
+  .drawer .spacer{ flex:1; }
+  .drawer .cancel{ font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 14px; cursor:pointer; }
+  .drawer .cancel:hover{ color:var(--ink); border-color:#34343d; }
+  .drawer .savebtn{ font-family:var(--sans); font-weight:600; font-size:12.5px; color:#16130d; background:linear-gradient(#f4f1ea,#e3dfd4); border:none; border-radius:7px; padding:9px 18px; cursor:pointer; }
+  .drawer .savebtn:hover{ filter:brightness(1.03); }
+  .drawer .saved{ font-family:var(--mono); font-size:11px; color:var(--ok); opacity:0; transition:opacity .25s; }
+  .drawer .saved.show{ opacity:1; }
 
-          .mode-btn:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.09);
-            color: var(--t1);
-            border-color: rgba(255, 255, 255, 0.18);
-          }
+  @media (max-width:880px){
+    body{ overflow:auto; }
+    .app{ height:auto; min-height:100vh; }
+    main.studio{ grid-template-columns:1fr; gap:0; }
+    .monitor{ min-height:220px; }
+    .rail{ margin-top:24px; }
+    .railscroll{ overflow:visible; }
+    .hstat .seg.hide-sm{ display:none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="wave"></canvas>
+<div class="scrim"></div>
 
-          /* Type toggles (Single/Batch) active = violet */
-          /* .mode-toggle--type .mode-btn.active {
-            background: var(--violet);
-            border-color: var(--violet);
-            color: #fff;
-            font-weight: 600;
-            box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
-          } */
+<div class="app">
+  <header>
+    <div class="mark">autodub<span class="d">.</span><span class="eq" id="eq"><i></i><i></i><i></i><i></i></span></div>
+    <div class="hstat">
+      <span class="seg"><span class="dotled"></span> session ready</span>
+      <span class="seg hide-sm">studio <b>video</b></span>
+      <button class="snd" id="snd">♪ off</button>
+    </div>
+  </header>
 
-
-          .mode-toggle--type .mode-btn.active {
-              background: linear-gradient(
-                135deg,
-                #b86cff 0%,
-                #9333ea 55%,
-                #7c3aed 100%
-              );
-              backdrop-filter: blur(12px);
-
-              border: 1px solid rgba(220,190,255,0.35);
-
-              color: #fff;
-              font-weight: 600;
-
-              box-shadow:
-                inset 0 1px 0 rgba(255,255,255,0.22),
-                inset 0 0 12px rgba(255,255,255,0.04),
-                0 0 6px rgba(255,255,255,0.05),
-                0 0 16px rgba(168,85,247,0.12);
-
-              position: relative;
-          }
-
-          .mode-btn.active::before {
-            content: "";
-            position: absolute;
-            inset: 0px;
-            border-radius: inherit;
-            background: inherit;
-            filter: blur(6px);
-            opacity: 0.25;
-            z-index: -1;
-          }
-
-          .mode-btn.active::after {
-            content: "";
-            position: absolute;
-            inset: 1px;
-            border-radius: inherit;
-
-            background: linear-gradient(
-              180deg,
-              rgba(255,255,255,0.18) 0%,
-              rgba(255,255,255,0.06) 25%,
-              transparent 50%
-            );
-
-            pointer-events: none;
-          }
-
-
-          /* Content toggles (राशिफल/जन्मदिन) active = amber */
-          /* .mode-toggle--content .mode-btn.active {
-            background: var(--amber);
-            border-color: var(--amber);
-            color: #fff;
-            font-weight: 600;
-            box-shadow: 0 4px 16px rgba(217, 119, 6, 0.4);
-          } */
-
-          .mode-toggle--content .mode-btn.active {
-            background: linear-gradient(
-              135deg,
-              #fbbf24 0%,
-              #f59e0b 50%,
-              #d97706 100%
-            );
-
-            border: 1px solid rgba(255,220,150,0.35);
-
-            color: #fff;
-
-            box-shadow:
-              inset 0 1px 0 rgba(255,255,255,0.22),
-              inset 0 0 12px rgba(255,255,255,0.04),
-              0 0 6px rgba(255,255,255,0.05),
-              0 0 16px rgba(245,158,11,0.10);
-          }
-
-          /* Divider */
-          .toggles-divider {
-            height: 1px;
-            background: var(--border);
-            margin: 28px 0;
-          }
-
-          /* ── Form ── */
-          form {
-            display: grid;
-            gap: 24px;
-          }
-
-          label {
-            display: grid;
-            gap: 10px;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--t2);
-          }
-
-          textarea,
-          input[type="text"],
-          input[type="date"] {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--t1);
-            padding: 13px 16px;
-            border-radius: var(--r-sm);
-            font-size: 14px;
-            font-family: inherit;
-            width: 100%;
-            outline: none;
-            transition:
-              border-color 0.15s,
-              box-shadow 0.15s;
-            appearance: none;
-            -webkit-appearance: none;
-          }
-          textarea:focus,
-          input[type="text"]:focus,
-          input[type="date"]:focus {
-            border-color: var(--border-hi);
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
-          }
-          textarea {
-            resize: vertical;
-            min-height: 90px;
-            line-height: 1.6;
-            background: transparent;
-          }
-          input[type="file"] {
-            font-size: 13px;
-            color: var(--t2);
-          }
-          input[type="date"]::-webkit-calendar-picker-indicator {
-            filter: invert(0.5);
-            cursor: pointer;
-          }
-
-          .hint {
-            color: var(--t3);
-            font-size: 12px;
-            line-height: 1.5;
-          }
-          .hint code {
-            background: var(--card2);
-            border: 1px solid var(--border);
-            padding: 1px 5px;
-            border-radius: 4px;
-            font-size: 11px;
-            color: #a78bfa;
-          }
-
-          /* Field label row */
-          .field-label-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--t1);
-            margin-bottom: 6px;
-          }
-          .req-pill {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            padding: 2px 8px;
-            border-radius: 4px;
-            background: var(--violet-l);
-            color: #a78bfa;
-          }
-
-          /* ── Upload area ── */
-          .upload-area {
-            border: 1.5px dashed rgba(120, 80, 255, 0.3);
-            border-radius: var(--r);
-            padding: 40px 24px 32px;
-            text-align: center;
-            cursor: pointer;
-            transition:
-              border-color 0.18s,
-              background 0.18s;
-            background: transparent
-            position: relative;
-          }
-          .upload-area:hover,
-          .upload-area.dragover {
-            border-color: rgba(124, 58, 237, 0.7);
-            background: rgba(124, 58, 237, 0.06);
-          }
-          .upload-area input[type="file"] {
-            display: none;
-          }
-
-          /* Cloud upload icon */
-          .upload-cloud-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: rgba(124, 58, 237, 0.12);
-            border: 1.5px solid rgba(124, 58, 237, 0.3);
-            margin-bottom: 16px;
-            color: #a78bfa;
-            transition: all 0.18s;
-            pointer-events: none;
-          }
-          .upload-area:hover .upload-cloud-icon,
-          .upload-area.dragover .upload-cloud-icon {
-            background: rgba(124, 58, 237, 0.22);
-            border-color: rgba(124, 58, 237, 0.6);
-            color: #c4b5fd;
-          }
-
-          /* Lotus decoration in corner */
-          .upload-lotus {
-            position: absolute;
-            bottom: 12px;
-            right: 16px;
-            font-size: 22px;
-            opacity: 0.25;
-            pointer-events: none;
-            transition: opacity 0.18s;
-          }
-          .upload-area:hover .upload-lotus {
-            opacity: 0.45;
-          }
-
-          .upload-label {
-            font-size: 15px;
-            color: var(--t2);
-            line-height: 1.5;
-          }
-          .upload-label strong {
-            color: #a78bfa;
-            font-weight: 600;
-          }
-          .file-name {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--green);
-            margin-top: 10px;
-            word-break: break-all;
-          }
-
-          /* ── Script field with counter ── */
-          .script-field-wrap {
-            position: relative;
-          }
-          .script-field-wrap textarea {
-            padding-bottom: 36px;
-          }
-          .script-footer {
-            position: absolute;
-            bottom: 12px;
-            left: 0;
-            right: 0;
-            padding: 0 14px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            pointer-events: none;
-          }
-          .char-count {
-            font-size: 11px;
-            color: var(--t3);
-            font-weight: 500;
-          }
-          .sparkle-corner {
-            font-size: 14px;
-            color: var(--t3);
-            opacity: 0.6;
-          }
-
-          /* Script label row */
-          .script-label-inner {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--t1);
-          }
-          .script-label-inner .label-icon {
-            width: 26px;
-            height: 26px;
-            background: var(--violet-l);
-            border: 1px solid rgba(124, 58, 237, 0.25);
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
-            flex-shrink: 0;
-          }
-
-          /* ── Generate button ── */
-          .generate-btn {
-            background: linear-gradient(90deg, #c026d3 0%, #e879f9 30%, #f97316 100%);
-            border: none;
-            color: #fff;
-            padding: 16px 24px;
-            border-radius: var(--r-sm);
-            font-size: 16px;
-            font-family: inherit;
-            font-weight: 700;
-            cursor: pointer;
-            width: 100%;
-            letter-spacing: 0.2px;
-            transition:
-              transform 0.18s,
-              box-shadow 0.18s,
-              opacity 0.18s;
-            box-shadow: 0 4px 28px rgba(192, 38, 211, 0.35);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-          }
-          .generate-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 36px rgba(192, 38, 211, 0.45);
-          }
-          .generate-btn:active:not(:disabled) {
-            transform: translateY(0);
-          }
-          .generate-btn:disabled {
-            opacity: 0.45;
-            cursor: not-allowed;
-            transform: none;
-          }
-
-          /* ── Status boxes ── */
-          .status {
-            margin-top: 20px;
-            padding: 20px 22px;
-            background: rgba(16, 12, 42, 0.7);
-            border: 1px solid var(--border);
-            border-radius: var(--r);
-            font-size: 13px;
-            line-height: 1.7;
-            backdrop-filter: blur(12px);
-          }
-          .status.hidden {
-            display: none;
-          }
-
-          .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: rgba(148, 163, 184, 0.1);
-            color: var(--t2);
-          }
-          .badge.completed {
-            background: rgba(52, 211, 153, 0.12);
-            color: var(--green);
-          }
-          .badge.partial {
-            background: rgba(217, 119, 6, 0.12);
-            color: #fbbf24;
-          }
-          .badge.failed {
-            background: rgba(248, 113, 113, 0.12);
-            color: var(--red);
-          }
-
-          pre {
-            margin: 12px 0 0;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 14px;
-            border-radius: var(--r-sm);
-            overflow: auto;
-            font-size: 12px;
-            color: var(--t3);
-            border: 1px solid var(--border);
-            line-height: 1.6;
-          }
-          video {
-            width: 100%;
-            margin-top: 14px;
-            border-radius: var(--r);
-            background: #000;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-          }
-          a {
-            color: #a78bfa;
-            text-decoration: none;
-          }
-          a:hover {
-            text-decoration: underline;
-          }
-
-          /* ── Batch table ── */
-          .batch-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 14px;
-            font-size: 13px;
-          }
-          .batch-table th {
-            text-align: left;
-            color: var(--t3);
-            font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 5px 10px 8px;
-            border-bottom: 1px solid var(--border);
-          }
-          .batch-table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            vertical-align: middle;
-          }
-          .batch-table tr:last-child td {
-            border-bottom: none;
-          }
-          .batch-table .title-cell {
-            color: var(--t2);
-            max-width: 200px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          /* ── Footer stats ── */
-          .footer-stats {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-top: 28px;
-            flex-wrap: wrap;
-          }
-          .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-          }
-          .stat-icon-wrap {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: var(--violet-l);
-            border: 1px solid rgba(124, 58, 237, 0.25);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #a78bfa;
-            flex-shrink: 0;
-          }
-          .stat-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--t2);
-            line-height: 1.3;
-          }
-          .stat-sub {
-            font-size: 11px;
-            color: var(--t3);
-            margin-top: 1px;
-          }
-
-          /* ── Modal ── */
-          .modal-backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(8px);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-          }
-          .modal-backdrop.open {
-            display: flex;
-          }
-
-          .modal {
-            background: #0e0b22;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 30px;
-            width: 100%;
-            max-width: 600px;
-            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
-            animation: modal-pop 0.2s ease;
-          }
-          @keyframes modal-pop {
-            from {
-              opacity: 0;
-              transform: scale(0.95) translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: none;
-            }
-          }
-
-          .modal h2 {
-            font-size: 17px;
-            font-weight: 700;
-            color: var(--t1);
-            margin: 0 0 24px;
-          }
-          .modal-fields {
-            display: grid;
-            gap: 18px;
-          }
-          .modal-actions {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 10px;
-            margin-top: 26px;
-            padding-top: 20px;
-            border-top: 1px solid var(--border);
-          }
-
-          .btn-secondary {
-            background: var(--card);
-            border: 1px solid var(--border);
-            color: var(--t2);
-            padding: 9px 18px;
-            border-radius: var(--r-sm);
-            font-size: 13px;
-            font-family: inherit;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.15s;
-          }
-          .btn-secondary:hover {
-            background: var(--card2);
-            color: var(--t1);
-          }
-
-          .btn-save {
-            background: var(--violet);
-            border: none;
-            color: #fff;
-            padding: 9px 20px;
-            border-radius: var(--r-sm);
-            font-size: 13px;
-            font-family: inherit;
-            font-weight: 700;
-            cursor: pointer;
-            transition: opacity 0.15s;
-          }
-          .btn-save:hover {
-            opacity: 0.88;
-          }
-
-          .saved-indicator {
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--green);
-            opacity: 0;
-            transition: opacity 0.3s;
-            align-self: center;
-            margin-right: auto;
-          }
-          .saved-indicator.show {
-            opacity: 1;
-          }
-    </style>
-  </head>
-  <body>
-    <!-- Background ॐ watermark
-    <div class="bg-watermark" aria-hidden="true">ॐ</div>
-    <img
-      src="https://chatgpt.com/backend-api/estuary/content?id=file_0000000084707208854adce8078307c9&ts=494459&p=fs&cid=1&sig=7f1ba901d41714f2a1adecb5e31705d1893389fdcf5ad331ebc897c928e455e8&v=0"
-      alt=""
-    /> -->
-
-    <div class="wrap">
-      <!-- Header -->
-      <div class="header">
-        <div class="header-left">
-          <div class="brand-icon-wrap" aria-hidden="true">ॐ</div>
-          <div>
-            <h1>Bhaktidhaam Content Pipeline</h1>
-            <p>AI-powered video generation &amp; automation</p>
+  <main class="studio">
+    <!-- left: stage -->
+    <section class="stage">
+      <div class="monitor" id="monitor">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <div class="mbody" id="mbody">
+          <div class="ph" id="mph">
+            <div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="phbig">NO SIGNAL</div>
+            <div class="phsm">drop an avatar to begin</div>
           </div>
         </div>
-        <button class="settings-btn" id="settingsBtn">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="4" />
-            <path
-              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-            />
-          </svg>
-          Prompts
-        </button>
+        <div class="scan"></div>
+        <div class="mtag" id="mtag">standby</div>
       </div>
 
-      <!-- Main card -->
-      <div class="main-card">
-        <!-- Toggles — IDs and mode-btn/mode-toggle classes unchanged -->
-        <div
-          style="display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap"
-        >
-          <div class="mode-toggle mode-toggle--type" style="margin-bottom: 0">
-            <button class="mode-btn active" id="modeSingle" type="button">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"
-                />
-              </svg>
-              Single
-            </button>
-            <button class="mode-btn" id="modeBatch" type="button">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                aria-hidden="true"
-              >
-                <rect x="2" y="7" width="20" height="3" rx="1" />
-                <rect x="2" y="14" width="20" height="3" rx="1" />
-                <rect x="2" y="3" width="20" height="2" rx="1" opacity="0.5" />
-              </svg>
-              Batch
-            </button>
-          </div>
-          <div
-            class="mode-toggle mode-toggle--content"
-            style="margin-bottom: 0"
-          >
-            <button class="mode-btn active" id="contentSunsign" type="button">
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                aria-hidden="true"
-              >
-                <polygon
-                  points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-                />
-              </svg>
-              राशिफल
-            </button>
-            <button class="mode-btn" id="contentBirthday" type="button">
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  d="M12 6a2 2 0 0 0 2-2c0-1.5-2-3.5-2-3.5S10 2.5 10 4a2 2 0 0 0 2 2zm6 3h-5V7h-2v2H6a2 2 0 0 0-2 2v3c1.1 0 2-.9 2-2h2c0 1.1.9 2 2 2s2-.9 2-2h2c0 1.1.9 2 2 2s2-.9 2-2v-3a2 2 0 0 0-2-2zM4 22h16v-6c-1.1 0-2 .9-2 2-1.1 0-2-.9-2-2-1.1 0-2 .9-2 2-1.1 0-2-.9-2-2-1.1 0-2 .9-2 2-1.1 0-2-.9-2-2v6z"
-                />
-              </svg>
-              जन्मदिन
-            </button>
-          </div>
+      <div class="transport">
+        <span class="rec" id="rec"></span>
+        <span class="tstate" id="tstate">standby</span>
+        <span class="tstage" id="tstage"></span>
+        <span class="tcode" id="tcode">00:00</span>
+        <button class="logtoggle" id="logToggle">logs<span class="n" id="logBadge"></span></button>
+      </div>
+
+      <div class="tray" id="tray">
+        <div class="trayhead">
+          <button class="tt on" data-tray="logs" type="button">logs<span class="n" id="logN">0</span></button>
+          <button class="tt" data-tray="queue" type="button">queue<span class="n" id="queueN">0</span></button>
         </div>
+        <div class="traybody">
+          <div class="logs" data-traypane="logs" id="logs"><div class="row"><span class="p">$</span><span class="mut">waiting for a render…</span></div></div>
+          <div class="feed" data-traypane="queue" id="queue" hidden><div class="empty"><div class="sm">batch rows appear here during a run.</div></div></div>
+        </div>
+      </div>
+    </section>
 
-        <div class="toggles-divider"></div>
-
-        <form id="form">
-          <!-- Reference image — upload-area id/classes unchanged -->
-          <div style="display: grid; gap: 10px">
-            <div class="field-label-row">
-              Reference image <span class="req-pill">Required</span>
-            </div>
-            <div class="upload-area" id="uploadArea">
-              <input
-                type="file"
-                name="image"
-                id="imageInput"
-                accept="image/png,image/jpeg,image/webp"
-                required
-              />
-              <div class="upload-cloud-icon" aria-hidden="true">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                >
-                  <polyline points="16 16 12 12 8 16" />
-                  <line x1="12" y1="12" x2="12" y2="21" />
-                  <path
-                    d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"
-                  />
-                </svg>
-              </div>
-              <div class="upload-label">
-                <strong>Click to upload</strong> or drag &amp; drop
-              </div>
-              <div class="file-name" id="fileName"></div>
-              <span class="upload-lotus" aria-hidden="true">🪷</span>
-            </div>
-            <span class="hint"
-              >PNG, JPEG, or WebP. Crop to your target orientation first. Oldest
-              avatar auto-removed if at the 3-photo cap.</span
-            >
-          </div>
-
-          <!-- Single mode: script — id="scriptLabel" unchanged -->
-          <label id="scriptLabel">
-            <div class="script-label-inner">
-              <span class="label-icon" aria-hidden="true">✏️</span>
-              Script
-            </div>
-            <div class="script-field-wrap">
-              <textarea
-                name="script"
-                id="scriptInput"
-                rows="4"
-                required
-                placeholder="Type the line the avatar should speak…"
-              ></textarea>
-              <div class="script-footer">
-                <span class="char-count" id="charCount">0/1000</span>
-                <span class="sparkle-corner" aria-hidden="true">✦</span>
-              </div>
-            </div>
-          </label>
-
-          <!-- Batch mode: date — id="publishDateLabel" unchanged -->
-          <label id="publishDateLabel" style="display: none">
-            Publish date
-            <input type="date" id="publishDateInput" />
-            <span class="hint"
-              >Videos will be saved in a folder named DD-MM-YYYY on the
-              NAS.</span
-            >
-          </label>
-
-          <!-- Batch mode: Excel — id="excelLabel" unchanged -->
-          <div
-            id="excelLabel"
-            style="display: none; gap: 10px; font-size: 13px; color: #94a3b8"
-          >
-            <div class="field-label-row">
-              Scripts Excel <span class="req-pill">Required</span>
-            </div>
-            <div class="upload-area" id="excelUploadArea">
-              <input type="file" name="excel" id="excelInput" accept=".xlsx" />
-              <div class="upload-cloud-icon" aria-hidden="true">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                >
-                  <path
-                    d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-                  />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
-              </div>
-              <div class="upload-label">
-                <strong>Choose .xlsx file</strong> or drag here
-              </div>
-              <div class="file-name" id="excelFileName"></div>
-              <span class="upload-lotus" aria-hidden="true">📊</span>
-            </div>
-            <span class="hint"
-              >Required columns: <code>script</code>,
-              <code>video_title</code> (optional). One row per video.</span
-            >
-          </div>
-
-          <!-- Submit — generate-btn class and id unchanged -->
-          <button type="submit" class="generate-btn" id="submitBtn">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"
-              />
-            </svg>
-            Generate video
+    <!-- right: control rail -->
+    <aside class="rail">
+      <div class="railscroll">
+        <div class="lbl">mode<span class="r"></span><span class="n" id="modeN">single</span></div>
+        <div class="seg2" id="modeSeg">
+          <span class="seg-ind" id="segInd"></span>
+          <button type="button" class="on" data-mode="single">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>single
           </button>
-        </form>
-      </div>
+          <button type="button" data-mode="batch">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="3" rx="1"/><rect x="2" y="14" width="20" height="3" rx="1"/><rect x="2" y="3" width="20" height="2" rx="1" opacity=".5"/></svg>batch
+          </button>
+        </div>
 
-      <div id="status" class="status hidden"></div>
-      <div id="batchStatus" class="status hidden"></div>
+        <div class="lbl">category<span class="r"></span><button class="miniedit" id="editActive" type="button">✎ edit</button></div>
+        <div class="chips" id="cats"></div>
 
-      <!-- Footer stats -->
-      <div class="footer-stats">
-        <div class="stat-item">
-          <div class="stat-icon-wrap" aria-hidden="true">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-            >
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
+        <div class="lbl">reference<span class="r"></span><span class="n">.png / .jpg</span></div>
+        <div class="imgdrop" id="imgDrop">
+          <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp" hidden />
+          <div class="imgempty" id="imgEmpty">
+            <span class="up-ic" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </span>
+            <div class="up-main">Drop avatar image or <b>browse</b></div>
+            <div class="up-sub">png · jpg · webp — oldest auto-removed at the 3-photo cap</div>
           </div>
-          <div>
-            <div class="stat-title">AI-Powered</div>
-            <div class="stat-sub">Smart &amp; accurate</div>
+          <div class="imgloaded" id="imgLoaded" hidden>
+            <img class="imgthumb" id="imgThumb" alt="reference avatar" />
+            <div class="imgmeta"><span class="nm" id="imgName"></span><span class="sz" id="imgSize"></span></div>
+            <button type="button" class="imgrm" id="imgRm" title="remove">×</button>
           </div>
         </div>
-        <div class="stat-item">
-          <div class="stat-icon-wrap" aria-hidden="true">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-          </div>
-          <div>
-            <div class="stat-title">Fast Processing</div>
-            <div class="stat-sub">Ready in minutes</div>
+
+        <div id="singleFields">
+          <div class="lbl">script<span class="r"></span><span class="n">avatar speaks</span></div>
+          <div class="script-wrap">
+            <textarea class="scriptbox" id="scriptInput" maxlength="1000" placeholder="Type the line the avatar should speak…"></textarea>
+            <div class="script-foot"><span class="char" id="charCount">0 / 1000</span><span class="spark" aria-hidden="true">✦</span></div>
           </div>
         </div>
-        <div class="stat-item">
-          <div class="stat-icon-wrap" aria-hidden="true">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-            >
-              <circle cx="12" cy="8" r="6" />
-              <path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" />
-            </svg>
-          </div>
-          <div>
-            <div class="stat-title">High Quality</div>
-            <div class="stat-sub">HD output</div>
+
+        <div id="batchFields" hidden>
+          <div class="lbl">publish<span class="r"></span><span class="n">folder date</span></div>
+          <input type="date" id="pubDate" class="dateinp" />
+          <div class="lbl">scripts<span class="r"></span><span class="n">.xlsx</span></div>
+          <div class="drop" id="xlsDrop">
+            <span class="ic" id="xlsIc">▤</span>
+            <div>
+              <div class="dm" id="xlsMain">Drop .xlsx or click to browse</div>
+              <div class="ds" id="xlsSub">columns: script, video_title (opt)</div>
+            </div>
+            <input type="file" id="xlsFile" accept=".xlsx" hidden />
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Settings modal — all IDs/classes unchanged -->
-    <div class="modal-backdrop" id="modalBackdrop">
-      <div class="modal" id="modal">
-        <h2 id="modalTitle">Prompt Settings</h2>
-        <div class="modal-fields">
-          <label>
-            Video prompt
-            <span class="hint">(how the video should look / feel)</span>
-            <textarea
-              id="settingsVideoPrompt"
-              rows="4"
-              placeholder="e.g. calm, slight head movement, soft natural expression"
-            ></textarea>
-          </label>
-          <label>
-            Motion prompt <span class="hint">(optional, advanced)</span>
-            <textarea
-              id="settingsMotionPrompt"
-              rows="4"
-              placeholder="[body part] + [action] + [emotion/intensity]"
-            ></textarea>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <span class="saved-indicator" id="savedIndicator">Saved</span>
-          <button class="btn-secondary" id="cancelBtn">Close</button>
-          <button class="btn-save" id="saveSettingsBtn">Save</button>
-        </div>
+      <div class="railfoot">
+        <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate video</span><span class="ret">⏎</span></button>
+        <div class="run-echo"><span class="p">$</span> <span id="echoCmd">POST /video/heygen</span></div>
       </div>
-    </div>
+    </aside>
+  </main>
+</div>
 
-    <script>
-      // --- Mode toggle ---
-      let isBatch = false;
-      const modeSingleBtn = document.getElementById("modeSingle");
-      const modeBatchBtn = document.getElementById("modeBatch");
-      const scriptLabel = document.getElementById("scriptLabel");
-      const scriptInput = document.getElementById("scriptInput");
-      const publishDateLabel = document.getElementById("publishDateLabel");
-      const publishDateInput = document.getElementById("publishDateInput");
-      const excelLabel = document.getElementById("excelLabel");
-      const excelInput = document.getElementById("excelInput");
-      const submitBtn = document.getElementById("submitBtn");
-      const statusBox = document.getElementById("status");
-      const batchStatusBox = document.getElementById("batchStatus");
+<!-- category editor drawer -->
+<div class="drawer-scrim" id="drawerScrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <h2 id="drawerTitle">New category</h2>
+  <div class="sub" id="drawerSub">video + motion prompt preset</div>
+  <div class="fld">
+    <div class="lbl" style="margin:0">name<span class="r"></span></div>
+    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. राशिफल · Horoscope" />
+  </div>
+  <div class="fld">
+    <div class="lbl" style="margin:0">video prompt<span class="r"></span><span class="n">how it should look/feel</span></div>
+    <textarea class="scriptbox" id="edVideo" placeholder="calm tone, soft cinematic lighting, natural head movement…"></textarea>
+  </div>
+  <div class="fld">
+    <div class="lbl" style="margin:0">motion prompt<span class="r"></span><span class="n">optional</span></div>
+    <textarea class="scriptbox" id="edMotion" placeholder="[body part] + [action] + [emotion/intensity]"></textarea>
+  </div>
+  <div class="actions">
+    <button type="button" class="del" id="edDelete">delete</button>
+    <span class="saved" id="edSaved">saved</span>
+    <span class="spacer"></span>
+    <button type="button" class="cancel" id="edCancel">close</button>
+    <button type="button" class="savebtn" id="edSave">Save</button>
+  </div>
+</aside>
 
-      // Default date picker to today
-      publishDateInput.value = new Date().toISOString().slice(0, 10);
+<script>
+(() => {
+  "use strict";
+  const $ = (s, r = document) => r.querySelector(s);
+  const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+  const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-      function setMode(batch) {
-        isBatch = batch;
-        modeSingleBtn.classList.toggle("active", !batch);
-        modeBatchBtn.classList.toggle("active", batch);
-        scriptLabel.style.display = batch ? "none" : "";
-        publishDateLabel.style.display = batch ? "grid" : "none";
-        excelLabel.style.display = batch ? "grid" : "none";
-        scriptInput.required = !batch;
-        excelInput.required = batch;
-        publishDateInput.required = batch;
-        submitBtn.querySelector("span")
-          ? (submitBtn.querySelector("span").textContent = batch
-              ? "Generate batch"
-              : "Generate video")
-          : (submitBtn.childNodes[submitBtn.childNodes.length - 1].textContent =
-              batch ? " Generate batch" : " Generate video");
-        statusBox.classList.add("hidden");
-        batchStatusBox.classList.add("hidden");
-        if (pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
+  // ── iridescent ramp (shared with autodub) ──
+  const STOPS = [[94,234,212],[125,211,252],[196,181,253],[253,230,138],[252,165,165],[240,171,252],[255,255,255]];
+  const RAMP = [];
+  for (let i = 0; i < 96; i++) { const f = i/95*(STOPS.length-1), a = Math.floor(f), b = Math.min(a+1, STOPS.length-1), t = f-a; RAMP.push(STOPS[a].map((c,k)=>Math.round(c+(STOPS[b][k]-c)*t))); }
+
+  // ── seed categories (the old hardcoded presets) ──
+  const SEED = [
+    { id: "sunsign", label: "राशिफल",
+      video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
+      motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being." },
+    { id: "birthday", label: "जन्मदिन",
+      video_prompt: "The character is speaking directly to the camera in a warm, affectionate, and heartfelt tone, delivering a personal birthday greeting and an uplifting forecast for the year ahead. Visuals: Soft cinematic lighting with a warm, celebratory glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts that convey friendliness and care. Expressions: A genuine, joyful, and tender smile with micro-expressions shifting between celebratory warmth, thoughtful reflection, and encouraging optimism. Eyes: Soft, sparkling, and prolonged eye contact with the camera, natural blinking, and 'smiling eyes' (Duchenne smile) to convey sincere well-wishes. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures near the chest to convey affection, blessings, and warmth, avoiding stiffness.",
+      motion_prompt: "A warm, affectionate presenter delivering a heartfelt birthday greeting and a hopeful year-ahead forecast. Movement style: Graceful, gentle, and emotionally engaged. Maintain a genuine, joyful smile throughout with micro-expressions that shift between celebratory warmth (for the wishes), thoughtful curiosity (for the trivia and traits), and encouraging optimism (for career, finance, relationships, and health segments). Head movements should be fluid—incorporating soft lateral tilts, slow nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile), softening further during the affectionate closing message. Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in fluid, non-repetitive 'open-palm' gestures near the chest area to convey blessings, sincerity, and care. The overall presence should feel personal, celebratory, and reassuring—like a close well-wisher offering heartfelt birthday blessings." },
+  ];
+
+  // ── category store (localStorage; DB later) ──
+  const CATS_KEY = "autodub_video_categories_v1";
+  const ACTIVE_KEY = "autodub_video_active_cat";
+  let cats = [];
+  let activeId = null;
+  function loadCats() {
+    try { const raw = JSON.parse(localStorage.getItem(CATS_KEY)); if (Array.isArray(raw) && raw.length) return raw; } catch (_) {}
+    return SEED.map((c) => ({ ...c }));
+  }
+  function persist() { localStorage.setItem(CATS_KEY, JSON.stringify(cats)); localStorage.setItem(ACTIVE_KEY, activeId || ""); }
+  function activeCat() { return cats.find((c) => c.id === activeId) || cats[0] || null; }
+  function newId(label) { return (label || "cat").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) + "-" + Math.floor(Math.random() * 1e6).toString(36); }
+
+  // ── category chips ──
+  const catsEl = $("#cats");
+  const HUE = {};
+  function renderCats() {
+    catsEl.innerHTML = "";
+    cats.forEach((c, i) => {
+      const rgb = RAMP[Math.floor(i / Math.max(1, cats.length) * 95)];
+      HUE[c.id] = rgb;
+      const el = document.createElement("button");
+      el.type = "button"; el.className = "chip" + (c.id === activeId ? " on" : ""); el.dataset.id = c.id;
+      el.style.setProperty("--tile-hue", `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
+      el.innerHTML = `<span class="dots"></span><span class="swatch"></span><span class="big">${escapeHtml(c.label)}</span>`;
+      el.addEventListener("click", () => selectCat(c.id));
+      catsEl.appendChild(el);
+    });
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "chip add"; add.innerHTML = "+ new";
+    add.addEventListener("click", () => openEditor(null));
+    catsEl.appendChild(add);
+  }
+  function selectCat(id) {
+    activeId = id;
+    document.querySelectorAll(".chip").forEach((t) => t.classList.toggle("on", t.dataset.id === id));
+    const c = activeCat(); if (c) ping(HUE[c.id], 1, 1000);
+    persist();
+  }
+  $("#editActive").addEventListener("click", () => { const c = activeCat(); if (c) openEditor(c.id); });
+
+  // ── mode (single / batch) ──
+  let isBatch = false;
+  const modeN = $("#modeN"), echoN = $("#echoN"), echoCmd = $("#echoCmd");
+  const singleFields = $("#singleFields"), batchFields = $("#batchFields");
+  const segInd = $("#segInd");
+  function updateSegInd() { const on = $("#modeSeg button.on"); if (on && segInd) { segInd.style.left = on.offsetLeft + "px"; segInd.style.width = on.offsetWidth + "px"; } }
+  $("#modeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode === "batch"); });
+  addEventListener("resize", updateSegInd);
+  function setMode(batch) {
+    isBatch = batch;
+    document.querySelectorAll("#modeSeg button").forEach((b) => b.classList.toggle("on", (b.dataset.mode === "batch") === batch));
+    updateSegInd();
+    singleFields.hidden = batch; batchFields.hidden = !batch;
+    modeN.textContent = batch ? "batch" : "single";
+    echoCmd.textContent = batch ? "POST /video/heygen/batch" : "POST /video/heygen";
+    setRunLabel(batch ? "Generate batch" : "Generate video");
+  }
+
+  // ── char counter ──
+  const scriptInput = $("#scriptInput"), charCount = $("#charCount");
+  scriptInput.addEventListener("input", () => { charCount.textContent = `${scriptInput.value.length} / 1000`; });
+
+  // ── monitor ──
+  const monitor = $("#monitor"), mbody = $("#mbody"), mtag = $("#mtag");
+  let stillURL = null;
+  function showPlaceholder() {
+    monitor.classList.remove("live");
+    mbody.innerHTML = `<div class="ph"><div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar to begin</div></div>`;
+    mtag.textContent = "standby";
+  }
+  function showStill(tag) {
+    monitor.classList.remove("live");
+    mbody.innerHTML = stillURL ? `<img class="still" src="${stillURL}" alt="reference avatar" />` : "";
+    mtag.textContent = tag || "standby";
+  }
+  function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "rec ● rendering"; }
+  function showVideo(url) {
+    monitor.classList.remove("live");
+    mbody.innerHTML = `<video class="feed" src="${url}" controls autoplay muted playsinline></video>`;
+    mtag.textContent = "playback";
+  }
+
+  // ── transport ──
+  const rec = $("#rec"), tstate = $("#tstate"), tstage = $("#tstage"), tcode = $("#tcode");
+  let clockTimer = null, t0 = 0;
+  function setTransport(state, stage) {
+    tstate.textContent = state;
+    if (stage !== undefined) tstage.textContent = stage || "";
+    const live = state === "rendering" || state === "submitting";
+    rec.classList.toggle("on", live);
+  }
+  function startClock() { t0 = performance.now(); stopClock(); clockTimer = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); tcode.textContent = `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }, 500); }
+  function stopClock() { if (clockTimer) { clearInterval(clockTimer); clockTimer = null; } }
+
+  // ── image drop ──
+  let imageFile = null;
+  const imgDrop = $("#imgDrop"), imgFile = $("#imgFile"), imgEmpty = $("#imgEmpty"), imgLoaded = $("#imgLoaded"), imgThumb = $("#imgThumb"), imgName = $("#imgName"), imgSize = $("#imgSize");
+  imgDrop.addEventListener("click", (e) => { if (e.target.closest(".imgrm")) return; imgFile.click(); });
+  imgFile.addEventListener("change", () => { if (imgFile.files[0]) onImage(imgFile.files[0]); });
+  ["dragover", "dragenter"].forEach((e) => imgDrop.addEventListener(e, (ev) => { ev.preventDefault(); imgDrop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((e) => imgDrop.addEventListener(e, (ev) => { ev.preventDefault(); imgDrop.classList.remove("over"); }));
+  imgDrop.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onImage(f); });
+  $("#imgRm").addEventListener("click", (e) => { e.stopPropagation(); clearImage(); });
+  function onImage(file) {
+    if (!/^image\//.test(file.type)) { return; }
+    imageFile = file;
+    if (stillURL) URL.revokeObjectURL(stillURL);
+    stillURL = URL.createObjectURL(file);
+    imgThumb.src = stillURL; imgName.textContent = file.name; imgSize.textContent = `${(file.size/1024).toFixed(0)} KB`;
+    imgEmpty.hidden = true; imgLoaded.hidden = false; imgDrop.classList.add("loaded");
+    if (!running) showStill("standby");
+    const c = activeCat(); ping(c ? HUE[c.id] : [255,181,112], 0.9, 900);
+  }
+  function clearImage() {
+    imageFile = null;
+    if (stillURL) { URL.revokeObjectURL(stillURL); stillURL = null; }
+    imgThumb.removeAttribute("src"); imgEmpty.hidden = false; imgLoaded.hidden = true; imgDrop.classList.remove("loaded"); imgFile.value = "";
+    if (!running) showPlaceholder();
+  }
+
+  // ── excel drop ──
+  let excelFile = null;
+  const xlsDrop = $("#xlsDrop"), xlsFile = $("#xlsFile"), xlsIc = $("#xlsIc"), xlsMain = $("#xlsMain"), xlsSub = $("#xlsSub");
+  xlsDrop.addEventListener("click", () => xlsFile.click());
+  xlsFile.addEventListener("change", () => { if (xlsFile.files[0]) onExcel(xlsFile.files[0]); });
+  ["dragover", "dragenter"].forEach((e) => xlsDrop.addEventListener(e, (ev) => { ev.preventDefault(); xlsDrop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((e) => xlsDrop.addEventListener(e, (ev) => { ev.preventDefault(); xlsDrop.classList.remove("over"); }));
+  xlsDrop.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onExcel(f); });
+  function onExcel(file) {
+    if (!file.name.toLowerCase().endsWith(".xlsx")) { xlsSub.textContent = "only .xlsx allowed"; return; }
+    excelFile = file; xlsDrop.classList.add("loaded"); xlsIc.textContent = "✓";
+    xlsMain.textContent = file.name; xlsSub.textContent = `${(file.size/1024).toFixed(0)} KB · ready`;
+  }
+
+  const pubDate = $("#pubDate");
+  try { pubDate.value = new Date().toISOString().slice(0, 10); } catch (_) {}
+
+  // ── tray (logs / queue) ──
+  const tray = $("#tray"), logToggle = $("#logToggle");
+  logToggle.addEventListener("click", () => tray.classList.toggle("open"));
+  document.querySelectorAll(".trayhead .tt").forEach((t) => t.addEventListener("click", () => {
+    document.querySelectorAll(".trayhead .tt").forEach((x) => x.classList.remove("on")); t.classList.add("on");
+    document.querySelectorAll("[data-traypane]").forEach((p) => { p.hidden = p.dataset.traypane !== t.dataset.tray; });
+  }));
+  const showTray = (pane) => { tray.classList.add("open"); $(`.trayhead .tt[data-tray="${pane}"]`).click(); };
+
+  const logsEl = $("#logs"), logN = $("#logN"), logBadge = $("#logBadge");
+  let logCount = 0;
+  function addLog(msg, level) {
+    const ts = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    const cls = level === "error" ? "er" : level === "ok" ? "ok" : "mut";
+    const pfx = level === "error" ? "✗" : level === "ok" ? "✓" : "·";
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="t">${ts}</span><span class="p ${level === "error" ? "er" : ""}">${pfx}</span><span class="${cls}">${escapeHtml(msg)}</span>`;
+    logsEl.appendChild(row); logCount++; logN.textContent = logCount; logBadge.textContent = " " + logCount; logsEl.scrollTop = logsEl.scrollHeight;
+    while (logsEl.children.length > 300) logsEl.removeChild(logsEl.firstChild);
+  }
+  function resetLogs() { logsEl.innerHTML = ""; logCount = 0; logN.textContent = 0; logBadge.textContent = ""; }
+
+  // ── queue (batch rows) ──
+  const queueEl = $("#queue"), queueN = $("#queueN");
+  const feedSeen = new Set();
+  function badgeCls(s) { return s === "completed" ? "completed" : s === "failed" ? "failed" : s === "partial" ? "partial" : ""; }
+  let lastClipUrl = null;
+  function renderQueue(state) {
+    (state.rows || []).forEach((row) => {
+      const s = row.status || "pending";
+      const id = "r" + row.row_index;
+      let el = queueEl.querySelector(`[data-row="${row.row_index}"]`);
+      if (!el) { if (queueEl.querySelector(".empty")) queueEl.innerHTML = ""; el = document.createElement("div"); el.className = "fr"; el.dataset.row = row.row_index; queueEl.appendChild(el); }
+      const link = row.video_local_url ? `<a href="${row.video_local_url}" download style="color:var(--accent);text-decoration:none">download</a>`
+        : row.error ? `<span style="color:var(--err)">err</span>` : "—";
+      const col = s === "completed" ? "var(--ok)" : s === "failed" ? "var(--err)" : "var(--muted)";
+      el.innerHTML = `<span class="fc">row ${row.row_index}</span><span class="ft" style="font-family:var(--sans)">${escapeHtml(row.video_title || "untitled")}</span><span class="fs" style="color:${col}">${s}</span><span class="fc" style="width:auto">${link}</span>`;
+      if (s === "completed" && !feedSeen.has(id)) { feedSeen.add(id); const c = activeCat(); if (c) ping(HUE[c.id], 0.85, 850); if (row.video_local_url) { lastClipUrl = row.video_local_url; showVideo(lastClipUrl); } }
+    });
+    queueN.textContent = (state.rows || []).length;
+  }
+
+  // ── category editor drawer ──
+  const drawer = $("#drawer"), drawerScrim = $("#drawerScrim"), drawerTitle = $("#drawerTitle"), drawerSub = $("#drawerSub");
+  const edLabel = $("#edLabel"), edVideo = $("#edVideo"), edMotion = $("#edMotion"), edDelete = $("#edDelete"), edSaved = $("#edSaved");
+  let editingId = null;
+  function openEditor(id) {
+    editingId = id;
+    const c = id ? cats.find((x) => x.id === id) : null;
+    drawerTitle.textContent = c ? "Edit category" : "New category";
+    drawerSub.textContent = c ? c.label : "video + motion prompt preset";
+    edLabel.value = c ? c.label : "";
+    edVideo.value = c ? c.video_prompt : "";
+    edMotion.value = c ? c.motion_prompt : "";
+    edDelete.style.display = c && cats.length > 1 ? "" : "none";
+    drawer.classList.add("open"); drawerScrim.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
+    setTimeout(() => edLabel.focus(), 60);
+  }
+  function closeEditor() { drawer.classList.remove("open"); drawerScrim.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); }
+  drawerScrim.addEventListener("click", closeEditor);
+  $("#edCancel").addEventListener("click", closeEditor);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) closeEditor(); });
+  $("#edSave").addEventListener("click", () => {
+    const label = edLabel.value.trim(); if (!label) { edLabel.focus(); return; }
+    const data = { label, video_prompt: edVideo.value.trim(), motion_prompt: edMotion.value.trim() };
+    if (editingId) { const c = cats.find((x) => x.id === editingId); Object.assign(c, data); }
+    else { const id = newId(label); cats.push({ id, ...data }); editingId = id; activeId = id; }
+    persist(); renderCats(); drawerSub.textContent = label;
+    edSaved.classList.add("show"); setTimeout(() => edSaved.classList.remove("show"), 1400);
+  });
+  edDelete.addEventListener("click", () => {
+    if (!editingId || cats.length <= 1) return;
+    cats = cats.filter((c) => c.id !== editingId);
+    if (activeId === editingId) activeId = cats[0] ? cats[0].id : null;
+    persist(); renderCats(); closeEditor();
+  });
+
+  // ── dithered iris background ──
+  const cv = $("#wave"), ctx = cv.getContext("2d");
+  let W = 0, H = 0, DPR = 1, energy = 0, energyTarget = 0; const CELL = 9;
+  const pulses = [];
+  function ping(c, s = 1, dur = 900) { if (reduce) return; pulses.push({ c, s, t0: performance.now(), dur }); if (pulses.length > 40) pulses.shift(); }
+  function resize() { const r = cv.getBoundingClientRect(); DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  addEventListener("resize", resize);
+  const BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]].map((r) => r.map((v) => v/16));
+  function frame(ts) {
+    const t = ts/1000; energy += (energyTarget - energy) * 0.05;
+    for (let i = pulses.length-1; i >= 0; i--) { if ((ts - pulses[i].t0)/pulses[i].dur >= 1) pulses.splice(i, 1); }
+    ctx.clearRect(0, 0, W, H);
+    const cx = W*0.40, cy = H*0.46;
+    const maxR = Math.hypot(Math.max(cx, W-cx), Math.max(cy, H-cy)) || 1;
+    const k = 6 + energy*7;            // ring frequency tightens as it focuses
+    const spd = 0.5 - energy*2.4;      // rings drift inward while rendering
+    for (let gx = 0; gx < W; gx += CELL) {
+      for (let gy = 0; gy < H; gy += CELL) {
+        const x = gx + CELL/2, y = gy + CELL/2;
+        const dx = x-cx, dy = y-cy, r = Math.hypot(dx, dy), nr = Math.min(1, r/maxR), ang = Math.atan2(dy, dx);
+        const ring = Math.abs(Math.sin(nr*k*Math.PI + t*spd));
+        const blade = 0.58 + 0.42*Math.sin(ang*6 + t*0.25);   // 6 aperture blades, slow rotation
+        const breath = 0.78 + 0.22*Math.sin(t*0.5 - nr*2.5);
+        let pAdd = 0, pc = null, pcw = 0;
+        for (const p of pulses) { const age = (ts-p.t0)/p.dur, env = Math.sin(age*Math.PI), pr = 0.04 + age*0.95, g = Math.max(0, 1-Math.abs(nr-pr)/0.07), amt = g*env*p.s; if (amt > 0) { pAdd += amt; if (amt > pcw) { pcw = amt; pc = p.c; } } }
+        let I = (0.26 + 0.74*ring)*blade*breath*(0.62 + 0.5*energy);   // concentric rings across the field
+        I *= (1 - Math.pow(nr, 1.7));                                  // soft edge vignette only
+        I += pAdd*0.8;
+        const th = BAYER[(gx/CELL|0)%4][(gy/CELL|0)%4];
+        if (I < th*0.40 + 0.045) continue;
+        const ci = Math.min(95, Math.floor((nr*0.85 + I*0.25 + energy*0.1)*95)), base = RAMP[ci];
+        let c = base;
+        if (pc && pcw > 0.2) { const m = Math.min(1, pcw); c = [base[0]+(pc[0]-base[0])*m|0, base[1]+(pc[1]-base[1])*m|0, base[2]+(pc[2]-base[2])*m|0]; }
+        const a = Math.min(0.72, (0.07 + I*0.4)*(1 + energy*0.5));
+        ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+        const s = Math.max(1, 1.2 + I*1.9);
+        ctx.fillRect(x-s, y-0.7, s*2, 1.4); ctx.fillRect(x-0.7, y-s, 1.4, s*2);
       }
+    }
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  function startWave() { resize(); if (reduce) { frame(0); } else { requestAnimationFrame(frame); } }
+  if (document.fonts) document.fonts.ready.then(resize);
+  addEventListener("load", resize);
+  startWave();
+  setInterval(() => {
+    if (reduce || running) return;
+    const c = activeCat();
+    if (c && Math.random() < 0.7) ping(HUE[c.id], 0.45, 1300);
+    else ping(RAMP[Math.floor(Math.random()*96)], 0.3, 1500);
+  }, 1700);
 
-      modeSingleBtn.addEventListener("click", () => setMode(false));
-      modeBatchBtn.addEventListener("click", () => setMode(true));
+  // ── optional sound ──
+  let audioOn = false, actx = null;
+  const snd = $("#snd");
+  snd.addEventListener("click", () => {
+    audioOn = !audioOn; snd.classList.toggle("on", audioOn); snd.textContent = audioOn ? "♪ on" : "♪ off";
+    if (audioOn) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); note(4); } catch (e) {} }
+  });
+  const PENTA = [261.63,293.66,329.63,392.0,440.0,523.25,587.33,659.25,783.99,880.0,1046.5];
+  function tone(freq, dur, type, gain) { if (!audioOn) return; try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination); const now = actx.currentTime; g.gain.setValueAtTime(gain, now); g.gain.exponentialRampToValueAtTime(0.0001, now+dur); o.start(now); o.stop(now+dur); } catch (e) {} }
+  function note(i) { tone(PENTA[i % PENTA.length], 0.17, "sine", 0.05); }
+  function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
 
-      // --- Character counter ---
-      const charCount = document.getElementById("charCount");
-      scriptInput.addEventListener("input", () => {
-        charCount.textContent = `${scriptInput.value.length}/1000`;
-      });
+  // ── run ──
+  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel");
+  function setRunLabel(text) { rlabel.textContent = text; }
+  let running = false;
+  function flash(msg) { const prev = isBatch ? "Generate batch" : "Generate video"; setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(prev); }, 1400); }
 
-      // --- Image upload area ---
-      const uploadArea = document.getElementById("uploadArea");
-      const imageInput = document.getElementById("imageInput");
-      const fileName = document.getElementById("fileName");
+  function startRunUi(state) {
+    running = true; runBtn.disabled = true; energyTarget = 1; $("#eq").classList.add("run");
+    resetLogs(); startClock(); setTransport("submitting", "uploading…"); showRendering();
+    setRunLabel(isBatch ? "Generating…" : "Rendering…");
+  }
+  function endRunUi() {
+    running = false; runBtn.disabled = false; energyTarget = 0; $("#eq").classList.remove("run");
+    setRunLabel(isBatch ? "Generate batch" : "Generate video"); stopClock();
+  }
 
-      uploadArea.addEventListener("click", (e) => {
-        if (e.target !== imageInput) imageInput.click();
-      });
-      uploadArea.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        uploadArea.classList.add("dragover");
-      });
-      uploadArea.addEventListener("dragleave", () =>
-        uploadArea.classList.remove("dragover"),
-      );
-      uploadArea.addEventListener("drop", (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove("dragover");
-        const file = e.dataTransfer.files[0];
-        if (file) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          imageInput.files = dt.files;
-          fileName.textContent = file.name;
-        }
-      });
-      imageInput.addEventListener("change", () => {
-        fileName.textContent = imageInput.files[0]
-          ? imageInput.files[0].name
-          : "";
-      });
+  let pollTimer = null;
+  runBtn.addEventListener("click", submit);
+  document.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!running) submit(); } });
 
-      // --- Excel upload area ---
-      const excelUploadArea = document.getElementById("excelUploadArea");
-      const excelFileName = document.getElementById("excelFileName");
+  async function submit() {
+    if (running) return;
+    if (!imageFile) { flash("Drop an avatar image"); return; }
+    const c = activeCat(); if (!c) { flash("Pick a category"); return; }
 
-      excelUploadArea.addEventListener("click", (e) => {
-        if (e.target !== excelInput) excelInput.click();
-      });
-      excelUploadArea.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        excelUploadArea.classList.add("dragover");
-      });
-      excelUploadArea.addEventListener("dragleave", () =>
-        excelUploadArea.classList.remove("dragover"),
-      );
-      excelUploadArea.addEventListener("drop", (e) => {
-        e.preventDefault();
-        excelUploadArea.classList.remove("dragover");
-        const file = e.dataTransfer.files[0];
-        if (file) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          excelInput.files = dt.files;
-          excelFileName.textContent = file.name;
-        }
-      });
-      excelInput.addEventListener("change", () => {
-        excelFileName.textContent = excelInput.files[0]
-          ? excelInput.files[0].name
-          : "";
-      });
+    if (!isBatch) {
+      if (!scriptInput.value.trim()) { flash("Write a script first"); return; }
+      startRunUi();
+      const fd = new FormData();
+      fd.append("image", imageFile);
+      fd.append("script", scriptInput.value.trim());
+      if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
+      if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
+      addLog(`submitting single · category ${c.label}`);
+      try {
+        const res = await fetch("/video/heygen", { method: "POST", body: fd });
+        if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const data = await res.json();
+        echoCmd.textContent = `job ${data.job_id || ""}`;
+        addLog(`queued · job ${data.job_id}`, "ok");
+        pollTimer = setInterval(() => pollSingle(data.job_id), 4000); pollSingle(data.job_id);
+      } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); showStill("error"); endRunUi(); }
+    } else {
+      if (!excelFile) { flash("Drop a .xlsx first"); return; }
+      startRunUi(); queueEl.innerHTML = ""; feedSeen.clear(); showTray("queue");
+      const fd = new FormData();
+      fd.append("image", imageFile);
+      fd.append("excel", excelFile);
+      if (pubDate.value) fd.append("publish_date", pubDate.value);
+      if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
+      if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
+      addLog(`submitting batch · category ${c.label}`);
+      try {
+        const res = await fetch("/video/heygen/batch", { method: "POST", body: fd });
+        if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+        const data = await res.json();
+        echoCmd.textContent = `batch ${data.batch_id || ""}`;
+        addLog(`queued · batch ${data.batch_id}`, "ok");
+        pollTimer = setInterval(() => pollBatch(data.batch_id), 4000); pollBatch(data.batch_id);
+      } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); endRunUi(); }
+    }
+  }
 
-      // --- Content type toggle ---
-      let contentType = "sunsign";
-      const DEFAULT_SETTINGS = {
-        sunsign: {
-          video_prompt:
-            "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
-          motion_prompt:
-            "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being.",
-        },
-        birthday: {
-          video_prompt:
-            "The character is speaking directly to the camera in a warm, affectionate, and heartfelt tone, delivering a personal birthday greeting and an uplifting forecast for the year ahead. Visuals: Soft cinematic lighting with a warm, celebratory glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts that convey friendliness and care. Expressions: A genuine, joyful, and tender smile with micro-expressions shifting between celebratory warmth, thoughtful reflection, and encouraging optimism. Eyes: Soft, sparkling, and prolonged eye contact with the camera, natural blinking, and 'smiling eyes' (Duchenne smile) to convey sincere well-wishes. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures near the chest to convey affection, blessings, and warmth, avoiding stiffness.",
-          motion_prompt:
-            "A warm, affectionate presenter delivering a heartfelt birthday greeting and a hopeful year-ahead forecast. Movement style: Graceful, gentle, and emotionally engaged. Maintain a genuine, joyful smile throughout with micro-expressions that shift between celebratory warmth (for the wishes), thoughtful curiosity (for the trivia and traits), and encouraging optimism (for career, finance, relationships, and health segments). Head movements should be fluid—incorporating soft lateral tilts, slow nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile), softening further during the affectionate closing message. Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in fluid, non-repetitive 'open-palm' gestures near the chest area to convey blessings, sincerity, and care. The overall presence should feel personal, celebratory, and reassuring—like a close well-wisher offering heartfelt birthday blessings.",
-        },
-      };
+  function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-      document
-        .getElementById("contentSunsign")
-        .addEventListener("click", () => setContentType("sunsign"));
-      document
-        .getElementById("contentBirthday")
-        .addEventListener("click", () => setContentType("birthday"));
-
-      function setContentType(type) {
-        contentType = type;
-        document
-          .getElementById("contentSunsign")
-          .classList.toggle("active", type === "sunsign");
-        document
-          .getElementById("contentBirthday")
-          .classList.toggle("active", type === "birthday");
+  async function pollSingle(jobId) {
+    try {
+      const res = await fetch(`/video/heygen/${jobId}`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const state = await res.json();
+      const s = state.status || "queued";
+      setTransport(s === "completed" ? "complete" : s === "failed" ? "failed" : "rendering", state.stage_message || "");
+      if (state.stage_message) addLog(state.stage_message);
+      if (s === "completed" || s === "failed") {
+        stopPoll();
+        if (s === "completed") {
+          const url = state.video_local_url || (state.summary && state.summary.video_url);
+          if (url) showVideo(url); else showStill("complete");
+          addLog("render complete", "ok"); chord();
+        } else { showStill("error"); addLog(state.error || "render failed", "error"); }
+        endRunUi();
       }
+    } catch (e) { addLog(`polling error: ${e.message}`, "error"); }
+  }
 
-      // --- Settings (per content type) ---
-      function settingsKey() {
-        return `heygen_prompt_settings_${contentType}`;
+  async function pollBatch(batchId) {
+    try {
+      const res = await fetch(`/video/heygen/batch/${batchId}`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const state = await res.json();
+      renderQueue(state);
+      const done = (state.done || 0) + (state.failed_count || 0), tot = state.total || 0;
+      setTransport(["completed","partial","failed"].includes(state.status) ? state.status : "rendering", `${done}/${tot} rows${state.failed_count ? " · " + state.failed_count + " failed" : ""}`);
+      if (["completed", "partial", "failed"].includes(state.status)) {
+        stopPoll();
+        addLog(`batch ${state.status} · ${state.done || 0}/${tot}`, state.status === "failed" ? "error" : "ok");
+        if (state.status !== "failed") chord();
+        if (!lastClipUrl) showStill("complete");
+        endRunUi();
       }
-      function loadSettings() {
-        try {
-          return JSON.parse(localStorage.getItem(settingsKey())) || {};
-        } catch {
-          return {};
-        }
-      }
-      function saveSettings(data) {
-        localStorage.setItem(settingsKey(), JSON.stringify(data));
-      }
-      function getEffectiveSettings() {
-        const saved = loadSettings();
-        const defaults = DEFAULT_SETTINGS[contentType];
-        return {
-          video_prompt: saved.video_prompt ?? defaults.video_prompt,
-          motion_prompt: saved.motion_prompt ?? defaults.motion_prompt,
-        };
-      }
+    } catch (e) { addLog(`polling error: ${e.message}`, "error"); }
+  }
 
-      const modalBackdrop = document.getElementById("modalBackdrop");
-      const settingsVideoPrompt = document.getElementById(
-        "settingsVideoPrompt",
-      );
-      const settingsMotionPrompt = document.getElementById(
-        "settingsMotionPrompt",
-      );
-      const savedIndicator = document.getElementById("savedIndicator");
-      const modalTitle = document.getElementById("modalTitle");
-
-      document.getElementById("settingsBtn").addEventListener("click", () => {
-        modalTitle.textContent = `Prompt Settings — ${contentType === "sunsign" ? "राशिफल" : "जन्मदिन"}`;
-        const s = getEffectiveSettings();
-        settingsVideoPrompt.value = s.video_prompt;
-        settingsMotionPrompt.value = s.motion_prompt;
-        modalBackdrop.classList.add("open");
-      });
-
-      function closeModal() {
-        modalBackdrop.classList.remove("open");
-      }
-      document
-        .getElementById("cancelBtn")
-        .addEventListener("click", closeModal);
-      modalBackdrop.addEventListener("click", (e) => {
-        if (e.target === modalBackdrop) closeModal();
-      });
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeModal();
-      });
-
-      document
-        .getElementById("saveSettingsBtn")
-        .addEventListener("click", () => {
-          saveSettings({
-            video_prompt: settingsVideoPrompt.value.trim(),
-            motion_prompt: settingsMotionPrompt.value.trim(),
-          });
-          savedIndicator.classList.add("show");
-          setTimeout(() => savedIndicator.classList.remove("show"), 1500);
-        });
-
-      // --- Single mode poll & render ---
-      let pollTimer = null;
-
-      function renderSingle(state) {
-        statusBox.classList.remove("hidden");
-        const s = state.status || "queued";
-        const cls =
-          s === "completed" ? "completed" : s === "failed" ? "failed" : "";
-        const summary = state.summary || {};
-        const localUrl = state.video_local_url;
-        const remoteUrl = summary.video_url;
-        const player = localUrl
-          ? `<video src="${localUrl}" controls></video>`
-          : "";
-        const links = [
-          localUrl ? `<a href="${localUrl}" download>download mp4</a>` : "",
-          remoteUrl
-            ? `<a href="${remoteUrl}" target="_blank">heygen url (7d)</a>`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
-
-        statusBox.innerHTML = `
-          <div><span class="badge ${cls}">${s}</span> ${state.stage_message || ""}</div>
-          <div style="margin-top:8px;color:#8b94a7;">job: <code>${state.job_id}</code></div>
-          ${state.error ? `<div style="color:#ff8b8b;margin-top:8px;">${state.error}</div>` : ""}
-          ${links ? `<div style="margin-top:10px;">${links}</div>` : ""}
-          ${player}
-          <pre>${JSON.stringify(summary, null, 2)}</pre>
-        `;
-      }
-
-      async function pollSingle(jobId) {
-        try {
-          const res = await fetch(`/video/heygen/${jobId}`);
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          const state = await res.json();
-          renderSingle(state);
-          if (state.status === "completed" || state.status === "failed") {
-            clearInterval(pollTimer);
-            pollTimer = null;
-            submitBtn.disabled = false;
-          }
-        } catch (e) {
-          statusBox.innerHTML = `<div style="color:#ff8b8b;">Polling error: ${e.message}</div>`;
-        }
-      }
-
-      // --- Batch mode poll & render ---
-      const BATCH_STATUS_LABELS = {
-        queued: "",
-        running: "running",
-        completed: "completed",
-        partial: "partial",
-        failed: "failed",
-      };
-
-      function badgeCls(s) {
-        if (s === "completed") return "completed";
-        if (s === "failed") return "failed";
-        if (s === "partial") return "partial";
-        return "";
-      }
-
-      function renderBatch(state) {
-        batchStatusBox.classList.remove("hidden");
-        const overall = state.status || "queued";
-        const rowsHtml = (state.rows || [])
-          .map((row) => {
-            const s = row.status || "pending";
-            const link = row.video_local_url
-              ? `<a href="${row.video_local_url}" download>download</a>`
-              : row.error
-                ? `<span style="color:#ff8b8b;font-size:11px;">${row.error}</span>`
-                : "—";
-            return `<tr>
-            <td style="color:#8b94a7;">${row.row_index}</td>
-            <td class="title-cell">${row.video_title}</td>
-            <td><span class="badge ${badgeCls(s)}">${s}</span></td>
-            <td>${link}</td>
-          </tr>`;
-          })
-          .join("");
-
-        batchStatusBox.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div><span class="badge ${badgeCls(overall)}">${overall}</span> ${state.done}/${state.total} complete${state.failed_count ? ` · ${state.failed_count} failed` : ""}</div>
-            <div style="color:#8b94a7;font-size:11px;">batch: <code>${state.batch_id}</code></div>
-          </div>
-          ${
-            rowsHtml
-              ? `<table class="batch-table" style="margin-top:12px;">
-            <thead><tr><th>#</th><th>Title</th><th>Status</th><th>Download</th></tr></thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>`
-              : ""
-          }
-        `;
-      }
-
-      async function pollBatch(batchId) {
-        try {
-          const res = await fetch(`/video/heygen/batch/${batchId}`);
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          const state = await res.json();
-          renderBatch(state);
-          const done = ["completed", "partial", "failed"].includes(
-            state.status,
-          );
-          if (done) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-            submitBtn.disabled = false;
-          }
-        } catch (e) {
-          batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">Polling error: ${e.message}</div>`;
-        }
-      }
-
-      // --- Form submit ---
-      const form = document.getElementById("form");
-
-      form.addEventListener("submit", async (ev) => {
-        ev.preventDefault();
-        submitBtn.disabled = true;
-        if (pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
-
-        const s = getEffectiveSettings();
-
-        if (!isBatch) {
-          // Single mode
-          statusBox.classList.remove("hidden");
-          statusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
-          batchStatusBox.classList.add("hidden");
-
-          const fd = new FormData(form);
-          if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
-          if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
-
-          try {
-            const res = await fetch("/video/heygen", {
-              method: "POST",
-              body: fd,
-            });
-            if (!res.ok) {
-              const t = await res.text();
-              throw new Error(t || `HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            pollTimer = setInterval(() => pollSingle(data.job_id), 4000);
-            pollSingle(data.job_id);
-          } catch (e) {
-            submitBtn.disabled = false;
-            statusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
-          }
-        } else {
-          // Batch mode
-          batchStatusBox.classList.remove("hidden");
-          batchStatusBox.innerHTML = `<div><span class="badge">submitting</span></div>`;
-          statusBox.classList.add("hidden");
-
-          if (!excelInput.files[0]) {
-            batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">Please select an Excel file.</div>`;
-            submitBtn.disabled = false;
-            return;
-          }
-
-          const fd = new FormData();
-          fd.append("image", imageInput.files[0]);
-          fd.append("excel", excelInput.files[0]);
-          if (publishDateInput.value)
-            fd.append("publish_date", publishDateInput.value);
-          if (s.video_prompt) fd.append("video_prompt", s.video_prompt);
-          if (s.motion_prompt) fd.append("motion_prompt", s.motion_prompt);
-
-          try {
-            const res = await fetch("/video/heygen/batch", {
-              method: "POST",
-              body: fd,
-            });
-            if (!res.ok) {
-              const t = await res.text();
-              throw new Error(t || `HTTP ${res.status}`);
-            }
-            const data = await res.json();
-            pollTimer = setInterval(() => pollBatch(data.batch_id), 4000);
-            pollBatch(data.batch_id);
-          } catch (e) {
-            submitBtn.disabled = false;
-            batchStatusBox.innerHTML = `<div style="color:#ff8b8b;">${e.message}</div>`;
-          }
-        }
-      });
-    </script>
-  </body>
+  // ── boot ──
+  cats = loadCats();
+  const savedActive = localStorage.getItem(ACTIVE_KEY);
+  activeId = (savedActive && cats.some((c) => c.id === savedActive)) ? savedActive : (cats[0] ? cats[0].id : null);
+  renderCats();
+  setMode(false);
+  showPlaceholder();
+  requestAnimationFrame(updateSegInd);
+  addEventListener("load", updateSegInd);
+  if (document.fonts) document.fonts.ready.then(updateSegInd);
+})();
+</script>
+</body>
 </html>

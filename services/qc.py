@@ -3,6 +3,7 @@ import json
 import logging
 
 import google.genai as genai
+from google.genai import types
 
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
@@ -56,6 +57,7 @@ def qc_translations_batch(
     *,
     runtime_config: RuntimeConfig | None = None,
     teaching_mode: bool = False,
+    thinking_budget: int | None = None,
 ) -> dict[str, str]:
     """
     QC multiple translations at once using Gemini.
@@ -63,6 +65,9 @@ def qc_translations_batch(
     :param original_text: English source text
     :param translations: Dict of {language_code: translated_text}
     :param target_languages: List of language codes
+    :param thinking_budget: Optional Gemini thinking-token budget. When None
+        (default) the model's default thinking behaviour is used unchanged.
+        Pass 0 to disable thinking. Used by eval tooling to A/B the setting.
     :return: Dict of {language_code: corrected_text}
     """
     if not target_languages or not translations:
@@ -118,13 +123,11 @@ Rules:
 6) Output must be valid JSON only (no markdown, no code fences, no commentary); each value must be a plain string.
 """
 
-        prompt = f"""You are a translation quality-control expert for: {lang_descs}.
-
-Original English text:
-"{original_text}"
-
-Candidate translations JSON:
-{translations_json}
+        # Stable instructions go in the system prompt so they form a cacheable
+        # prefix across every row in a batch (same target languages). Only the
+        # per-row data below changes between requests. This is byte-for-byte the
+        # same information the model saw before, just reorganised.
+        system_instruction = f"""You are a translation quality-control expert for: {lang_descs}.
 
 Script reference by language:
 {script_descs}
@@ -134,12 +137,24 @@ Fix the translations and return corrected JSON using exactly the same keys as in
 
 Return only the corrected JSON object."""
 
+        prompt = f"""Original English text:
+"{original_text}"
+
+Candidate translations JSON:
+{translations_json}"""
+
+        config = types.GenerateContentConfig(system_instruction=system_instruction)
+        if thinking_budget is not None:
+            config.thinking_config = types.ThinkingConfig(thinking_budget=thinking_budget)
+
         last_exc: Exception | None = None
 
         for model in models:
             try:
                 response = retry_call(
-                    lambda: client.models.generate_content(model=model, contents=prompt),
+                    lambda: client.models.generate_content(
+                        model=model, contents=prompt, config=config
+                    ),
                     operation=f"Gemini QC ({model})",
                 )
                 response_text = response.text.strip()
