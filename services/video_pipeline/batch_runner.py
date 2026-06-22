@@ -43,6 +43,7 @@ async def run_video_batch_job(
     rows: list[HeyGenBatchRow],
     image_bytes: bytes,
     image_filename: str,
+    character: str = "indian",
     video_prompt: str | None,
     motion_prompt: str | None,
     publish_date: str | None,
@@ -62,6 +63,7 @@ async def run_video_batch_job(
 
         spec = VideoJobSpec(
             script=row.script,
+            character=character or "indian",
             video_title=row.video_title,
             video_prompt=video_prompt or None,
             motion_prompt=motion_prompt or None,

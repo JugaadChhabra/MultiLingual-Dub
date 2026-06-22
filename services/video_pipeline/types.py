@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class VideoJobSpec(BaseModel):
     script: str
+    character: str = "indian"
     voice_id: str | None = None
     model_id: str = "eleven_v3"
     stability: float = 0.5

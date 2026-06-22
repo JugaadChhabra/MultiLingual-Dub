@@ -314,7 +314,7 @@
     running = false; currentJobId = null; if (pingTimer) clearInterval(pingTimer);
     energyTarget = 0; playhead = -1; if (eq) eq.classList.remove("run");
     setRunLabel("Run pipeline", "run");
-    echoEl.innerHTML = `<span class="p">$</span> POST /batch/excel-jobs`;
+    // echoEl.innerHTML = `<span class="p">$</span> POST /batch/excel-jobs`;
     stopLogs(); pullLogs();
     if (summary) renderSummary(summary, status);
     if (err) addLogLine({ level: "ERROR", message: err });

@@ -23,8 +23,26 @@ def get_heygen_api_key(runtime_config: RuntimeConfig | None = None) -> str:
     return api_key
 
 
+# Maps a character handle to the env key holding its ElevenLabs voice id.
+CHARACTER_VOICE_ENV = {
+    "indian": "ISHWARI_VOICE_ID",
+    "us": "US_VOICE_ID",
+}
+DEFAULT_CHARACTER = "indian"
+
+
 def get_default_voice_id(runtime_config: RuntimeConfig | None = None) -> str | None:
     return get_config_value("ISHWARI_VOICE_ID", runtime_config=runtime_config) or None
+
+
+def get_voice_id_for_character(
+    character: str | None, runtime_config: RuntimeConfig | None = None
+) -> str | None:
+    env_key = CHARACTER_VOICE_ENV.get(
+        (character or DEFAULT_CHARACTER).lower(),
+        CHARACTER_VOICE_ENV[DEFAULT_CHARACTER],
+    )
+    return get_config_value(env_key, runtime_config=runtime_config) or None
 
 
 @dataclass(frozen=True)

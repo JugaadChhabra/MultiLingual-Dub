@@ -229,6 +229,13 @@
           </button>
         </div>
 
+        <div class="lbl">voice<span class="r"></span><span class="n" id="charN">indian</span></div>
+        <div class="seg2" id="charSeg">
+          <span class="seg-ind" id="charInd"></span>
+          <button type="button" class="on" data-char="indian">Indian</button>
+          <button type="button" data-char="us">US</button>
+        </div>
+
         <div class="lbl">category<span class="r"></span><button class="miniedit" id="editActive" type="button">✎ edit</button></div>
         <div class="chips" id="cats"></div>
 
@@ -274,7 +281,7 @@
 
       <div class="railfoot">
         <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate video</span><span class="ret">⏎</span></button>
-        <div class="run-echo"><span class="p">$</span> <span id="echoCmd">POST /video/heygen</span></div>
+        <!-- <div class="run-echo"><span class="p">$</span> <span id="echoCmd">POST /video/heygen</span></div> -->
       </div>
     </aside>
   </main>
@@ -386,6 +393,21 @@
     echoCmd.textContent = batch ? "POST /video/heygen/batch" : "POST /video/heygen";
     setRunLabel(batch ? "Generate batch" : "Generate video");
   }
+
+  // ── voice / character toggle ──
+  const CHAR_KEY = "autodub_video_character";
+  let character = localStorage.getItem(CHAR_KEY) || "indian";
+  const charN = $("#charN"), charInd = $("#charInd");
+  function updateCharInd() { const on = $("#charSeg button.on"); if (on && charInd) { charInd.style.left = on.offsetLeft + "px"; charInd.style.width = on.offsetWidth + "px"; } }
+  function setCharacter(val) {
+    character = val;
+    document.querySelectorAll("#charSeg button").forEach((b) => b.classList.toggle("on", b.dataset.char === val));
+    updateCharInd();
+    charN.textContent = val;
+    localStorage.setItem(CHAR_KEY, val);
+  }
+  $("#charSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setCharacter(b.dataset.char); });
+  addEventListener("resize", updateCharInd);
 
   // ── char counter ──
   const scriptInput = $("#scriptInput"), charCount = $("#charCount");
@@ -638,6 +660,7 @@
       const fd = new FormData();
       fd.append("image", imageFile);
       fd.append("script", scriptInput.value.trim());
+      fd.append("character", character);
       if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
       if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
       addLog(`submitting single · category ${c.label}`);
@@ -655,6 +678,7 @@
       const fd = new FormData();
       fd.append("image", imageFile);
       fd.append("excel", excelFile);
+      fd.append("character", character);
       if (pubDate.value) fd.append("publish_date", pubDate.value);
       if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
       if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
@@ -716,10 +740,11 @@
   activeId = (savedActive && cats.some((c) => c.id === savedActive)) ? savedActive : (cats[0] ? cats[0].id : null);
   renderCats();
   setMode(false);
+  setCharacter(character);
   showPlaceholder();
-  requestAnimationFrame(updateSegInd);
-  addEventListener("load", updateSegInd);
-  if (document.fonts) document.fonts.ready.then(updateSegInd);
+  requestAnimationFrame(() => { updateSegInd(); updateCharInd(); });
+  addEventListener("load", () => { updateSegInd(); updateCharInd(); });
+  if (document.fonts) document.fonts.ready.then(() => { updateSegInd(); updateCharInd(); });
 })();
 </script>
 </body>

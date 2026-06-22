@@ -16,7 +16,7 @@ from services.runtime_config import RuntimeConfig
 from services.video_pipeline.heygen_client import (
     create_avatar_iv_video,
     download_video,
-    get_default_voice_id,
+    get_voice_id_for_character,
     get_heygen_api_key,
     poll_until_done,
     upload_asset,
@@ -147,9 +147,14 @@ async def run_video_job(
         heygen_key = get_heygen_api_key(runtime_config=runtime_config)
         eleven_key = get_elevenlabs_api_key(runtime_config=runtime_config)
 
-        voice_id = spec.voice_id or get_default_voice_id(runtime_config=runtime_config)
+        voice_id = spec.voice_id or get_voice_id_for_character(
+            spec.character, runtime_config=runtime_config
+        )
         if not voice_id:
-            raise ValueError("Missing voice_id (provide one or set ISHWARI_VOICE_ID in env)")
+            raise ValueError(
+                f"Missing voice_id for character '{spec.character}' "
+                "(provide one or set the character's voice env var)"
+            )
 
         # 1. ElevenLabs TTS — content-hash cached so retries / repeat scripts
         # never re-bill ElevenLabs credits.

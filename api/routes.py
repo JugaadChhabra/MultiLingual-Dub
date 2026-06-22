@@ -133,6 +133,7 @@ async def create_heygen_video_job(
     image: UploadFile | None = File(default=None),
     talking_photo_id: str | None = Form(default=None),
     script: str = Form(...),
+    character: str = Form(default="indian"),
     voice_id: str | None = Form(default=None),
     video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
@@ -162,6 +163,7 @@ async def create_heygen_video_job(
 
     spec = VideoJobSpec(
         script=script,
+        character=character or "indian",
         voice_id=voice_id or None,
         video_prompt=video_prompt or None,
         motion_prompt=motion_prompt or None,
@@ -210,6 +212,7 @@ async def create_heygen_batch_job(
     request: Request,
     image: UploadFile = File(...),
     excel: UploadFile = File(...),
+    character: str = Form(default="indian"),
     video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
     publish_date: str | None = Form(default=None),
@@ -252,6 +255,7 @@ async def create_heygen_batch_job(
             rows=rows,
             image_bytes=image_bytes,
             image_filename=image.filename,
+            character=character or "indian",
             video_prompt=video_prompt or None,
             motion_prompt=motion_prompt or None,
             publish_date=publish_date or None,
