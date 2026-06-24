@@ -27,6 +27,7 @@ async def _fake_job_runner(
     runtime_config=None,
     teaching_mode=False,
     output_dir=None,
+    mode="create",
 ):
     """Shared stub: immediately completes a job with 1 row and N language tasks."""
     await jobs_store.start(job_id)
@@ -152,9 +153,11 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
         runtime_config=None,
         teaching_mode=False,
         output_dir=None,
+        mode="create",
     ):
         captured["runtime_config"] = runtime_config
         captured["max_language_parallelism"] = max_language_parallelism
+        captured["mode"] = mode
         await _fake_job_runner(
             job_id=job_id,
             excel_path=excel_path,
@@ -164,6 +167,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
             runtime_config=runtime_config,
             teaching_mode=teaching_mode,
             output_dir=output_dir,
+            mode=mode,
         )
 
     monkeypatch.setattr(api, "run_excel_batch_job", fake_runner)

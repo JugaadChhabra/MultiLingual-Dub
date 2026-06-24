@@ -24,8 +24,19 @@
   .monitor{ flex:1; min-height:240px; position:relative; border:1px solid var(--line); border-radius:14px; background:rgba(9,9,13,.46); backdrop-filter:blur(2px); overflow:hidden; box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
   .monitor:has(.still),.monitor:has(.feed){ background:#000; backdrop-filter:none; }
   .monitor .mbody{ position:absolute; inset:0; display:grid; place-items:center; }
-  .monitor img.still,.monitor video.feed{ max-width:100%; max-height:100%; width:auto; height:100%; object-fit:contain; background:#000; }
-  .monitor video.feed{ width:100%; }
+  .monitor img.still,.monitor video.feed{ max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; background:#000; display:block; }
+  /* monitor doubles as the avatar dropzone */
+  .monitor.droppable{ cursor:pointer; }
+  .monitor.live,.monitor:has(video.feed){ cursor:default; }
+  .monitor.drag{ box-shadow:inset 0 0 0 2px var(--accent), inset 0 0 70px rgba(0,0,0,.5); }
+  .monitor.drag .ph .phbig,.monitor.drag .ph .phsm{ color:var(--accent); }
+  .mfile{ position:absolute; left:0; right:0; bottom:0; z-index:3; display:flex; align-items:center; gap:10px; padding:9px 13px; background:linear-gradient(transparent,rgba(0,0,0,.82)); font-family:var(--mono); font-size:10.5px; pointer-events:none; }
+  .mfile .nm{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mfile .sz{ color:var(--faint); flex:none; }
+  .mfile .gap{ flex:1; }
+  .mfile button{ pointer-events:auto; flex:none; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--muted); background:rgba(10,10,12,.6); border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; }
+  .mfile button:hover{ color:var(--accent); border-color:var(--accent); }
+  .mfile .rm:hover{ color:var(--err); border-color:var(--err); }
   .monitor .scan{ position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(255,255,255,.028) 0 1px, transparent 1px 3px); opacity:.55; mix-blend-mode:overlay; }
   .monitor .tick{ position:absolute; width:16px; height:16px; border:1.5px solid var(--faint); opacity:.5; pointer-events:none; }
   .monitor .tl{ top:11px; left:11px; border-right:none; border-bottom:none; }
@@ -48,6 +59,8 @@
   .logtoggle{ font-family:var(--mono); font-size:10.5px; color:var(--faint); background:none; border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; letter-spacing:.04em; }
   .logtoggle:hover{ color:var(--muted); border-color:#2a2a31; }
   .logtoggle .n{ color:var(--accent); margin-left:5px; }
+  a.dlbtn{ text-decoration:none; color:var(--accent); border-color:rgba(255,181,112,.4); background:var(--accent-dim); }
+  a.dlbtn:hover{ color:var(--accent); border-color:var(--accent); filter:brightness(1.08); }
 
   .tray{ flex:none; margin-top:12px; max-height:0; overflow:hidden; border-radius:10px; transition:max-height .26s ease; }
   .tray.open{ max-height:248px; border:1px solid var(--line); background:rgba(12,12,16,.82); backdrop-filter:blur(5px); }
@@ -70,10 +83,16 @@
   .seg2 button:hover{ color:var(--ink); }
   .seg2 button.on{ color:var(--accent); }
 
-  .miniedit{ font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--faint); background:none; border:1px solid var(--line); border-radius:6px; padding:3px 8px; cursor:pointer; }
-  .miniedit:hover{ color:var(--accent); border-color:var(--accent); }
+  /* mode + voice share one compact row */
+  .toolrow{ display:flex; gap:16px; }
+  .toolrow .tool{ flex:1; min-width:0; }
+  .toolrow .seg2{ display:flex; width:100%; }
+  .toolrow .seg2 button{ flex:1; justify-content:center; padding:7px 8px; }
 
   .chips{ display:flex; gap:8px; overflow-x:auto; padding-bottom:5px; }
+  .chip .pen{ display:none; margin-left:1px; font-size:11px; color:inherit; opacity:.8; }
+  .chip.on .pen{ display:inline-flex; align-items:center; }
+  .chip .pen:hover{ opacity:1; color:#fff; }
   .chip{ position:relative; flex:none; display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:10px; padding:9px 14px; cursor:pointer; white-space:nowrap; overflow:hidden; transition:border-color .14s, color .14s, box-shadow .18s, transform .08s; }
   .chip .dots{ position:absolute; inset:0; opacity:0; transition:opacity .25s; background-image:radial-gradient(currentColor .9px, transparent 1.1px); background-size:7px 7px; color:var(--tile-hue,var(--accent)); -webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); pointer-events:none; }
   .chip .swatch{ position:relative; width:7px; height:7px; border-radius:50%; background:var(--tile-hue,var(--faint)); box-shadow:0 0 7px var(--tile-hue,transparent); flex:none; }
@@ -102,23 +121,8 @@
   .script-foot .char{ font-family:var(--mono); font-size:10.5px; color:var(--faint); }
   .script-foot .spark{ font-size:12px; color:var(--accent); opacity:.5; }
 
-  /* avatar dropzone */
-  .imgdrop{ position:relative; border:1.5px dashed #2a2a31; border-radius:12px; background:rgba(13,13,17,.5); cursor:pointer; overflow:hidden; min-height:120px; display:grid; place-items:center; transition:border-color .16s, background .16s; }
-  .imgdrop:hover,.imgdrop.over{ border-color:var(--accent); background:rgba(255,181,112,.05); }
-  .imgdrop.loaded{ display:block; border-style:solid; border-color:var(--line); cursor:default; background:#0c0c10; }
-  .imgempty{ text-align:center; padding:20px 18px; }
-  .up-ic{ display:inline-grid; place-items:center; width:46px; height:46px; border-radius:50%; background:var(--accent-dim); border:1px solid rgba(255,181,112,.3); color:var(--accent); margin-bottom:12px; transition:.16s; }
-  .imgdrop:hover .up-ic,.imgdrop.over .up-ic{ background:rgba(255,181,112,.18); border-color:rgba(255,181,112,.55); }
-  .up-main{ font-size:13px; color:var(--muted); }
-  .up-main b{ color:var(--accent); font-weight:600; }
-  .up-sub{ font-family:var(--mono); font-size:10px; color:var(--faint); margin-top:6px; letter-spacing:.02em; }
-  .imgloaded{ position:relative; }
-  .imgthumb{ display:block; width:100%; max-height:210px; object-fit:cover; }
-  .imgmeta{ position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:10px; padding:9px 13px; background:linear-gradient(transparent,rgba(0,0,0,.8)); font-family:var(--mono); font-size:10.5px; }
-  .imgmeta .nm{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .imgmeta .sz{ color:var(--faint); margin-left:auto; flex:none; }
-  .imgrm{ position:absolute; top:9px; right:9px; width:25px; height:25px; border-radius:6px; background:rgba(10,10,12,.72); border:1px solid var(--line); color:var(--muted); font-family:var(--mono); font-size:15px; line-height:1; cursor:pointer; }
-  .imgrm:hover{ color:var(--err); border-color:var(--err); }
+  /* script is the rail centerpiece — give it real height */
+  #scriptInput{ min-height:248px; }
 
   .run-btn .recdot{ width:9px; height:9px; border-radius:50%; background:#c0362b; box-shadow:0 0 6px rgba(192,54,43,.8); flex:none; }
   .run-btn:disabled .recdot{ background:#8a8377; box-shadow:none; }
@@ -196,16 +200,24 @@
   <main class="studio">
     <!-- left: stage -->
     <section class="stage">
-      <div class="monitor" id="monitor">
+      <div class="monitor droppable" id="monitor">
+        <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp" hidden />
         <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
         <div class="mbody" id="mbody">
           <div class="ph" id="mph">
             <div class="phbig">NO SIGNAL</div>
-            <div class="phsm">drop an avatar to begin</div>
+            <div class="phsm">drop an avatar here · or click to browse</div>
           </div>
         </div>
         <div class="scan"></div>
         <div class="mtag" id="mtag">standby</div>
+        <div class="mfile" id="mfile" hidden>
+          <span class="nm" id="imgName"></span>
+          <span class="sz" id="imgSize"></span>
+          <span class="gap"></span>
+          <button type="button" class="rep" id="imgReplace">↻ replace</button>
+          <button type="button" class="rm" id="imgRm" title="remove">✕</button>
+        </div>
       </div>
 
       <div class="transport">
@@ -213,6 +225,7 @@
         <span class="tstate" id="tstate">standby</span>
         <span class="tstage" id="tstage"></span>
         <span class="tcode" id="tcode">00:00</span>
+        <a class="logtoggle dlbtn" id="dlBtn" download hidden>↓ download</a>
         <button class="logtoggle" id="logToggle">logs<span class="n" id="logBadge"></span></button>
       </div>
 
@@ -231,43 +244,31 @@
     <!-- right: control rail -->
     <aside class="rail">
       <div class="railscroll">
-        <div class="lbl">mode<span class="r"></span><span class="n" id="modeN">single</span></div>
-        <div class="seg2" id="modeSeg">
-          <span class="seg-ind" id="segInd"></span>
-          <button type="button" class="on" data-mode="single">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>single
-          </button>
-          <button type="button" data-mode="batch">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="3" rx="1"/><rect x="2" y="14" width="20" height="3" rx="1"/><rect x="2" y="3" width="20" height="2" rx="1" opacity=".5"/></svg>batch
-          </button>
+        <div class="toolrow">
+          <div class="tool">
+            <div class="lbl">mode<span class="r"></span></div>
+            <div class="seg2" id="modeSeg">
+              <span class="seg-ind" id="segInd"></span>
+              <button type="button" class="on" data-mode="single">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>single
+              </button>
+              <button type="button" data-mode="batch">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="3" rx="1"/><rect x="2" y="14" width="20" height="3" rx="1"/><rect x="2" y="3" width="20" height="2" rx="1" opacity=".5"/></svg>batch
+              </button>
+            </div>
+          </div>
+          <div class="tool">
+            <div class="lbl">voice<span class="r"></span></div>
+            <div class="seg2" id="charSeg">
+              <span class="seg-ind" id="charInd"></span>
+              <button type="button" class="on" data-char="indian">Indian</button>
+              <button type="button" data-char="us">US</button>
+            </div>
+          </div>
         </div>
 
-        <div class="lbl">voice<span class="r"></span><span class="n" id="charN">indian</span></div>
-        <div class="seg2" id="charSeg">
-          <span class="seg-ind" id="charInd"></span>
-          <button type="button" class="on" data-char="indian">Indian</button>
-          <button type="button" data-char="us">US</button>
-        </div>
-
-        <div class="lbl">category<span class="r"></span><button class="miniedit" id="editActive" type="button">✎ edit</button></div>
+        <div class="lbl">category<span class="r"></span><span class="n">tap ✎ on a chip to edit</span></div>
         <div class="chips" id="cats"></div>
-
-        <div class="lbl">reference<span class="r"></span><span class="n">.png / .jpg</span></div>
-        <div class="imgdrop" id="imgDrop">
-          <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp" hidden />
-          <div class="imgempty" id="imgEmpty">
-            <span class="up-ic" aria-hidden="true">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-            </span>
-            <div class="up-main">Drop avatar image or <b>browse</b></div>
-            <div class="up-sub">png · jpg · webp — oldest auto-removed at the 3-photo cap</div>
-          </div>
-          <div class="imgloaded" id="imgLoaded" hidden>
-            <img class="imgthumb" id="imgThumb" alt="reference avatar" />
-            <div class="imgmeta"><span class="nm" id="imgName"></span><span class="sz" id="imgSize"></span></div>
-            <button type="button" class="imgrm" id="imgRm" title="remove">×</button>
-          </div>
-        </div>
 
         <div id="singleFields">
           <div class="lbl">script<span class="r"></span><span class="n">avatar speaks</span></div>
@@ -430,8 +431,8 @@
       const el = document.createElement("button");
       el.type = "button"; el.className = "chip" + (c.id === activeId ? " on" : ""); el.dataset.id = c.id;
       el.style.setProperty("--tile-hue", `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
-      el.innerHTML = `<span class="dots"></span><span class="swatch"></span><span class="big">${escapeHtml(c.label)}</span>`;
-      el.addEventListener("click", () => selectCat(c.id));
+      el.innerHTML = `<span class="dots"></span><span class="swatch"></span><span class="big">${escapeHtml(c.label)}</span><span class="pen" title="edit category">✎</span>`;
+      el.addEventListener("click", (e) => { if (e.target.closest(".pen")) { openEditor(c.id); return; } selectCat(c.id); });
       catsEl.appendChild(el);
     });
     const add = document.createElement("button");
@@ -446,11 +447,8 @@
     const c = activeCat(); if (c) ping(HUE[c.id], 1, 1000);
     persist();
   }
-  $("#editActive").addEventListener("click", () => { const c = activeCat(); if (c) openEditor(c.id); });
-
   // ── mode (single / batch) ──
   let isBatch = false;
-  const modeN = $("#modeN");
   const singleFields = $("#singleFields"), batchFields = $("#batchFields");
   const segInd = $("#segInd");
   function updateSegInd() { const on = $("#modeSeg button.on"); if (on && segInd) { segInd.style.left = on.offsetLeft + "px"; segInd.style.width = on.offsetWidth + "px"; } }
@@ -461,20 +459,18 @@
     document.querySelectorAll("#modeSeg button").forEach((b) => b.classList.toggle("on", (b.dataset.mode === "batch") === batch));
     updateSegInd();
     singleFields.hidden = batch; batchFields.hidden = !batch;
-    modeN.textContent = batch ? "batch" : "single";
     setRunLabel(batch ? "Generate batch" : "Generate video");
   }
 
   // ── voice / character toggle ──
   const CHAR_KEY = "autodub_video_character";
   let character = localStorage.getItem(CHAR_KEY) || "indian";
-  const charN = $("#charN"), charInd = $("#charInd");
+  const charInd = $("#charInd");
   function updateCharInd() { const on = $("#charSeg button.on"); if (on && charInd) { charInd.style.left = on.offsetLeft + "px"; charInd.style.width = on.offsetWidth + "px"; } }
   function setCharacter(val) {
     character = val;
     document.querySelectorAll("#charSeg button").forEach((b) => b.classList.toggle("on", b.dataset.char === val));
     updateCharInd();
-    charN.textContent = val;
     localStorage.setItem(CHAR_KEY, val);
   }
   $("#charSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setCharacter(b.dataset.char); });
@@ -489,19 +485,19 @@
   let stillURL = null;
   function showPlaceholder() {
     monitor.classList.remove("live");
-    mbody.innerHTML = `<div class="ph"><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar to begin</div></div>`;
-    mtag.textContent = "standby";
+    mbody.innerHTML = `<div class="ph"><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar here · or click to browse</div></div>`;
+    mtag.textContent = "standby"; mfile.hidden = true;
   }
   function showStill(tag) {
     monitor.classList.remove("live");
     mbody.innerHTML = stillURL ? `<img class="still" src="${stillURL}" alt="reference avatar" />` : "";
-    mtag.textContent = tag || "standby";
+    mtag.textContent = tag || "standby"; mfile.hidden = !imageFile;
   }
-  function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "rec ● rendering"; }
+  function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "rec ● rendering"; mfile.hidden = true; }
   function showVideo(url) {
     monitor.classList.remove("live");
     mbody.innerHTML = `<video class="feed" src="${url}" controls autoplay playsinline></video>`;
-    mtag.textContent = "playback";
+    mtag.textContent = "playback"; mfile.hidden = true;
   }
 
   // ── transport ──
@@ -516,29 +512,39 @@
   function startClock() { t0 = performance.now(); stopClock(); clockTimer = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); tcode.textContent = `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }, 500); }
   function stopClock() { if (clockTimer) { clearInterval(clockTimer); clockTimer = null; } }
 
-  // ── image drop ──
+  // ── download button (single render result) ──
+  const dlBtn = $("#dlBtn");
+  function showDownload(url, name) { if (!url) { hideDownload(); return; } dlBtn.href = url; dlBtn.setAttribute("download", name || (url.split("/").pop() || "video.mp4")); dlBtn.hidden = false; }
+  function hideDownload() { dlBtn.hidden = true; dlBtn.removeAttribute("href"); }
+
+  // ── avatar image — the monitor itself is the dropzone ──
   let imageFile = null;
-  const imgDrop = $("#imgDrop"), imgFile = $("#imgFile"), imgEmpty = $("#imgEmpty"), imgLoaded = $("#imgLoaded"), imgThumb = $("#imgThumb"), imgName = $("#imgName"), imgSize = $("#imgSize");
-  imgDrop.addEventListener("click", (e) => { if (e.target.closest(".imgrm")) return; imgFile.click(); });
+  const imgFile = $("#imgFile"), mfile = $("#mfile"), imgName = $("#imgName"), imgSize = $("#imgSize");
+  monitor.addEventListener("click", (e) => {
+    if (running) return;                       // never interrupt a render/playback
+    if (e.target.closest(".mfile button")) return; // replace/remove handle themselves
+    if (e.target.closest("video")) return;     // don't hijack playback controls
+    imgFile.click();
+  });
   imgFile.addEventListener("change", () => { if (imgFile.files[0]) onImage(imgFile.files[0]); });
-  ["dragover", "dragenter"].forEach((e) => imgDrop.addEventListener(e, (ev) => { ev.preventDefault(); imgDrop.classList.add("over"); }));
-  ["dragleave", "drop"].forEach((e) => imgDrop.addEventListener(e, (ev) => { ev.preventDefault(); imgDrop.classList.remove("over"); }));
-  imgDrop.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onImage(f); });
-  $("#imgRm").addEventListener("click", (e) => { e.stopPropagation(); clearImage(); });
+  ["dragover", "dragenter"].forEach((e) => monitor.addEventListener(e, (ev) => { ev.preventDefault(); if (!running) monitor.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((e) => monitor.addEventListener(e, (ev) => { ev.preventDefault(); monitor.classList.remove("drag"); }));
+  monitor.addEventListener("drop", (ev) => { if (running) return; const f = ev.dataTransfer.files[0]; if (f) onImage(f); });
+  $("#imgReplace").addEventListener("click", (e) => { e.stopPropagation(); if (!running) imgFile.click(); });
+  $("#imgRm").addEventListener("click", (e) => { e.stopPropagation(); if (!running) clearImage(); });
   function onImage(file) {
     if (!/^image\//.test(file.type)) { return; }
     imageFile = file;
     if (stillURL) URL.revokeObjectURL(stillURL);
     stillURL = URL.createObjectURL(file);
-    imgThumb.src = stillURL; imgName.textContent = file.name; imgSize.textContent = `${(file.size/1024).toFixed(0)} KB`;
-    imgEmpty.hidden = true; imgLoaded.hidden = false; imgDrop.classList.add("loaded");
+    imgName.textContent = file.name; imgSize.textContent = `${(file.size/1024).toFixed(0)} KB`;
     if (!running) showStill("standby");
     const c = activeCat(); ping(c ? HUE[c.id] : [255,181,112], 0.9, 900);
   }
   function clearImage() {
     imageFile = null;
     if (stillURL) { URL.revokeObjectURL(stillURL); stillURL = null; }
-    imgThumb.removeAttribute("src"); imgEmpty.hidden = false; imgLoaded.hidden = true; imgDrop.classList.remove("loaded"); imgFile.value = "";
+    imgFile.value = "";
     if (!running) showPlaceholder();
   }
 
@@ -721,7 +727,7 @@
   function flash(msg) { const prev = isBatch ? "Generate batch" : "Generate video"; setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(prev); }, 1400); }
 
   function startRunUi() {
-    running = true; energyTarget = 1; refreshRunState();
+    running = true; energyTarget = 1; refreshRunState(); hideDownload();
     resetLogs(); startClock(); setTransport("submitting", "uploading…"); showRendering();
     setRunLabel(isBatch ? "Generating…" : "Rendering…");
   }
@@ -792,7 +798,7 @@
         stopPoll();
         if (s === "completed") {
           const url = state.video_local_url || (state.summary && state.summary.video_url);
-          if (url) showVideo(url); else showStill("complete");
+          if (url) { showVideo(url); showDownload(state.video_local_url || url, (state.summary && state.summary.video_title) ? state.summary.video_title + ".mp4" : null); } else showStill("complete");
           addLog("render complete", "ok"); chord();
         } else { showStill("error"); addLog(state.error || "render failed", "error"); }
         endRunUi();
