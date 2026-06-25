@@ -600,8 +600,9 @@
       if (!el) { if (queueEl.querySelector(".empty")) queueEl.innerHTML = ""; el = document.createElement("div"); el.className = "fr"; el.dataset.row = row.row_index; queueEl.appendChild(el); }
       const link = row.video_local_url ? `<a href="${row.video_local_url}" download style="color:var(--accent);text-decoration:none">download</a>`
         : row.error ? `<span style="color:var(--err)">err</span>` : "—";
+      const nas = row.nas_path ? `<span class="fc" style="width:auto;color:var(--muted)" title="NAS: ${escapeHtml(row.nas_path)}">NAS: ${escapeHtml(row.nas_path)}</span>` : "";
       const col = s === "completed" ? "var(--ok)" : s === "failed" ? "var(--err)" : "var(--muted)";
-      el.innerHTML = `<span class="fc">row ${row.row_index}</span><span class="ft" style="font-family:var(--sans)">${escapeHtml(row.video_title || "untitled")}</span><span class="fs" style="color:${col}">${s}</span><span class="fc" style="width:auto">${link}</span>`;
+      el.innerHTML = `<span class="fc">row ${row.row_index}</span><span class="ft" style="font-family:var(--sans)">${escapeHtml(row.video_title || "untitled")}</span><span class="fs" style="color:${col}">${s}</span>${nas}<span class="fc" style="width:auto">${link}</span>`;
       if (s === "completed" && !feedSeen.has(id)) { feedSeen.add(id); const c = activeCat(); if (c) ping(HUE[c.id], 0.85, 850); if (row.video_local_url) { lastClipUrl = row.video_local_url; showVideo(lastClipUrl); } }
     });
     queueN.textContent = (state.rows || []).length;

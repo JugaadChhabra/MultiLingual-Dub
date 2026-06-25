@@ -17,6 +17,7 @@ class BatchRowState(BaseModel):
     job_id: str = ""
     status: Literal["pending", "running", "completed", "failed"] = "pending"
     video_local_url: str | None = None
+    nas_path: str | None = None
     error: str | None = None
 
 

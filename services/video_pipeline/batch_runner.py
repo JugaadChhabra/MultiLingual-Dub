@@ -139,6 +139,7 @@ async def run_video_batch_job(
                     batch_id, row.row_index,
                     status="completed",
                     video_local_url=video_local_url,
+                    nas_path=video_state.summary.nas_path,
                 )
                 await batch_store.row_succeeded(batch_id)
                 logger.info("Batch %s | row %d completed (job %s)", batch_id, row.row_index, job_id)

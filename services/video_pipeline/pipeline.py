@@ -28,6 +28,13 @@ from services.video_pipeline.types import VideoJobSpec
 
 logger = logging.getLogger(__name__)
 
+# smbclient keeps a single process-global SMB session/connection and is NOT
+# thread-safe: concurrent uploads (batch mode runs rows in parallel) interleave
+# CREATE/WRITE/CLOSE over the one socket, so writes can silently fail to persist
+# even though the client returns "OK". Serialize the NAS upload step so only one
+# SMB write is ever in flight; renders/polls still run concurrently.
+_nas_upload_lock = asyncio.Lock()
+
 
 def _image_dimensions(content: bytes) -> tuple[int, int] | None:
     """Return (width, height) for JPEG / PNG / WEBP bytes; None if unknown."""
@@ -280,9 +287,10 @@ async def run_video_job(
         nas = NasService(nas_config)
         from datetime import date as _date
         publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
-        nas_path = await asyncio.to_thread(
-            nas.upload_video, publish_date, spec.video_title, str(video_path)
-        )
+        async with _nas_upload_lock:
+            nas_path = await asyncio.to_thread(
+                nas.upload_video, publish_date, spec.video_title, str(video_path)
+            )
         await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
         await jobs_store.complete(job_id)
