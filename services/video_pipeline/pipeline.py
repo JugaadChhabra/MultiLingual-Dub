@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import struct
+from dataclasses import replace
 from pathlib import Path
 
 from services.elevenlabs import (
@@ -12,7 +13,7 @@ from services.elevenlabs import (
     get_elevenlabs_api_key,
     synthesize_speech_bytes,
 )
-from services.runtime_config import RuntimeConfig
+from services.runtime_config import RuntimeConfig, get_config_value
 from services.video_pipeline.heygen_client import (
     create_avatar_iv_video,
     download_video,
@@ -288,6 +289,13 @@ async def run_video_job(
         # 6. Upload to NAS
         await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
         nas_config = get_nas_config(runtime_config=runtime_config)
+        # US-character content lands in its own NAS folder, when configured;
+        # everything else uses the default NAS_ROOT_PATH.
+        if (spec.character or "").lower() == "us":
+            us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
+            if us_root:
+                nas_config = replace(nas_config, root_path=us_root)
+                logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
         nas = NasService(nas_config)
         from datetime import date as _date
         publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")

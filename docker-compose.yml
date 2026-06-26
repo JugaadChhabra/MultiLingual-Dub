@@ -17,6 +17,7 @@ services:
     environment:
       ISHWARI_VOICE_ID: ${ISHWARI_VOICE_ID}
       HEYGEN_ISHWARI: ${HEYGEN_ISHWARI}
+      US_VOICE_ID: ${US_VOICE_ID}
 
       ELEVEN_LABS: ${ELEVEN_LABS}
       DESI_VOCAL_VOICE: ${DESI_VOCAL_VOICE}
@@ -36,8 +37,10 @@ services:
 
       # NAS upload target. Without these the container falls back to NAS_MODE=local
       # and silently writes to an unmounted /app/nas_data — the SMB upload never runs.
+      # US-character content uploads here instead of NAS_ROOT_PATH.
       NAS_MODE: ${NAS_MODE:-local}
       NAS_ROOT_PATH: ${NAS_ROOT_PATH:-}
+      US_CHARACTER_NAS_ROOT_PATH: ${US_CHARACTER_NAS_ROOT_PATH:-}
       NAS_SERVER: ${NAS_SERVER:-}
       NAS_SHARE: ${NAS_SHARE:-}
       NAS_USERNAME: ${NAS_USERNAME:-}
