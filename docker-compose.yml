@@ -34,6 +34,17 @@ services:
       BATCH_ENABLE_S3_UPLOAD: ${BATCH_ENABLE_S3_UPLOAD:-true}
       BATCH_ENABLE_QC: ${BATCH_ENABLE_QC:-true}
 
+      # NAS upload target. Without these the container falls back to NAS_MODE=local
+      # and silently writes to an unmounted /app/nas_data — the SMB upload never runs.
+      NAS_MODE: ${NAS_MODE:-local}
+      NAS_ROOT_PATH: ${NAS_ROOT_PATH:-}
+      NAS_SERVER: ${NAS_SERVER:-}
+      NAS_SHARE: ${NAS_SHARE:-}
+      NAS_USERNAME: ${NAS_USERNAME:-}
+      NAS_PASSWORD: ${NAS_PASSWORD:-}
+      NAS_DOMAIN: ${NAS_DOMAIN:-}
+      NAS_PORT: ${NAS_PORT:-445}
+
       API_RETRY_MAX_ATTEMPTS: ${API_RETRY_MAX_ATTEMPTS:-20}
       API_RETRY_BASE_DELAY_S: ${API_RETRY_BASE_DELAY_S:-1.0}
       API_RETRY_MAX_DELAY_S: ${API_RETRY_MAX_DELAY_S:-60.0}

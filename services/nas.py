@@ -162,6 +162,16 @@ class NasService:
 
     def upload_video(self, publish_date: str, video_title: str, local_path: str) -> str:
         """Read local .mp4 and write to NAS. Returns the relative NAS path."""
+        if self.config.mode == "local":
+            # Almost always a misconfiguration in production: the SMB env vars
+            # didn't reach the process, so this writes to a local dir (often an
+            # unmounted container path) instead of the real NAS share. Make it
+            # loud rather than silently "succeeding".
+            logger.warning(
+                "NAS upload running in LOCAL mode (NAS_MODE != 'smb'); writing to %s "
+                "instead of the SMB share. Set NAS_MODE=smb and the NAS_* vars if this is unintended.",
+                self.local_root,
+            )
         content = Path(local_path).read_bytes()
         nas_path = self.build_video_path(publish_date, video_title)
         self.write_file(nas_path, content)

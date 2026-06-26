@@ -272,14 +272,18 @@ async def run_video_job(
             raise RuntimeError("HeyGen completed but returned no video_url")
 
         # 5. Download to local storage (URL expires in 7 days)
-        await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
+        # Record the render URL + heygen_video_id BEFORE downloading: if the
+        # download still fails, the job summary keeps a handle to re-fetch the
+        # finished render instead of losing it. download_video itself retries
+        # with resume, so a transient CDN connection drop no longer fails the job.
         video_path = job_dir / "video.mp4"
-        await asyncio.to_thread(download_video, video_url, str(video_path))
         await jobs_store.patch_summary(
             job_id,
             video_url=video_url,
             video_path=str(video_path),
         )
+        await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
+        await asyncio.to_thread(download_video, video_url, str(video_path))
 
         # 6. Upload to NAS
         await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")

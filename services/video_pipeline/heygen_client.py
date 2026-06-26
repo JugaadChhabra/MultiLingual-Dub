@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -288,14 +290,74 @@ async def poll_until_done(
     raise TimeoutError(f"HeyGen render did not complete within {timeout_seconds}s")
 
 
+DOWNLOAD_TIMEOUT = httpx.Timeout(300.0, connect=15.0)
+_DOWNLOAD_RETRIES = 6
+
+
+def _expected_size(resp: httpx.Response, already_have: int) -> int | None:
+    """Total file size from a (possibly partial) response, or None if unknown.
+
+    For a 206 response Content-Length is the size of the *remaining* range, so
+    the total is what we already had plus the body length."""
+    cl = resp.headers.get("content-length")
+    if cl is None:
+        return None
+    body = int(cl)
+    return already_have + body if resp.status_code == 206 else body
+
+
 def download_video(url: str, dest_path: str) -> int:
-    with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-        with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            total = 0
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_bytes():
-                    if chunk:
-                        f.write(chunk)
-                        total += len(chunk)
-            return total
+    """Stream a rendered video to disk, surviving mid-transfer connection drops.
+
+    HeyGen's CDN routinely closes the connection before the full body arrives
+    (`RemoteProtocolError: peer closed connection ... received X, expected Y`).
+    A single-shot stream turns that transient blip into a permanently failed —
+    and credit-wasting — job. So we retry, resuming from the bytes already on
+    disk via HTTP Range requests, and only return once the file size matches the
+    server's advertised Content-Length. A short read that the CDN reports as a
+    "complete" 200 (no Content-Length) still gets a size check on the next pass.
+    """
+    last_exc: Exception | None = None
+    expected: int | None = None
+
+    for attempt in range(1, _DOWNLOAD_RETRIES + 1):
+        have = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+        headers = {"Range": f"bytes={have}-"} if have else {}
+        try:
+            with httpx.Client(timeout=DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
+                with client.stream("GET", url, headers=headers) as resp:
+                    # Server ignored our Range and is resending the whole file:
+                    # truncate so we don't append a duplicate prefix.
+                    if have and resp.status_code == 200:
+                        have = 0
+                    elif resp.status_code not in (200, 206):
+                        resp.raise_for_status()
+                    expected = _expected_size(resp, have) or expected
+                    mode = "ab" if have else "wb"
+                    with open(dest_path, mode) as f:
+                        for chunk in resp.iter_bytes():
+                            if chunk:
+                                f.write(chunk)
+        except (httpx.HTTPError, OSError) as exc:
+            last_exc = exc
+            logger.warning(
+                "Video download attempt %d/%d failed (%s); resuming from %d bytes",
+                attempt, _DOWNLOAD_RETRIES, exc, os.path.getsize(dest_path) if os.path.exists(dest_path) else 0,
+            )
+            time.sleep(min(2 ** attempt, 30))
+            continue
+
+        size = os.path.getsize(dest_path)
+        if expected is None or size >= expected:
+            return size
+        logger.warning(
+            "Video download incomplete (%d/%d bytes) on attempt %d/%d; resuming",
+            size, expected, attempt, _DOWNLOAD_RETRIES,
+        )
+        time.sleep(min(2 ** attempt, 30))
+
+    final = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+    raise RuntimeError(
+        f"Video download failed after {_DOWNLOAD_RETRIES} attempts "
+        f"({final}/{expected if expected is not None else '?'} bytes): {last_exc}"
+    ) from last_exc
