@@ -10,6 +10,7 @@ from services.runtime_config import RuntimeConfig, get_config_value
 from services.video_pipeline.batch_excel import HeyGenBatchRow
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.heygen_client import (
+    clear_talking_photos,
     get_heygen_api_key,
     upload_talking_photo,
 )
@@ -81,6 +82,13 @@ async def run_video_batch_job(
     shared_talking_photo_id: str | None = None
     try:
         heygen_key = get_heygen_api_key(runtime_config=runtime_config)
+        # Free all 3 photo-avatar slots before uploading so the shared upload never
+        # trips HeyGen's cap on leftover photos from a prior run. Runs are sequential
+        # (one batch/generation at a time), so nothing else is rendering against these.
+        try:
+            await asyncio.to_thread(clear_talking_photos, api_key=heygen_key)
+        except Exception as exc:
+            logger.warning("Batch %s | pre-upload slot clear failed (continuing): %s", batch_id, exc)
         shared_talking_photo_id = await asyncio.to_thread(
             upload_talking_photo,
             api_key=heygen_key,

@@ -143,6 +143,40 @@ def delete_avatar_group(*, api_key: str, group_id: str) -> None:
         resp.raise_for_status()
 
 
+def _list_avatar_group_ids(*, api_key: str) -> list[str]:
+    """Return every user-owned photo-avatar group id via /v2/avatar_group.list.
+
+    Unlike list_talking_photos this does NOT resolve each group's look id, so it
+    survives the /v2/avatar_group/{id}/avatars 'Avatar group not found' failure —
+    a group_id alone is all delete_avatar_group needs to free a slot."""
+    headers = {"X-Api-Key": api_key}
+    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
+        resp = client.get(f"{HEYGEN_API_BASE}/v2/avatar_group.list", headers=headers)
+        resp.raise_for_status()
+        body = resp.json()
+    groups = (body.get("data") or {}).get("avatar_group_list") or []
+    return [str(g["id"]) for g in groups if isinstance(g, dict) and g.get("id")]
+
+
+def clear_talking_photos(*, api_key: str) -> int:
+    """Delete ALL user-owned photo-avatar groups so the next upload starts with
+    free slots against HeyGen's 3-photo-avatar cap. Best-effort: a single group's
+    delete failure is logged and skipped rather than aborting the sweep. Returns
+    the number of groups successfully deleted. Safe only when no other run is
+    mid-render against these photos."""
+    group_ids = _list_avatar_group_ids(api_key=api_key)
+    deleted = 0
+    for gid in group_ids:
+        try:
+            delete_avatar_group(api_key=api_key, group_id=gid)
+            deleted += 1
+        except Exception as exc:
+            logger.warning("clear_talking_photos: failed to delete group %s: %s", gid, exc)
+    if group_ids:
+        logger.info("clear_talking_photos: deleted %d/%d photo-avatar groups", deleted, len(group_ids))
+    return deleted
+
+
 QUOTA_EXCEEDED_CODE = 401028
 
 

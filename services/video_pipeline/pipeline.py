@@ -15,6 +15,7 @@ from services.elevenlabs import (
 )
 from services.runtime_config import RuntimeConfig, get_config_value
 from services.video_pipeline.heygen_client import (
+    clear_talking_photos,
     create_avatar_iv_video,
     download_video,
     get_voice_id_for_character,
@@ -222,6 +223,14 @@ async def run_video_job(
         if spec.talking_photo_id:
             talking_photo_id = spec.talking_photo_id
         else:
+            # Single generation owns the upload (batch rows reuse a shared id and
+            # skip this branch). Free all 3 slots first so leftover photos from a
+            # prior run can't trip HeyGen's cap. Runs are sequential, so this won't
+            # delete a photo another in-flight render is using.
+            try:
+                await asyncio.to_thread(clear_talking_photos, api_key=heygen_key)
+            except Exception as exc:
+                logger.warning("Job %s | pre-upload slot clear failed (continuing): %s", job_id, exc)
             await jobs_store.set_status(job_id, "uploading", "Uploading talking photo to HeyGen")
             image_content_type = _guess_image_content_type(image_filename)
             talking_photo_id = await asyncio.to_thread(
