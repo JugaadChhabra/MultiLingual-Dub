@@ -25,16 +25,19 @@ AUDIO_FILE = ROOT / "news_anchor.mp3"
 PHOTO_FILE = ROOT / "news_anchor.png"
 DOWNLOADS = Path.home() / "Downloads"
 
-QUOTA_EXCEEDED_CODE = 401028
-
 API_BASE = "https://api.heygen.com"
 UPLOAD_BASE = "https://upload.heygen.com"
 
+# Keep this SHORT and SMILE-FREE. The motion prompt is a GLOBAL, persistent
+# instruction, so any "smile" bleeds across the whole clip — including somber
+# lines (e.g. Arvind bhai's death) — which is what made the avatar grin during
+# the sad part. Negatives like "no teeth" are weakly obeyed; instead describe a
+# closed, resting mouth positively. Per-line emotion comes from the audio's
+# vocal tone, not this prompt — keep it composed and let the voice drive it.
 DEFAULT_MOTION_PROMPT = (
-    "Professional news anchor seated at a broadcast desk, facing the camera "
-    "with confident, composed posture. Natural, measured head movements and "
-    "occasional subtle hand gestures to emphasize points. Maintains steady eye "
-    "contact with the viewer and a calm, authoritative on-air presence."
+    "Sincere, composed storyteller with a calm, serious, respectful expression. "
+    "Lips relaxed and closed at rest; subtle head movements and soft hand gestures "
+    "synced to the voice."
 )
 
 
@@ -54,101 +57,52 @@ def load_api_key() -> str:
     return key
 
 
-def _oldest_group_id(api_key: str) -> str | None:
-    """Find the oldest user-owned photo-avatar group, to free a slot if the
-    per-account cap is hit."""
-    headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=60.0) as c:
-        groups = (
-            c.get(f"{API_BASE}/v2/avatar_group.list", headers=headers)
-            .raise_for_status()
-            .json()
-            .get("data", {})
-            .get("avatar_group_list", [])
-        )
-    groups = [g for g in groups if g.get("id")]
-    if not groups:
-        return None
-    groups.sort(key=lambda g: g.get("created_at") or 0)
-    return str(groups[0]["id"])
-
-
-def upload_talking_photo(api_key: str) -> str:
-    """Upload news_anchor.png as a talking photo. If the account's photo-avatar
-    cap is hit, delete the oldest group and retry once."""
-    if not PHOTO_FILE.exists():
-        sys.exit(f"Photo not found: {PHOTO_FILE}\nPut news_anchor.png in the repo root.")
-    headers = {"X-Api-Key": api_key, "Content-Type": "image/png"}
-    content = PHOTO_FILE.read_bytes()
-    print(f"Uploading {PHOTO_FILE.name} ({len(content) / 1024:.0f} KB) as talking photo...")
-
-    def _post() -> httpx.Response:
-        with httpx.Client(timeout=httpx.Timeout(connect=60.0, read=300.0, write=300.0, pool=30.0)) as c:
-            return c.post(f"{UPLOAD_BASE}/v1/talking_photo", headers=headers, content=content)
-
-    resp = _post()
-    if resp.status_code == 400:
-        try:
-            err = resp.json()
-        except Exception:
-            err = {}
-        if err.get("code") == QUOTA_EXCEEDED_CODE:
-            gid = _oldest_group_id(api_key)
-            if not gid:
-                sys.exit(f"Photo-avatar cap hit and no group to rotate: {err}")
-            print(f"Photo-avatar cap hit; deleting oldest group {gid} to free a slot...")
-            with httpx.Client(timeout=60.0) as c:
-                c.delete(f"{API_BASE}/v2/avatar_group/{gid}", headers={"X-Api-Key": api_key}).raise_for_status()
-            resp = _post()
-
-    if resp.status_code >= 400:
-        sys.exit(f"talking_photo upload failed: {resp.status_code} {resp.text}")
-    data = resp.json().get("data") or resp.json()
-    tp_id = data.get("talking_photo_id") or data.get("id")
-    if not tp_id:
-        sys.exit(f"talking_photo upload returned no id: {data}")
-    print(f"talking_photo_id: {tp_id}")
-    return str(tp_id)
-
-
-def upload_audio(api_key: str) -> str:
-    if not AUDIO_FILE.exists():
-        sys.exit(f"Audio file not found: {AUDIO_FILE}\nPut news_anchor.mp3 in the repo root.")
-    headers = {"X-Api-Key": api_key, "Content-Type": "audio/mpeg"}
-    print(f"Uploading {AUDIO_FILE.name} ({AUDIO_FILE.stat().st_size / 1024:.0f} KB)...")
+def upload_asset(api_key: str, path: Path, content_type: str, label: str) -> str:
+    """Upload a file to HeyGen's generic asset endpoint and return its asset_id.
+    Works for both images and audio."""
+    if not path.exists():
+        sys.exit(f"{label} file not found: {path}\nPut {path.name} in the repo root.")
+    headers = {"X-Api-Key": api_key, "Content-Type": content_type}
+    print(f"Uploading {path.name} ({path.stat().st_size / 1024:.0f} KB) as {label}...")
     with httpx.Client(timeout=httpx.Timeout(connect=60.0, read=300.0, write=300.0, pool=30.0)) as c:
         data = (
-            c.post(f"{UPLOAD_BASE}/v1/asset", headers=headers, content=AUDIO_FILE.read_bytes())
+            c.post(f"{UPLOAD_BASE}/v1/asset", headers=headers, content=path.read_bytes())
             .raise_for_status()
             .json()
             .get("data", {})
         )
     asset_id = data.get("id") or data.get("asset_id")
     if not asset_id:
-        sys.exit(f"Upload returned no asset id: {data}")
-    print(f"Audio asset_id: {asset_id}")
+        sys.exit(f"{label} upload returned no asset id: {data}")
+    print(f"{label} asset_id: {asset_id}")
     return str(asset_id)
 
 
-def create_video(api_key: str, avatar_id: str, audio_asset_id: str, motion_prompt: str) -> str:
+def upload_image(api_key: str) -> str:
+    return upload_asset(api_key, PHOTO_FILE, "image/png", "image")
+
+
+def upload_audio(api_key: str) -> str:
+    return upload_asset(api_key, AUDIO_FILE, "audio/mpeg", "audio")
+
+
+def create_video(api_key: str, image_asset_id: str, audio_asset_id: str, motion_prompt: str) -> str:
+    """Create an Avatar IV image-to-video render: a single photo lip-synced to
+    uploaded audio, with a natural-language motion prompt. Uses the v3 endpoint,
+    which natively supports image asset + audio + motion_prompt (the v2
+    talking_photo + use_avatar_iv_model + uploaded-audio combo errors out)."""
     body = {
-        "video_title": "audio-lipsync-test",
-        "video_inputs": [
-            {
-                "character": {
-                    "type": "talking_photo",
-                    "talking_photo_id": avatar_id,
-                    "use_avatar_iv_model": True,
-                    "motion_prompt": motion_prompt,
-                },
-                "voice": {"type": "audio", "audio_asset_id": audio_asset_id},
-            }
-        ],
-        "caption": False,
+        "type": "image",
+        "image": {"type": "asset_id", "asset_id": image_asset_id},
+        "audio_asset_id": audio_asset_id,
+        "title": "audio-lipsync-test",
+        "resolution": "1080p",
+        "aspect_ratio": "auto",
+        "motion_prompt": motion_prompt,
     }
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
     with httpx.Client(timeout=60.0) as c:
-        resp = c.post(f"{API_BASE}/v2/video/generate", headers=headers, json=body)
+        resp = c.post(f"{API_BASE}/v3/videos", headers=headers, json=body)
         if resp.status_code >= 400:
             sys.exit(f"generate failed: {resp.status_code} {resp.text}")
         data = resp.json().get("data") or resp.json()
@@ -200,14 +154,14 @@ def download(url: str, dest: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--avatar", help="existing talking_photo_id (default: upload news_anchor.png)")
+    ap.add_argument("--image", help="existing image asset_id (default: upload news_anchor.png)")
     ap.add_argument("--motion", default=DEFAULT_MOTION_PROMPT, help="motion prompt for the avatar")
     args = ap.parse_args()
 
     api_key = load_api_key()
-    avatar_id = args.avatar or upload_talking_photo(api_key)
+    image_asset_id = args.image or upload_image(api_key)
     audio_asset_id = upload_audio(api_key)
-    video_id = create_video(api_key, avatar_id, audio_asset_id, args.motion)
+    video_id = create_video(api_key, image_asset_id, audio_asset_id, args.motion)
     url = poll(api_key, video_id)
     download(url, DOWNLOADS / f"heygen_audio_lipsync_{video_id}.mp4")
 
