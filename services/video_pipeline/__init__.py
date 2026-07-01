@@ -1,6 +1,6 @@
 from services.video_pipeline.types import VideoJobSpec, VideoJobState, VideoJobSummary
 from services.video_pipeline.store import VideoJobsStore
-from services.video_pipeline.pipeline import run_video_job
+from services.video_pipeline.pipeline import recover_video_job, run_video_job
 
 __all__ = [
     "VideoJobSpec",
@@ -8,4 +8,5 @@ __all__ = [
     "VideoJobSummary",
     "VideoJobsStore",
     "run_video_job",
+    "recover_video_job",
 ]

@@ -43,3 +43,7 @@ class VideoJobState(BaseModel):
     stage_message: str = ""
     summary: VideoJobSummary = Field(default_factory=VideoJobSummary)
     error: str | None = None
+    # Persisted alongside the state so a job that failed AFTER the render finished
+    # (download / NAS step, or a process crash) can be re-run: recovery needs the
+    # video_title, character and publish_date to resolve the NAS target.
+    spec: VideoJobSpec | None = None

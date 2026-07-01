@@ -153,6 +153,10 @@ async def run_video_job(
     runtime_config: RuntimeConfig | None = None,
 ) -> None:
     try:
+        # Persist the spec first thing: if this job later fails on the download or
+        # NAS step, recovery needs the title/character/publish_date to re-run.
+        await jobs_store.set_spec(job_id, spec)
+
         heygen_key = get_heygen_api_key(runtime_config=runtime_config)
         eleven_key = get_elevenlabs_api_key(runtime_config=runtime_config)
 
@@ -281,40 +285,116 @@ async def run_video_job(
         if not video_url:
             raise RuntimeError("HeyGen completed but returned no video_url")
 
-        # 5. Download to local storage (URL expires in 7 days)
-        # Record the render URL + heygen_video_id BEFORE downloading: if the
-        # download still fails, the job summary keeps a handle to re-fetch the
-        # finished render instead of losing it. download_video itself retries
-        # with resume, so a transient CDN connection drop no longer fails the job.
-        video_path = job_dir / "video.mp4"
-        await jobs_store.patch_summary(
-            job_id,
+        # 5 + 6. Download the render, then upload to NAS. Factored out so the
+        # exact same tail can be re-run by recover_video_job for a job that got
+        # this far (render finished on HeyGen) but failed on download / NAS.
+        await _finalize_video(
+            job_id=job_id,
+            spec=spec,
             video_url=video_url,
-            video_path=str(video_path),
+            job_dir=job_dir,
+            jobs_store=jobs_store,
+            runtime_config=runtime_config,
         )
-        await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
-        await asyncio.to_thread(download_video, video_url, str(video_path))
-
-        # 6. Upload to NAS
-        await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
-        nas_config = get_nas_config(runtime_config=runtime_config)
-        # US-character content lands in its own NAS folder, when configured;
-        # everything else uses the default NAS_ROOT_PATH.
-        if (spec.character or "").lower() == "us":
-            us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
-            if us_root:
-                nas_config = replace(nas_config, root_path=us_root)
-                logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
-        nas = NasService(nas_config)
-        from datetime import date as _date
-        publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
-        async with _nas_upload_lock:
-            nas_path = await asyncio.to_thread(
-                nas.upload_video, publish_date, spec.video_title, str(video_path)
-            )
-        await jobs_store.patch_summary(job_id, nas_path=nas_path)
-
-        await jobs_store.complete(job_id)
     except Exception as exc:
         logger.exception("Video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc))
+
+
+async def _finalize_video(
+    *,
+    job_id: str,
+    spec: VideoJobSpec,
+    video_url: str,
+    job_dir: Path,
+    jobs_store: VideoJobsStore,
+    runtime_config: RuntimeConfig | None,
+) -> None:
+    """Download a finished HeyGen render to disk and push it to the NAS, then mark
+    the job completed. Shared by the main pipeline and recovery.
+
+    The render URL + heygen_video_id are recorded BEFORE downloading so that if
+    the download still fails, the persisted job keeps a handle to re-fetch the
+    finished render instead of losing it. download_video itself retries with
+    resume, so a transient CDN connection drop no longer fails the job.
+    """
+    # 5. Download to local storage (URL expires in ~7 days).
+    video_path = job_dir / "video.mp4"
+    await jobs_store.patch_summary(
+        job_id,
+        video_url=video_url,
+        video_path=str(video_path),
+    )
+    await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
+    await asyncio.to_thread(download_video, video_url, str(video_path))
+
+    # 6. Upload to NAS
+    await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
+    nas_config = get_nas_config(runtime_config=runtime_config)
+    # US-character content lands in its own NAS folder, when configured;
+    # everything else uses the default NAS_ROOT_PATH.
+    if (spec.character or "").lower() == "us":
+        us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
+        if us_root:
+            nas_config = replace(nas_config, root_path=us_root)
+            logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
+    nas = NasService(nas_config)
+    from datetime import date as _date
+    publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
+    async with _nas_upload_lock:
+        nas_path = await asyncio.to_thread(
+            nas.upload_video, publish_date, spec.video_title, str(video_path)
+        )
+    await jobs_store.patch_summary(job_id, nas_path=nas_path)
+
+    await jobs_store.complete(job_id)
+
+
+async def recover_video_job(
+    *,
+    job_id: str,
+    jobs_store: VideoJobsStore,
+    output_dir: Path,
+    runtime_config: RuntimeConfig | None = None,
+) -> None:
+    """Re-run the download + NAS-upload tail for a job whose HeyGen render
+    finished but which failed afterward (transient download/NAS error that
+    exhausted retries, or a process crash mid-download).
+
+    Requires the persisted job to carry a heygen_video_id and its spec. The
+    stored video_url may have expired, so we re-fetch a fresh one from HeyGen.
+    """
+    state = await jobs_store.get(job_id)
+    if state is None:
+        raise ValueError(f"job {job_id} not found")
+    video_id = state.summary.heygen_video_id
+    if not video_id:
+        raise ValueError(f"job {job_id} has no heygen_video_id — nothing to recover")
+    if state.spec is None:
+        raise ValueError(f"job {job_id} has no persisted spec — cannot resolve NAS target")
+
+    try:
+        heygen_key = get_heygen_api_key(runtime_config=runtime_config)
+        # Re-fetch status: the stored URL expires (~7 days) and this also confirms
+        # the render is still available. poll_until_done returns at once if done.
+        await jobs_store.set_status(job_id, "polling", f"Re-fetching render (video_id={video_id})")
+        result = await poll_until_done(api_key=heygen_key, video_id=video_id)
+        video_url = result.get("video_url")
+        if not video_url:
+            raise RuntimeError("HeyGen returned no video_url on recovery")
+
+        job_dir = output_dir / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        await _finalize_video(
+            job_id=job_id,
+            spec=state.spec,
+            video_url=video_url,
+            job_dir=job_dir,
+            jobs_store=jobs_store,
+            runtime_config=runtime_config,
+        )
+        logger.info("Recovered video job %s", job_id)
+    except Exception as exc:
+        logger.exception("Recovery of video job %s failed", job_id)
+        await jobs_store.fail(job_id, str(exc))
+        raise

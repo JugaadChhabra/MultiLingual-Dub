@@ -17,6 +17,46 @@ HEYGEN_UPLOAD_BASE = "https://upload.heygen.com"
 DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=30.0)
 UPLOAD_TIMEOUT = httpx.Timeout(connect=60.0, read=300.0, write=300.0, pool=30.0)
 
+# HeyGen's edge routinely reaps a pooled keep-alive connection mid-flight, which
+# httpx surfaces as RemoteProtocolError ("Server disconnected without sending a
+# response"). That is a httpx.TransportError but NOT a ConnectError/TimeoutException,
+# so the old per-call guards (which caught only those two) let it through and failed
+# the whole job. Catch the whole TransportError family — connect errors, read/write
+# timeouts, pool timeouts, and remote disconnects are all transient — and retry with
+# a fresh connection so the poisoned pooled socket is discarded.
+_HEYGEN_RETRIES = 4
+
+
+def _send(
+    method: str,
+    url: str,
+    *,
+    timeout: httpx.Timeout,
+    what: str,
+    retries: int = _HEYGEN_RETRIES,
+    **kwargs,
+) -> httpx.Response:
+    """Issue an httpx request, retrying transient transport failures with capped
+    exponential backoff. A fresh Client (and thus connection) is opened per attempt.
+    HTTP status codes are returned untouched for the caller to handle."""
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                return client.request(method, url, **kwargs)
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if attempt >= retries:
+                break
+            delay = min(2 ** attempt, 20)
+            logger.warning(
+                "HeyGen %s transient transport error (attempt %d/%d): %s — retrying in %ds",
+                what, attempt, retries, exc, delay,
+            )
+            time.sleep(delay)
+    assert last_exc is not None  # loop only exits via return or break-with-exc
+    raise last_exc
+
 
 def get_heygen_api_key(runtime_config: RuntimeConfig | None = None) -> str:
     api_key = get_config_value("HEYGEN_ISHWARI", runtime_config=runtime_config)
@@ -72,18 +112,20 @@ def _extract_asset(payload: dict) -> UploadResult:
 
 def upload_asset(*, api_key: str, content: bytes, content_type: str) -> UploadResult:
     headers = {"X-Api-Key": api_key, "Content-Type": content_type}
-    with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
-        resp = client.post(f"{HEYGEN_UPLOAD_BASE}/v1/asset", headers=headers, content=content)
-        resp.raise_for_status()
-        return _extract_asset(resp.json())
+    resp = _send(
+        "POST", f"{HEYGEN_UPLOAD_BASE}/v1/asset", timeout=UPLOAD_TIMEOUT,
+        what="asset upload", headers=headers, content=content,
+    )
+    resp.raise_for_status()
+    return _extract_asset(resp.json())
 
 
 def _fetch_first_look_id(*, api_key: str, group_id: str) -> str | None:
     headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.get(
-            f"{HEYGEN_API_BASE}/v2/avatar_group/{group_id}/avatars", headers=headers
-        )
+    resp = _send(
+        "GET", f"{HEYGEN_API_BASE}/v2/avatar_group/{group_id}/avatars",
+        timeout=DEFAULT_TIMEOUT, what="avatar_group avatars", headers=headers,
+    )
     if resp.status_code >= 400:
         logger.warning("avatar_group/%s/avatars failed: %s %s", group_id, resp.status_code, resp.text[:200])
         return None
@@ -104,10 +146,12 @@ def list_talking_photos(*, api_key: str) -> list[dict]:
     of each group.
     """
     headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.get(f"{HEYGEN_API_BASE}/v2/avatar_group.list", headers=headers)
-        resp.raise_for_status()
-        body = resp.json()
+    resp = _send(
+        "GET", f"{HEYGEN_API_BASE}/v2/avatar_group.list", timeout=DEFAULT_TIMEOUT,
+        what="avatar_group.list", headers=headers,
+    )
+    resp.raise_for_status()
+    body = resp.json()
     data = body.get("data") or {}
     groups = data.get("avatar_group_list") or []
     out: list[dict] = []
@@ -134,13 +178,13 @@ def delete_avatar_group(*, api_key: str, group_id: str) -> None:
     """Delete an entire photo-avatar group. This is what frees up a slot
     against HeyGen's 3-photo-avatar cap; deleting individual looks does not."""
     headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.delete(
-            f"{HEYGEN_API_BASE}/v2/avatar_group/{group_id}", headers=headers
-        )
-        if resp.status_code >= 400:
-            logger.error("HeyGen avatar_group delete failed: %s %s", resp.status_code, resp.text)
-        resp.raise_for_status()
+    resp = _send(
+        "DELETE", f"{HEYGEN_API_BASE}/v2/avatar_group/{group_id}",
+        timeout=DEFAULT_TIMEOUT, what="avatar_group delete", headers=headers,
+    )
+    if resp.status_code >= 400:
+        logger.error("HeyGen avatar_group delete failed: %s %s", resp.status_code, resp.text)
+    resp.raise_for_status()
 
 
 def _list_avatar_group_ids(*, api_key: str) -> list[str]:
@@ -150,10 +194,12 @@ def _list_avatar_group_ids(*, api_key: str) -> list[str]:
     survives the /v2/avatar_group/{id}/avatars 'Avatar group not found' failure —
     a group_id alone is all delete_avatar_group needs to free a slot."""
     headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.get(f"{HEYGEN_API_BASE}/v2/avatar_group.list", headers=headers)
-        resp.raise_for_status()
-        body = resp.json()
+    resp = _send(
+        "GET", f"{HEYGEN_API_BASE}/v2/avatar_group.list", timeout=DEFAULT_TIMEOUT,
+        what="avatar_group.list", headers=headers,
+    )
+    resp.raise_for_status()
+    body = resp.json()
     groups = (body.get("data") or {}).get("avatar_group_list") or []
     return [str(g["id"]) for g in groups if isinstance(g, dict) and g.get("id")]
 
@@ -180,20 +226,12 @@ def clear_talking_photos(*, api_key: str) -> int:
 QUOTA_EXCEEDED_CODE = 401028
 
 
-def _post_talking_photo(*, api_key: str, content: bytes, content_type: str, retries: int = 2) -> httpx.Response:
+def _post_talking_photo(*, api_key: str, content: bytes, content_type: str) -> httpx.Response:
     headers = {"X-Api-Key": api_key, "Content-Type": content_type}
-    last_exc: Exception | None = None
-    for attempt in range(retries + 1):
-        try:
-            with httpx.Client(timeout=UPLOAD_TIMEOUT) as client:
-                return client.post(f"{HEYGEN_UPLOAD_BASE}/v1/talking_photo", headers=headers, content=content)
-        except (httpx.ConnectTimeout, httpx.ConnectError) as exc:
-            last_exc = exc
-            if attempt < retries:
-                logger.warning("HeyGen upload connect failed (attempt %d/%d): %s", attempt + 1, retries + 1, exc)
-            else:
-                raise
-    raise last_exc  # unreachable but satisfies type checker
+    return _send(
+        "POST", f"{HEYGEN_UPLOAD_BASE}/v1/talking_photo", timeout=UPLOAD_TIMEOUT,
+        what="talking_photo upload", headers=headers, content=content,
+    )
 
 
 def upload_talking_photo(*, api_key: str, content: bytes, content_type: str) -> str:
@@ -264,28 +302,31 @@ def create_avatar_iv_video(
         body["callback_id"] = callback_id
 
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.post(f"{HEYGEN_API_BASE}/v2/video/generate", headers=headers, json=body)
-        if resp.status_code >= 400:
-            logger.error("HeyGen video generate failed: %s %s", resp.status_code, resp.text)
-        resp.raise_for_status()
-        data = resp.json().get("data") or resp.json()
-        video_id = data.get("video_id") or data.get("id")
-        if not video_id:
-            raise RuntimeError(f"HeyGen response missing video_id: {resp.text}")
-        return str(video_id)
+    # Retrying /video/generate is safe here: a RemoteProtocolError means the
+    # server disconnected *without sending a response*, so the render was almost
+    # certainly never accepted — no duplicate credit burn.
+    resp = _send(
+        "POST", f"{HEYGEN_API_BASE}/v2/video/generate", timeout=DEFAULT_TIMEOUT,
+        what="video generate", headers=headers, json=body,
+    )
+    if resp.status_code >= 400:
+        logger.error("HeyGen video generate failed: %s %s", resp.status_code, resp.text)
+    resp.raise_for_status()
+    data = resp.json().get("data") or resp.json()
+    video_id = data.get("video_id") or data.get("id")
+    if not video_id:
+        raise RuntimeError(f"HeyGen response missing video_id: {resp.text}")
+    return str(video_id)
 
 
 def get_video_status(*, api_key: str, video_id: str) -> dict:
     headers = {"X-Api-Key": api_key}
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        resp = client.get(
-            f"{HEYGEN_API_BASE}/v1/video_status.get",
-            headers=headers,
-            params={"video_id": video_id},
-        )
-        resp.raise_for_status()
-        return resp.json().get("data") or resp.json()
+    resp = _send(
+        "GET", f"{HEYGEN_API_BASE}/v1/video_status.get", timeout=DEFAULT_TIMEOUT,
+        what="video_status.get", headers=headers, params={"video_id": video_id},
+    )
+    resp.raise_for_status()
+    return resp.json().get("data") or resp.json()
 
 
 async def poll_until_done(
@@ -302,7 +343,7 @@ async def poll_until_done(
         try:
             data = await asyncio.to_thread(get_video_status, api_key=api_key, video_id=video_id)
             network_failures = 0
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.TransportError as exc:
             network_failures += 1
             if network_failures > max_network_retries:
                 raise

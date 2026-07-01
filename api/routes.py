@@ -26,7 +26,12 @@ from batch.models import CreateJobResponse, JobState
 from batch.service import run_excel_batch_job
 from services.elevenlabs import ElevenLabsTTSConfig, get_elevenlabs_api_key, synthesize_speech_bytes
 from batch.store import JobsStore
-from services.video_pipeline import VideoJobSpec, VideoJobsStore, run_video_job
+from services.video_pipeline import (
+    VideoJobSpec,
+    VideoJobsStore,
+    recover_video_job,
+    run_video_job,
+)
 from services.nas import NasService, get_nas_config
 from services.video_pipeline.batch_excel import BatchExcelError, read_heygen_batch_rows
 from services.video_pipeline.batch_runner import run_video_batch_job
@@ -75,7 +80,7 @@ if STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 jobs_store = JobsStore()
-video_jobs_store = VideoJobsStore()
+video_jobs_store = VideoJobsStore(persist_dir=OUTPUT_DIR / "heygen" / "_jobs")
 video_batch_jobs_store = VideoBatchJobsStore()
 session_config_store = SessionConfigStore()
 
@@ -205,6 +210,54 @@ async def get_heygen_video_job(job_id: str):
         rel = to_output_url(state.summary.video_path, OUTPUT_DIR)
         payload["video_local_url"] = rel
     return payload
+
+
+@app.get("/video/heygen/jobs/recoverable")
+async def list_recoverable_heygen_jobs():
+    """Failed jobs whose HeyGen render actually finished — re-runnable via recover."""
+    ids = await video_jobs_store.list_recoverable()
+    return {"recoverable": ids, "count": len(ids)}
+
+
+@app.post("/video/heygen/{job_id}/recover", status_code=202)
+async def recover_heygen_video_job(job_id: str, request: Request):
+    """Re-download a finished-but-failed render and push it to the NAS. Recovers
+    a job that died on the download/NAS step (its HeyGen render is intact)."""
+    runtime_config = await _runtime_config_for_request(request)
+    state = await video_jobs_store.get(job_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not state.summary.heygen_video_id:
+        raise HTTPException(status_code=409, detail="Job has no HeyGen render to recover")
+    if not state.spec:
+        raise HTTPException(status_code=409, detail="Job has no persisted spec to recover from")
+
+    asyncio.create_task(
+        recover_video_job(
+            job_id=job_id,
+            jobs_store=video_jobs_store,
+            output_dir=VIDEO_OUTPUT_DIR,
+            runtime_config=runtime_config,
+        )
+    )
+    return {"job_id": job_id, "status": "recovering"}
+
+
+@app.post("/video/heygen/recover-failed", status_code=202)
+async def recover_all_failed_heygen_jobs(request: Request):
+    """Recover every failed job whose render finished on HeyGen, in one shot."""
+    runtime_config = await _runtime_config_for_request(request)
+    ids = await video_jobs_store.list_recoverable()
+    for jid in ids:
+        asyncio.create_task(
+            recover_video_job(
+                job_id=jid,
+                jobs_store=video_jobs_store,
+                output_dir=VIDEO_OUTPUT_DIR,
+                runtime_config=runtime_config,
+            )
+        )
+    return {"status": "recovering", "job_ids": ids, "count": len(ids)}
 
 
 @app.post("/video/heygen/batch", status_code=202)
