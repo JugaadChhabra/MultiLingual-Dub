@@ -73,8 +73,10 @@
   /* ── right: control rail ── */
   .rail{ display:flex; flex-direction:column; min-height:0; }
   .railscroll{ flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
-  .railscroll .lbl:not(:first-child){ margin-top:22px; }
-  .railfoot{ flex:none; padding-top:16px; }
+  .railscroll .lbl{ margin-bottom:8px; }
+  .railscroll .lbl:not(:first-child){ margin-top:13px; }
+  .railfoot{ flex:none; padding-top:14px; }
+  .modehint{ font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:9px; }
 
   .seg2{ position:relative; display:inline-flex; padding:4px; border:1px solid var(--line); border-radius:10px; background:rgba(13,13,17,.72); }
   .seg-ind{ position:absolute; top:4px; bottom:4px; left:4px; width:0; border-radius:7px; background:linear-gradient(var(--accent-dim),rgba(255,181,112,.04)); box-shadow:inset 0 0 0 1px var(--accent), 0 5px 16px -7px var(--accent); transition:left .24s cubic-bezier(.4,0,.2,1), width .24s cubic-bezier(.4,0,.2,1); pointer-events:none; }
@@ -112,10 +114,35 @@
   .dateinp:focus{ border-color:var(--accent); }
   .dateinp::-webkit-calendar-picker-indicator{ filter:invert(.7) sepia(1) saturate(3) hue-rotate(330deg); cursor:pointer; }
 
-  .lever{ display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:10px; }
-  .lever input[type=range]{ flex:1; accent-color:var(--accent); }
-  .lever output{ min-width:38px; text-align:right; color:var(--ink); }
-  .lever.chk{ gap:7px; }
+  /* ── rotary knobs (v2 levers) ── */
+  .krack{ display:flex; flex-wrap:wrap; gap:12px 6px; margin-top:12px; }
+  .kcell{ flex:1 1 0; min-width:76px; display:flex; flex-direction:column; align-items:center; }
+  .kcell .klab{ font-family:var(--mono); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); margin-bottom:9px; transition:color .2s; }
+  .kcell.active .klab{ color:var(--accent); }
+  .knob{ position:relative; width:76px; height:76px; cursor:grab; outline:none; touch-action:none; border-radius:50%; }
+  .knob:active{ cursor:grabbing; }
+  .knob svg{ width:100%; height:100%; display:block; overflow:visible; }
+  .trackArc{ fill:none; stroke:#D8D4CB; stroke-width:7; stroke-linecap:round; }
+  .grooveLip{ fill:none; stroke:rgba(255,255,255,.85); stroke-width:7; stroke-linecap:round; opacity:.6; }
+  .valArc{ fill:none; stroke-width:4.6; stroke-linecap:round; }
+  .detent{ stroke:rgba(20,20,24,.24); stroke-width:2; stroke-linecap:round; }
+  .face{ transition:transform .18s var(--spring); transform-origin:50px 50px; }
+  .kcell.active .face{ transform:scale(1.05); }
+  .ao{ fill:rgba(20,20,24,.16); filter:blur(2.4px); }
+  .bevel{ fill:none; stroke-width:2.6; }
+  .faceDisc{ stroke:rgba(20,20,24,.06); stroke-width:.5; }
+  .knurl line{ stroke:rgba(20,20,24,.085); stroke-width:.85; stroke-linecap:round; }
+  .faceRing{ fill:none; stroke:rgba(20,20,24,.055); stroke-width:1; }
+  .gloss{ pointer-events:none; }
+  .pointer{ stroke:#33333a; stroke-width:3.2; stroke-linecap:round; transition:stroke .2s; filter:drop-shadow(0 .5px .5px rgba(255,255,255,.7)); }
+  .kcell.active .pointer{ stroke:var(--accent); }
+  .knob:focus-visible .bevel{ stroke:var(--accent)!important; stroke-width:2; }
+  .kval{ margin-top:11px; font-family:var(--mono); font-weight:500; font-size:12.5px; color:var(--ink); font-variant-numeric:tabular-nums; transition:color .2s var(--spring), transform .2s var(--spring); }
+  .kcell.active .kval{ color:var(--accent); transform:scale(1.08); }
+  .kpoles{ margin-top:4px; font-family:var(--mono); font-size:9px; letter-spacing:.02em; color:var(--faint); text-align:center; min-height:11px; }
+  .kpoles .p{ opacity:0; transition:opacity .2s; }
+  .kcell.lean-lo .p.lo, .kcell.lean-hi .p.hi{ opacity:1; color:var(--accent); }
+  .chk{ display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:16px; }
 
   .scriptbox{ width:100%; min-height:96px; resize:vertical; font-family:var(--sans); font-size:13.5px; line-height:1.55; color:var(--ink); background:linear-gradient(180deg,rgba(255,255,255,.018),transparent 36%), rgba(13,13,17,.82); backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:10px; padding:13px 15px; outline:none; transition:border-color .15s, box-shadow .15s; }
   .scriptbox:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
@@ -127,7 +154,8 @@
   .script-foot .spark{ font-size:12px; color:var(--accent); opacity:.5; }
 
   /* script is the rail centerpiece — give it real height */
-  #scriptInput{ min-height:248px; }
+  #scriptInput{ min-height:88px; }
+  .promptbox{ min-height:52px; }
 
   .run-btn .recdot{ width:9px; height:9px; border-radius:50%; background:#c0362b; box-shadow:0 0 6px rgba(192,54,43,.8); flex:none; }
   .run-btn:disabled .recdot{ background:#8a8377; box-shadow:none; }
@@ -187,6 +215,53 @@
     .railscroll{ overflow:visible; }
     .hstat .seg.hide-sm{ display:none; }
   }
+
+  /* ══════════════ LIGHT THEME ══════════════ */
+  :root{
+    --bg:#F6F5F1; --bg-2:#FFFFFF; --panel:#FFFFFF;
+    --ink:#1B1B1F; --muted:#5F5F68; --faint:#9A9AA0;
+    --line:#E4E3DD; --line-2:#EEEDE7;
+    --accent:#C2620E; --accent-dim:rgba(194,98,14,.10);
+    --ok:#1E9E6A; --err:#D2483B;
+    --spring:cubic-bezier(.34,1.4,.5,1);
+  }
+  body{ color:var(--ink); background:radial-gradient(120% 90% at 50% 0%, #FDFCFA 0%, var(--bg) 62%) fixed; }
+  #wave, .scrim{ display:none; }
+  ::selection{ background:var(--accent); color:#fff; }
+
+  /* text shadows in the dark theme darkened text over the wave — drop them */
+  .hstat, .lbl{ text-shadow:none; }
+
+  /* light chrome surfaces */
+  .transport, .tray.open{ background:#FFFFFF; box-shadow:0 1px 3px rgba(20,20,24,.05); }
+  .seg2{ background:#F1F0EC; }
+  .chip{ background:#FFFFFF; }
+  .chip.on .big{ color:var(--ink); }
+  .dateinp{ background:#FFFFFF; color:var(--ink); }
+  .scriptbox{ background:#FFFFFF; }
+  .drawer{ background:#FFFFFF; }
+  .pop{ background:#FFFFFF; }
+
+  /* the monitor stays a dark "screen" for video preview — lift its placeholder text */
+  .monitor{ background:#101014; }
+  .monitor .ph .phbig{ color:#9A9AA2; }
+  .monitor .ph .phsm{ color:#74747C; }
+
+  /* primary CTA = filled amber; secondary (make-video) = outline */
+  .run-btn{ color:#FFFFFF; background:linear-gradient(var(--accent), #A8530B);
+    border:none; box-shadow:0 2px 0 rgba(120,60,10,.28), 0 10px 22px -10px rgba(194,98,14,.55); }
+  .run-btn:disabled{ filter:none; color:#fff; background:#CFC9C0; box-shadow:0 2px 0 rgba(0,0,0,.08); }
+  #makeVideo{ color:var(--accent); background:#FFFFFF; border:1px solid var(--accent);
+    box-shadow:none; }
+  #makeVideo:hover{ background:var(--accent-dim); }
+
+  /* toast */
+  .toast{ position:fixed; left:50%; bottom:26px; transform:translate(-50%,20px); z-index:60;
+    font-family:var(--mono); font-size:12.5px; color:#12351f; background:#DFF5E9;
+    border:1px solid rgba(30,158,106,.4); border-radius:10px; padding:11px 18px;
+    box-shadow:0 12px 30px -10px rgba(30,158,106,.4); opacity:0; pointer-events:none;
+    transition:opacity .25s, transform .25s cubic-bezier(.4,0,.2,1); }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
 </style>
 </head>
 <body>
@@ -262,18 +337,8 @@
               </button>
             </div>
           </div>
-          <div class="tool">
-            <div class="lbl">voice<span class="r"></span></div>
-            <div class="seg2" id="charSeg">
-              <span class="seg-ind" id="charInd"></span>
-              <button type="button" class="on" data-char="indian">Indian</button>
-              <button type="button" data-char="us">US</button>
-            </div>
-          </div>
         </div>
-
-        <div class="lbl">category<span class="r"></span><span class="n">tap ✎ on a chip to edit</span></div>
-        <div class="chips" id="cats"></div>
+        <div class="modehint" id="modeHint">Preview &amp; tweak the voice, then render the video.</div>
 
         <div id="singleFields">
           <div class="lbl">script<span class="r"></span><span class="n">avatar speaks</span></div>
@@ -282,19 +347,12 @@
             <div class="script-foot"><span class="char" id="charCount">0 / 1000</span><span class="spark" aria-hidden="true">✦</span></div>
           </div>
 
-          <div class="lbl">voice id<span class="r"></span><span class="n">ElevenLabs v2</span></div>
-          <input type="text" id="voiceId" class="dateinp" placeholder="ElevenLabs voice id" />
+          <div class="lbl">prompt<span class="r"></span><span class="n">how the avatar moves &amp; feels</span></div>
+          <textarea class="scriptbox promptbox" id="motionPrompt" placeholder="Tone, expression, head movement, hand gestures — e.g. calm, composed storyteller; relaxed closed lips at rest; subtle nods synced to the voice."></textarea>
 
-          <div class="lbl">levers<span class="r"></span><span class="n">v2 controls</span></div>
-          <label class="lever">speed <output id="speedOut">1.00</output>
-            <input type="range" id="speed" min="0.7" max="1.2" step="0.01" value="1" /></label>
-          <label class="lever">stability <output id="stabOut">0.50</output>
-            <input type="range" id="stability" min="0" max="1" step="0.01" value="0.5" /></label>
-          <label class="lever">similarity <output id="simOut">0.75</output>
-            <input type="range" id="similarity" min="0" max="1" step="0.01" value="0.75" /></label>
-          <label class="lever">style <output id="styleOut">0.00</output>
-            <input type="range" id="style" min="0" max="1" step="0.01" value="0" /></label>
-          <label class="lever chk"><input type="checkbox" id="speakerBoost" checked /> speaker boost</label>
+          <div class="lbl">levers<span class="r"></span><span class="n">v2 controls · drag ↕</span></div>
+          <div class="krack" id="krack"></div>
+          <label class="chk"><input type="checkbox" id="speakerBoost" checked /> speaker boost</label>
 
           <div id="audioResult" hidden>
             <div class="lbl">audio<span class="r"></span><span class="n">approve or regenerate</span></div>
@@ -307,37 +365,13 @@
       <div class="railfoot">
         <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate audio</span></button>
         <button class="run-btn" id="makeVideo" hidden style="margin-top:8px"><span class="recdot"></span><span class="rlabel">Make video from this audio</span></button>
-        <div class="run-hint" id="runHint" hidden>No category yet — <span class="lk">create one</span> to start</div>
       </div>
     </aside>
   </main>
 </div>
 
-<!-- category editor drawer -->
-<div class="drawer-scrim" id="drawerScrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <h2 id="drawerTitle">New category</h2>
-  <div class="sub" id="drawerSub">video + motion prompt preset</div>
-  <div class="fld">
-    <div class="lbl" style="margin:0">name<span class="r"></span></div>
-    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. Horoscope" />
-  </div>
-  <div class="fld">
-    <div class="lbl" style="margin:0">video prompt<span class="r"></span><span class="n">how it should look/feel</span></div>
-    <textarea class="scriptbox" id="edVideo" placeholder="calm tone, soft cinematic lighting, natural head movement…"></textarea>
-  </div>
-  <div class="fld">
-    <div class="lbl" style="margin:0">motion prompt<span class="r"></span><span class="n">optional</span></div>
-    <textarea class="scriptbox" id="edMotion" placeholder="[body part] + [action] + [emotion/intensity]"></textarea>
-  </div>
-  <div class="actions">
-    <button type="button" class="del" id="edDelete">delete</button>
-    <span class="saved" id="edSaved">saved</span>
-    <span class="spacer"></span>
-    <button type="button" class="cancel" id="edCancel">close</button>
-    <button type="button" class="savebtn" id="edSave">Save</button>
-  </div>
-</aside>
+<!-- toast -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- popup / alert -->
 <div class="pop-scrim" id="popScrim"></div>
@@ -363,102 +397,6 @@
   const RAMP = [];
   for (let i = 0; i < 96; i++) { const f = i/95*(STOPS.length-1), a = Math.floor(f), b = Math.min(a+1, STOPS.length-1), t = f-a; RAMP.push(STOPS[a].map((c,k)=>Math.round(c+(STOPS[b][k]-c)*t))); }
 
-  // ── seed categories (the old hardcoded presets) ──
-  const SEED = [
-    { id: "sunsign", label: "Horoscope",
-      video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
-      motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being." },
-    { id: "birthday", label: "Birthday",
-      video_prompt: "The character is speaking directly to the camera in a warm, affectionate, and heartfelt tone, delivering a personal birthday greeting and an uplifting forecast for the year ahead. Visuals: Soft cinematic lighting with a warm, celebratory glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts that convey friendliness and care. Expressions: A genuine, joyful, and tender smile with micro-expressions shifting between celebratory warmth, thoughtful reflection, and encouraging optimism. Eyes: Soft, sparkling, and prolonged eye contact with the camera, natural blinking, and 'smiling eyes' (Duchenne smile) to convey sincere well-wishes. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures near the chest to convey affection, blessings, and warmth, avoiding stiffness.",
-      motion_prompt: "A warm, affectionate presenter delivering a heartfelt birthday greeting and a hopeful year-ahead forecast. Movement style: Graceful, gentle, and emotionally engaged. Maintain a genuine, joyful smile throughout with micro-expressions that shift between celebratory warmth (for the wishes), thoughtful curiosity (for the trivia and traits), and encouraging optimism (for career, finance, relationships, and health segments). Head movements should be fluid—incorporating soft lateral tilts, slow nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile), softening further during the affectionate closing message. Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in fluid, non-repetitive 'open-palm' gestures near the chest area to convey blessings, sincerity, and care. The overall presence should feel personal, celebratory, and reassuring—like a close well-wisher offering heartfelt birthday blessings." },
-  ];
-
-  // ── category store (localStorage; DB later) ──
-  // Code (SEED) is the source of truth for preset categories. localStorage holds
-  // only the user's *changes*: per-seed field overrides, deleted seed ids, and
-  // user-created categories. This lets us freely edit SEED labels/prompts in code
-  // and have them show up immediately — unless the user personally edited that one.
-  const STORE_KEY = "autodub_video_cat_store_v1";
-  const CATS_KEY = "autodub_video_categories_v1"; // legacy full-array key (migration only)
-  const ACTIVE_KEY = "autodub_video_active_cat";
-  const CAT_FIELDS = ["label", "video_prompt", "motion_prompt"];
-  const SEED_IDS = new Set(SEED.map((c) => c.id));
-  const seedById = (id) => SEED.find((c) => c.id === id);
-  let cats = [];
-  let activeId = null;
-
-  function loadStore() {
-    try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && typeof s === "object" && !Array.isArray(s)) return s; } catch (_) {}
-    // One-time migration from the legacy full-array store: keep user-created
-    // categories, but drop stale seed copies so the current code SEED wins.
-    try {
-      const old = JSON.parse(localStorage.getItem(CATS_KEY));
-      if (Array.isArray(old) && old.length) {
-        const user = old.filter((c) => c && c.id && !SEED_IDS.has(c.id)).map((c) => ({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt }));
-        const deleted = SEED.map((c) => c.id).filter((id) => !old.some((c) => c && c.id === id));
-        return { overrides: {}, deleted, user };
-      }
-    } catch (_) {}
-    return {};
-  }
-
-  function loadCats() {
-    const s = loadStore();
-    const deleted = new Set(Array.isArray(s.deleted) ? s.deleted : []);
-    const overrides = s.overrides && typeof s.overrides === "object" ? s.overrides : {};
-    const out = [];
-    SEED.forEach((c) => { if (!deleted.has(c.id)) out.push({ ...c, ...(overrides[c.id] || {}) }); });
-    if (Array.isArray(s.user)) s.user.forEach((c) => { if (c && c.id) out.push({ ...c }); });
-    return out;
-  }
-
-  function persist() {
-    const overrides = {}, user = [], presentSeeds = new Set();
-    cats.forEach((c) => {
-      if (SEED_IDS.has(c.id)) {
-        presentSeeds.add(c.id);
-        const base = seedById(c.id), diff = {};
-        CAT_FIELDS.forEach((k) => { if (c[k] !== base[k]) diff[k] = c[k]; });
-        if (Object.keys(diff).length) overrides[c.id] = diff;
-      } else {
-        user.push({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt });
-      }
-    });
-    const deleted = SEED.map((c) => c.id).filter((id) => !presentSeeds.has(id));
-    localStorage.setItem(STORE_KEY, JSON.stringify({ overrides, deleted, user }));
-    localStorage.removeItem(CATS_KEY); // legacy store superseded
-    localStorage.setItem(ACTIVE_KEY, activeId || "");
-  }
-  function activeCat() { return cats.find((c) => c.id === activeId) || cats[0] || null; }
-  function newId(label) { return (label || "cat").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) + "-" + Math.floor(Math.random() * 1e6).toString(36); }
-
-  // ── category chips ──
-  const catsEl = $("#cats");
-  const HUE = {};
-  function renderCats() {
-    catsEl.innerHTML = "";
-    cats.forEach((c, i) => {
-      const rgb = RAMP[Math.floor(i / Math.max(1, cats.length) * 95)];
-      HUE[c.id] = rgb;
-      const el = document.createElement("button");
-      el.type = "button"; el.className = "chip" + (c.id === activeId ? " on" : ""); el.dataset.id = c.id;
-      el.style.setProperty("--tile-hue", `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
-      el.innerHTML = `<span class="dots"></span><span class="swatch"></span><span class="big">${escapeHtml(c.label)}</span><span class="pen" title="edit category">✎</span>`;
-      el.addEventListener("click", (e) => { if (e.target.closest(".pen")) { openEditor(c.id); return; } selectCat(c.id); });
-      catsEl.appendChild(el);
-    });
-    const add = document.createElement("button");
-    add.type = "button"; add.className = "chip add"; add.innerHTML = "+ new";
-    add.addEventListener("click", () => openEditor(null));
-    catsEl.appendChild(add);
-    refreshRunState();
-  }
-  function selectCat(id) {
-    activeId = id;
-    document.querySelectorAll(".chip").forEach((t) => t.classList.toggle("on", t.dataset.id === id));
-    const c = activeCat(); if (c) ping(HUE[c.id], 1, 1000);
-    persist();
-  }
   // ── mode: 'single' (audio-first) or 'direct' ──
   let mode = "single";
   const segInd = $("#segInd");
@@ -470,22 +408,18 @@
     document.querySelectorAll("#modeSeg button").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
     updateSegInd();
     approvedAudioId = null; audioResult.hidden = true; makeVideo.hidden = true;
+    $("#modeHint").textContent = m === "direct"
+      ? "One shot: script → voice → video, no preview."
+      : "Preview & tweak the voice, then render the video.";
     setRunLabel(m === "direct" ? "Generate video directly" : "Generate audio");
   }
 
-  // ── voice / character toggle ──
-  const CHAR_KEY = "autodub_video_character";
-  let character = localStorage.getItem(CHAR_KEY) || "indian";
-  const charInd = $("#charInd");
-  function updateCharInd() { const on = $("#charSeg button.on"); if (on && charInd) { charInd.style.left = on.offsetLeft + "px"; charInd.style.width = on.offsetWidth + "px"; } }
-  function setCharacter(val) {
-    character = val;
-    document.querySelectorAll("#charSeg button").forEach((b) => b.classList.toggle("on", b.dataset.char === val));
-    updateCharInd();
-    localStorage.setItem(CHAR_KEY, val);
-  }
-  $("#charSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setCharacter(b.dataset.char); });
-  addEventListener("resize", updateCharInd);
+  // ── voice: single studio voice, id comes from env (STUDIO_VOICE_ID) ──
+  const character = "indian";  // fixed; drives NAS folder routing only
+  let studioVoiceId = "";
+  fetch("/studio/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
+    if (cfg && cfg.default_voice_id) studioVoiceId = cfg.default_voice_id;
+  }).catch(() => {});
 
   // ── char counter ──
   const scriptInput = $("#scriptInput"), charCount = $("#charCount");
@@ -527,6 +461,18 @@
   const dlBtn = $("#dlBtn");
   function showDownload(url, name) { if (!url) { hideDownload(); return; } dlBtn.href = url; dlBtn.setAttribute("download", name || (url.split("/").pop() || "video.mp4")); dlBtn.hidden = false; }
   function hideDownload() { dlBtn.hidden = true; dlBtn.removeAttribute("href"); }
+  function autoDownload(url, name) {
+    const a = document.createElement("a");
+    a.href = url; a.download = name || "video.mp4";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  const toastEl = $("#toast");
+  let toastTimer = null;
+  function showToast(msg) {
+    toastEl.textContent = "✓ " + msg; toastEl.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 5000);
+  }
 
   // ── avatar image — the monitor itself is the dropzone ──
   let imageFile = null;
@@ -550,7 +496,7 @@
     stillURL = URL.createObjectURL(file);
     imgName.textContent = file.name; imgSize.textContent = `${(file.size/1024).toFixed(0)} KB`;
     if (!running) showStill("standby");
-    const c = activeCat(); ping(c ? HUE[c.id] : [255,181,112], 0.9, 900);
+    ping([255,181,112], 0.9, 900);
   }
   function clearImage() {
     imageFile = null;
@@ -580,62 +526,6 @@
     while (logsEl.children.length > 300) logsEl.removeChild(logsEl.firstChild);
   }
   function resetLogs() { logsEl.innerHTML = ""; logCount = 0; logN.textContent = 0; logBadge.textContent = ""; }
-
-  // ── queue (batch rows) ──
-  const queueEl = $("#queue"), queueN = $("#queueN");
-  const feedSeen = new Set();
-  function badgeCls(s) { return s === "completed" ? "completed" : s === "failed" ? "failed" : s === "partial" ? "partial" : ""; }
-  let lastClipUrl = null;
-  function renderQueue(state) {
-    (state.rows || []).forEach((row) => {
-      const s = row.status || "pending";
-      const id = "r" + row.row_index;
-      let el = queueEl.querySelector(`[data-row="${row.row_index}"]`);
-      if (!el) { if (queueEl.querySelector(".empty")) queueEl.innerHTML = ""; el = document.createElement("div"); el.className = "fr"; el.dataset.row = row.row_index; queueEl.appendChild(el); }
-      const link = row.video_local_url ? `<a href="${row.video_local_url}" download style="color:var(--accent);text-decoration:none">download</a>`
-        : row.error ? `<span style="color:var(--err)">err</span>` : "—";
-      const nas = row.nas_path ? `<span class="fc" style="width:auto;color:var(--muted)" title="NAS: ${escapeHtml(row.nas_path)}">NAS: ${escapeHtml(row.nas_path)}</span>` : "";
-      const col = s === "completed" ? "var(--ok)" : s === "failed" ? "var(--err)" : "var(--muted)";
-      el.innerHTML = `<span class="fc">row ${row.row_index}</span><span class="ft" style="font-family:var(--sans)">${escapeHtml(row.video_title || "untitled")}</span><span class="fs" style="color:${col}">${s}</span>${nas}<span class="fc" style="width:auto">${link}</span>`;
-      if (s === "completed" && !feedSeen.has(id)) { feedSeen.add(id); const c = activeCat(); if (c) ping(HUE[c.id], 0.85, 850); if (row.video_local_url) { lastClipUrl = row.video_local_url; showVideo(lastClipUrl); } }
-    });
-    queueN.textContent = (state.rows || []).length;
-  }
-
-  // ── category editor drawer ──
-  const drawer = $("#drawer"), drawerScrim = $("#drawerScrim"), drawerTitle = $("#drawerTitle"), drawerSub = $("#drawerSub");
-  const edLabel = $("#edLabel"), edVideo = $("#edVideo"), edMotion = $("#edMotion"), edDelete = $("#edDelete"), edSaved = $("#edSaved");
-  let editingId = null;
-  function openEditor(id) {
-    editingId = id;
-    const c = id ? cats.find((x) => x.id === id) : null;
-    drawerTitle.textContent = c ? "Edit category" : "New category";
-    drawerSub.textContent = c ? c.label : "video + motion prompt preset";
-    edLabel.value = c ? c.label : "";
-    edVideo.value = c ? c.video_prompt : "";
-    edMotion.value = c ? c.motion_prompt : "";
-    edDelete.style.display = c ? "" : "none";
-    drawer.classList.add("open"); drawerScrim.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
-    setTimeout(() => edLabel.focus(), 60);
-  }
-  function closeEditor() { drawer.classList.remove("open"); drawerScrim.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); }
-  drawerScrim.addEventListener("click", closeEditor);
-  $("#edCancel").addEventListener("click", closeEditor);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) closeEditor(); });
-  $("#edSave").addEventListener("click", () => {
-    const label = edLabel.value.trim(); if (!label) { edLabel.focus(); return; }
-    const data = { label, video_prompt: edVideo.value.trim(), motion_prompt: edMotion.value.trim() };
-    if (editingId) { const c = cats.find((x) => x.id === editingId); Object.assign(c, data); }
-    else { const id = newId(label); cats.push({ id, ...data }); editingId = id; activeId = id; }
-    persist(); renderCats(); drawerSub.textContent = label;
-    edSaved.classList.add("show"); setTimeout(() => edSaved.classList.remove("show"), 1400);
-  });
-  edDelete.addEventListener("click", () => {
-    if (!editingId) return;
-    cats = cats.filter((c) => c.id !== editingId);
-    if (activeId === editingId) activeId = cats[0] ? cats[0].id : null;
-    persist(); renderCats(); closeEditor();
-  });
 
   // ── popup / alert ──
   const popScrim = $("#popScrim"), pop = $("#pop"), popTitle = $("#popTitle"), popMsg = $("#popMsg"), popAction = $("#popAction");
@@ -699,9 +589,7 @@
   startWave();
   setInterval(() => {
     if (reduce || running) return;
-    const c = activeCat();
-    if (c && Math.random() < 0.7) ping(HUE[c.id], 0.45, 1300);
-    else ping(RAMP[Math.floor(Math.random()*96)], 0.3, 1500);
+    ping(RAMP[Math.floor(Math.random()*96)], 0.3, 1500);
   }, 1700);
 
   // ── sound (always on; AudioContext unlocked on first user gesture per autoplay policy) ──
@@ -714,25 +602,96 @@
   function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
 
   // ── run ──
-  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel"), runHint = $("#runHint");
+  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel");
   const makeVideo = $("#makeVideo"), audioResult = $("#audioResult"), audioPlayer = $("#audioPlayer");
   function setRunLabel(text) { rlabel.textContent = text; }
   let running = false;
   let approvedAudioId = null;
   function primaryLabel() { return mode === "direct" ? "Generate video directly" : (approvedAudioId ? "Regenerate audio" : "Generate audio"); }
-  function refreshRunState() { const empty = cats.length === 0; runBtn.disabled = running; makeVideo.disabled = running; runHint.hidden = !empty || running; }
-  runHint.addEventListener("click", () => openEditor(null));
+  function refreshRunState() { runBtn.disabled = running; makeVideo.disabled = running; }
   function flash(msg) { setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(primaryLabel()); }, 1400); }
 
-  // ── v2 levers ──
-  const lever = (id, out, dp) => { const el = $("#" + id), o = $("#" + out); const upd = () => o.textContent = Number(el.value).toFixed(dp); el.addEventListener("input", upd); upd(); return () => Number(el.value); };
-  const getSpeed = lever("speed", "speedOut", 2);
-  const getStab = lever("stability", "stabOut", 2);
-  const getSim = lever("similarity", "simOut", 2);
-  const getStyle = lever("style", "styleOut", 2);
+  // ── v2 levers: rotary knobs ──
+  const KA0 = -135, KA1 = 135, KSWEEP = KA1 - KA0;
+  const kclamp = (v,a,b)=>v<a?a:v>b?b:v;
+  const kpolar = (cx,cy,r,deg)=>{ const a=(deg-90)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; };
+  function karc(cx,cy,r,a,b){ const [x0,y0]=kpolar(cx,cy,r,a), [x1,y1]=kpolar(cx,cy,r,b); const large=(b-a)>180?1:0; return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`; }
+  class Knob{
+    constructor(c, root){
+      this.c=c; this.value=c.val;
+      const cell=document.createElement("div"); cell.className="kcell"; this.cell=cell;
+      const u=Math.random().toString(36).slice(2,7), AG="ag"+u, FG="fg"+u, BEV="bev"+u, GLO="glo"+u, GIN="gin"+u;
+      cell.innerHTML=`<div class="klab">${c.label}</div>
+        <div class="knob" tabindex="0" role="slider" aria-label="${c.label}" aria-valuemin="${c.min}" aria-valuemax="${c.max}">
+          <svg viewBox="0 0 100 100"><defs>
+            <linearGradient id="${AG}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EF9C3E"/><stop offset="1" stop-color="#AF560A"/></linearGradient>
+            <radialGradient id="${FG}" cx="38%" cy="27%" r="82%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#F2F0EB"/><stop offset="1" stop-color="#E2DED6"/></radialGradient>
+            <linearGradient id="${BEV}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#EDEAE3"/><stop offset="1" stop-color="#C4BFB6"/></linearGradient>
+            <radialGradient id="${GLO}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffffff" stop-opacity=".9"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+            <filter id="${GIN}" x="-40%" y="-40%" width="180%" height="180%"><feOffset in="SourceAlpha" dx="0" dy="1"/><feGaussianBlur stdDeviation="1" result="b"/><feComposite operator="out" in="SourceGraphic" in2="b" result="inv"/><feFlood flood-color="#6f6a60" flood-opacity=".55" result="cc"/><feComposite operator="in" in="cc" in2="inv" result="sh"/><feComposite operator="over" in="sh" in2="SourceGraphic"/></filter>
+          </defs>
+          <path class="grooveLip" d="${karc(50,50,40,KA0,KA1)}" transform="translate(0 1)"/>
+          <path class="trackArc" d="${karc(50,50,40,KA0,KA1)}" filter="url(#${GIN})"/>
+          <path class="valArc" style="stroke:url(#${AG})"/>
+          <line class="detent"/>
+          <ellipse class="ao" cx="50" cy="53" rx="30" ry="29"/>
+          <circle class="bevel" cx="50" cy="50" r="30" style="stroke:url(#${BEV})"/>
+          <circle class="faceDisc" cx="50" cy="50" r="28.5" fill="url(#${FG})"/>
+          <g class="knurl"></g>
+          <circle class="faceRing" cx="50" cy="50" r="15.5"/>
+          <ellipse class="gloss" cx="50" cy="35" rx="17" ry="11" fill="url(#${GLO})"/>
+          <g class="face"><line class="pointer"/></g>
+          </svg></div>
+        <div class="kval"></div>
+        <div class="kpoles"><span class="p lo">${c.lo}</span><span class="p hi">${c.hi}</span></div>`;
+      root.appendChild(cell);
+      const kn=cell.querySelector(".knurl"), N=36;
+      for(let i=0;i<N;i++){ const ang=i/N*360, [x0,y0]=kpolar(50,50,25.6,ang), [x1,y1]=kpolar(50,50,28.3,ang);
+        const ln=document.createElementNS("http://www.w3.org/2000/svg","line");
+        ln.setAttribute("x1",x0.toFixed(2)); ln.setAttribute("y1",y0.toFixed(2)); ln.setAttribute("x2",x1.toFixed(2)); ln.setAttribute("y2",y1.toFixed(2)); kn.appendChild(ln); }
+      this.knob=cell.querySelector(".knob"); this.valArc=cell.querySelector(".valArc");
+      this.pointer=cell.querySelector(".pointer"); this.detent=cell.querySelector(".detent"); this.valEl=cell.querySelector(".kval");
+      const dd=KA0+(c.def-c.min)/(c.max-c.min)*KSWEEP, [dx0,dy0]=kpolar(50,50,35,dd), [dx1,dy1]=kpolar(50,50,44,dd);
+      this.detent.setAttribute("x1",dx0); this.detent.setAttribute("y1",dy0); this.detent.setAttribute("x2",dx1); this.detent.setAttribute("y2",dy1);
+      this.bind(); this.render();
+    }
+    deg(){ return KA0+(this.value-this.c.min)/(this.c.max-this.c.min)*KSWEEP; }
+    set(v){ v=kclamp(Math.round(v/this.c.step)*this.c.step, this.c.min, this.c.max); this.value=+v.toFixed(4); this.render(); }
+    render(){ const d=this.deg();
+      this.valArc.setAttribute("d", karc(50,50,40,KA0,Math.max(KA0+0.001,d)));
+      const [px0,py0]=kpolar(50,50,11,d), [px1,py1]=kpolar(50,50,25,d);
+      this.pointer.setAttribute("x1",px0); this.pointer.setAttribute("y1",py0); this.pointer.setAttribute("x2",px1); this.pointer.setAttribute("y2",py1);
+      this.valEl.textContent=this.value.toFixed(this.c.dp); this.knob.setAttribute("aria-valuenow", this.value.toFixed(this.c.dp));
+      const p=(this.value-this.c.min)/(this.c.max-this.c.min);
+      this.cell.classList.toggle("lean-lo", p<0.34); this.cell.classList.toggle("lean-hi", p>0.66); }
+    bind(){ const range=this.c.max-this.c.min, sens=range/190; let sx=0, sy=0, sv=0;
+      this.knob.addEventListener("pointerdown",(e)=>{ this.knob.setPointerCapture(e.pointerId); this.cell.classList.add("active"); sx=e.clientX; sy=e.clientY; sv=this.value; e.preventDefault(); });
+      this.knob.addEventListener("pointermove",(e)=>{ if(!this.knob.hasPointerCapture(e.pointerId)) return; this.set(sv + ((sy-e.clientY)+(e.clientX-sx))*sens); });
+      const end=(e)=>{ this.cell.classList.remove("active"); try{ this.knob.releasePointerCapture(e.pointerId);}catch(_){} };
+      this.knob.addEventListener("pointerup", end); this.knob.addEventListener("pointercancel", end);
+      this.knob.addEventListener("wheel",(e)=>{ e.preventDefault(); const raw=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:-e.deltaY; if(raw) this.set(this.value + Math.sign(raw)*this.c.step*(e.shiftKey?5:1)); }, {passive:false});
+      this.knob.addEventListener("keydown",(e)=>{ const s=this.c.step*(e.shiftKey?5:1);
+        if(e.key==="ArrowUp"||e.key==="ArrowRight"){ this.set(this.value+s); e.preventDefault(); }
+        else if(e.key==="ArrowDown"||e.key==="ArrowLeft"){ this.set(this.value-s); e.preventDefault(); }
+        else if(e.key==="Home"){ this.set(this.c.min); e.preventDefault(); }
+        else if(e.key==="End"){ this.set(this.c.max); e.preventDefault(); }
+        else return; this.cell.classList.add("active"); clearTimeout(this._kt); this._kt=setTimeout(()=>this.cell.classList.remove("active"),400); }); }
+  }
+  const KNOB_DEFS = [
+    { label:"Speed",      kind:"speed",      min:0.7, max:1.2, step:0.01, val:1.0,  def:1.0,  dp:2, lo:"slower",     hi:"faster" },
+    { label:"Stability",  kind:"stability",  min:0,   max:1,   step:0.01, val:0.5,  def:0.5,  dp:2, lo:"expressive", hi:"monotone" },
+    { label:"Similarity", kind:"similarity", min:0,   max:1,   step:0.01, val:0.75, def:0.75, dp:2, lo:"loose",      hi:"locked" },
+    { label:"Style",      kind:"style",      min:0,   max:1,   step:0.01, val:0.0,  def:0.0,  dp:2, lo:"neutral",    hi:"theatrical" },
+  ];
+  const knobs = {}; const krack = $("#krack");
+  KNOB_DEFS.forEach(c => { knobs[c.kind] = new Knob(c, krack); });
+  const getSpeed = () => knobs.speed.value;
+  const getStab  = () => knobs.stability.value;
+  const getSim   = () => knobs.similarity.value;
+  const getStyle = () => knobs.style.value;
   const getBoost = () => $("#speakerBoost").checked;
-  const getVoice = () => $("#voiceId").value.trim();
-  function catPrompts() { const c = activeCat(); return { video: c && c.video_prompt, motion: c && c.motion_prompt }; }
+  const getVoice = () => studioVoiceId;
+  function catPrompts() { return { motion: $("#motionPrompt").value.trim() }; }
 
   function startRunUi() {
     running = true; energyTarget = 1; refreshRunState(); hideDownload();
@@ -758,7 +717,7 @@
   async function generateAudio() {
     const text = scriptInput.value.trim();
     if (!text) { flash("Write a script first"); return; }
-    if (!getVoice()) { flash("Enter a voice id"); return; }
+    if (!getVoice()) { flash("No voice configured"); return; }
     running = true; refreshRunState(); hideDownload(); resetLogs(); startClock();
     setTransport("submitting", "synthesizing audio…"); setRunLabel("Generating…"); addLog("generating audio · v2");
     try {
@@ -784,7 +743,7 @@
   async function generateDirect() {
     const text = scriptInput.value.trim();
     if (!text) { flash("Write a script first"); return; }
-    if (!getVoice()) { flash("Enter a voice id"); return; }
+    if (!getVoice()) { flash("No voice configured"); return; }
     if (!imageFile) { flash("Drop an avatar image"); return; }
     const p = catPrompts();
     const fd = new FormData();
@@ -798,7 +757,7 @@
     fd.append("similarity_boost", String(getSim()));
     fd.append("style", String(getStyle()));
     fd.append("use_speaker_boost", getBoost() ? "true" : "false");
-    if (p.video) fd.append("video_prompt", p.video);
+    fd.append("skip_nas", "true");
     if (p.motion) fd.append("motion_prompt", p.motion);
     await submitVideo("/video/heygen", fd);
   }
@@ -812,7 +771,6 @@
     fd.append("audio_id", approvedAudioId);
     fd.append("image", imageFile);
     fd.append("character", character);
-    if (p.video) fd.append("video_prompt", p.video);
     if (p.motion) fd.append("motion_prompt", p.motion);
     await submitVideo("/video/heygen/from-audio", fd);
   }
@@ -842,8 +800,14 @@
       if (s === "completed" || s === "failed") {
         stopPoll();
         if (s === "completed") {
-          const url = state.video_local_url || (state.summary && state.summary.video_url);
-          if (url) { showVideo(url); showDownload(state.video_local_url || url, (state.summary && state.summary.video_title) ? state.summary.video_title + ".mp4" : null); } else showStill("complete");
+          const localUrl = state.video_local_url;
+          const url = localUrl || (state.summary && state.summary.video_url);
+          const name = (state.summary && state.summary.video_title) ? state.summary.video_title + ".mp4" : "video.mp4";
+          if (url) {
+            showVideo(url);
+            showDownload(localUrl || url, name);            // manual download button (kept)
+            if (localUrl) { autoDownload(localUrl, name); showToast("Video saved to your Downloads folder"); }
+          } else showStill("complete");
           addLog("render complete", "ok"); chord();
         } else { showStill("error"); addLog(state.error || "render failed", "error"); }
         endRunUi();
@@ -852,16 +816,11 @@
   }
 
   // ── boot ──
-  cats = loadCats();
-  const savedActive = localStorage.getItem(ACTIVE_KEY);
-  activeId = (savedActive && cats.some((c) => c.id === savedActive)) ? savedActive : (cats[0] ? cats[0].id : null);
-  renderCats();
   setMode("single");
-  setCharacter(character);
   showPlaceholder();
-  requestAnimationFrame(() => { updateSegInd(); updateCharInd(); });
-  addEventListener("load", () => { updateSegInd(); updateCharInd(); });
-  if (document.fonts) document.fonts.ready.then(() => { updateSegInd(); updateCharInd(); });
+  requestAnimationFrame(() => { updateSegInd(); });
+  addEventListener("load", () => { updateSegInd(); });
+  if (document.fonts) document.fonts.ready.then(() => { updateSegInd(); });
 })();
 </script>
 </body>

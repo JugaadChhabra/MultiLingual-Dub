@@ -296,7 +296,7 @@ async def run_video_job(
             api_key=heygen_key,
             talking_photo_id=talking_photo_id,
             audio_asset_id=audio_asset.asset_id,
-            motion_prompt=spec.motion_prompt or spec.video_prompt,
+            motion_prompt=spec.motion_prompt,
             width=out_w,
             height=out_h,
             video_title=spec.video_title,
@@ -325,24 +325,26 @@ async def run_video_job(
         await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
         await asyncio.to_thread(download_video, video_url, str(video_path))
 
-        # 6. Upload to NAS
-        await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
-        nas_config = get_nas_config(runtime_config=runtime_config)
-        # US-character content lands in its own NAS folder, when configured;
-        # everything else uses the default NAS_ROOT_PATH.
-        if (spec.character or "").lower() == "us":
-            us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
-            if us_root:
-                nas_config = replace(nas_config, root_path=us_root)
-                logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
-        nas = NasService(nas_config)
-        from datetime import date as _date
-        publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
-        async with _nas_upload_lock:
-            nas_path = await asyncio.to_thread(
-                nas.upload_video, publish_date, spec.video_title, str(video_path)
-            )
-        await jobs_store.patch_summary(job_id, nas_path=nas_path)
+        # 6. Upload to NAS — skipped for hosted/remote (studio) jobs, which
+        # deliver via browser download instead of a shared NAS folder.
+        if not spec.skip_nas:
+            await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
+            nas_config = get_nas_config(runtime_config=runtime_config)
+            # US-character content lands in its own NAS folder, when configured;
+            # everything else uses the default NAS_ROOT_PATH.
+            if (spec.character or "").lower() == "us":
+                us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
+                if us_root:
+                    nas_config = replace(nas_config, root_path=us_root)
+                    logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
+            nas = NasService(nas_config)
+            from datetime import date as _date
+            publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
+            async with _nas_upload_lock:
+                nas_path = await asyncio.to_thread(
+                    nas.upload_video, publish_date, spec.video_title, str(video_path)
+                )
+            await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
         await jobs_store.complete(job_id)
     except Exception as exc:

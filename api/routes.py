@@ -39,6 +39,7 @@ from services.tts import text_to_speech
 from services.translation import translate_with_fallback
 from services.s3 import validate_s3_env
 from services.runtime_config import (
+    get_config_value,
     get_effective_required_status,
     get_missing_required_keys,
     parse_env_text,
@@ -126,6 +127,14 @@ def studio_page() -> FileResponse:
     return FileResponse(page)
 
 
+@app.get("/studio/config")
+async def studio_config(request: Request):
+    """Front-end config for the studio page — the default ElevenLabs voice id
+    (set via STUDIO_VOICE_ID in the deployment env)."""
+    runtime_config = await _runtime_config_for_request(request)
+    return {"default_voice_id": get_config_value("STUDIO_VOICE_ID", runtime_config=runtime_config)}
+
+
 @app.get("/video/heygen/talking-photos")
 async def list_heygen_talking_photos(request: Request):
     runtime_config = await _runtime_config_for_request(request)
@@ -146,7 +155,6 @@ async def create_heygen_video_job(
     script: str = Form(...),
     character: str = Form(default="indian"),
     voice_id: str | None = Form(default=None),
-    video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
     width: int | None = Form(default=None),
     height: int | None = Form(default=None),
@@ -157,6 +165,7 @@ async def create_heygen_video_job(
     use_speaker_boost: bool = Form(default=True),
     model_id: str = Form(default="eleven_v3"),
     speed: float = Form(default=1.0),
+    skip_nas: bool = Form(default=False),
 ):
     runtime_config = await _runtime_config_for_request(request)
 
@@ -178,7 +187,6 @@ async def create_heygen_video_job(
         script=script,
         character=character or "indian",
         voice_id=voice_id or None,
-        video_prompt=video_prompt or None,
         motion_prompt=motion_prompt or None,
         width=width,
         height=height,
@@ -189,6 +197,7 @@ async def create_heygen_video_job(
         use_speaker_boost=use_speaker_boost,
         model_id=model_id,
         speed=speed,
+        skip_nas=skip_nas,
         talking_photo_id=talking_photo_id or None,
     )
 
@@ -218,7 +227,6 @@ async def create_heygen_from_audio_job(
     talking_photo_id: str | None = Form(default=None),
     character: str = Form(default="indian"),
     voice_id: str | None = Form(default=None),
-    video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
     width: int | None = Form(default=None),
     height: int | None = Form(default=None),
@@ -246,13 +254,13 @@ async def create_heygen_from_audio_job(
         script="",
         character=character or "indian",
         voice_id=voice_id or None,
-        video_prompt=video_prompt or None,
         motion_prompt=motion_prompt or None,
         width=width,
         height=height,
         video_title=video_title,
         talking_photo_id=talking_photo_id or None,
         audio_id=audio_id,
+        skip_nas=True,
     )
 
     job_id = uuid.uuid4().hex
@@ -291,7 +299,6 @@ async def create_heygen_batch_job(
     image: UploadFile = File(...),
     excel: UploadFile = File(...),
     character: str = Form(default="indian"),
-    video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
     publish_date: str | None = Form(default=None),
 ):
@@ -334,7 +341,6 @@ async def create_heygen_batch_job(
             image_bytes=image_bytes,
             image_filename=image.filename,
             character=character or "indian",
-            video_prompt=video_prompt or None,
             motion_prompt=motion_prompt or None,
             publish_date=publish_date or None,
             output_dir=VIDEO_OUTPUT_DIR,
