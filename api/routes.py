@@ -12,6 +12,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, Response, Uploa
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from api import auth
 from api.logging import get_important_logs as _get_important_logs, install_log_handler
 from api.models import (
     ElevenLabsTTSRequest,
@@ -27,6 +28,7 @@ from batch.service import run_excel_batch_job
 from services.elevenlabs import ElevenLabsTTSConfig, get_elevenlabs_api_key, synthesize_speech_bytes
 from batch.store import JobsStore
 from services.video_pipeline import VideoJobSpec, VideoJobsStore, run_video_job
+from services.video_pipeline.pipeline import resolve_audio_path
 from services.nas import NasService, get_nas_config
 from services.video_pipeline.batch_excel import BatchExcelError, read_heygen_batch_rows
 from services.video_pipeline.batch_runner import run_video_batch_job
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+auth.register_auth(app)
 
 UPLOAD_DIR = Path("./uploads")
 OUTPUT_DIR = Path("./output")
@@ -115,6 +118,14 @@ def heygen_page() -> FileResponse:
     return FileResponse(page)
 
 
+@app.get("/studio")
+def studio_page() -> FileResponse:
+    page = Path("./static/studio.html")
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="studio.html not found")
+    return FileResponse(page)
+
+
 @app.get("/video/heygen/talking-photos")
 async def list_heygen_talking_photos(request: Request):
     runtime_config = await _runtime_config_for_request(request)
@@ -144,6 +155,8 @@ async def create_heygen_video_job(
     similarity_boost: float = Form(default=0.75),
     style: float = Form(default=0.0),
     use_speaker_boost: bool = Form(default=True),
+    model_id: str = Form(default="eleven_v3"),
+    speed: float = Form(default=1.0),
 ):
     runtime_config = await _runtime_config_for_request(request)
 
@@ -174,6 +187,8 @@ async def create_heygen_video_job(
         similarity_boost=similarity_boost,
         style=style,
         use_speaker_boost=use_speaker_boost,
+        model_id=model_id,
+        speed=speed,
         talking_photo_id=talking_photo_id or None,
     )
 
@@ -187,6 +202,69 @@ async def create_heygen_video_job(
             image_bytes=image_bytes,
             image_filename=image_filename,
             output_dir=VIDEO_OUTPUT_DIR,
+            jobs_store=video_jobs_store,
+            runtime_config=runtime_config,
+        )
+    )
+
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.post("/video/heygen/from-audio", status_code=202)
+async def create_heygen_from_audio_job(
+    request: Request,
+    audio_id: str = Form(...),
+    image: UploadFile | None = File(default=None),
+    talking_photo_id: str | None = Form(default=None),
+    character: str = Form(default="indian"),
+    voice_id: str | None = Form(default=None),
+    video_prompt: str | None = Form(default=None),
+    motion_prompt: str | None = Form(default=None),
+    width: int | None = Form(default=None),
+    height: int | None = Form(default=None),
+    video_title: str = Form(default="HeyGen Avatar IV Job"),
+):
+    runtime_config = await _runtime_config_for_request(request)
+
+    try:
+        resolve_audio_path(audio_id, OUTPUT_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not (talking_photo_id or (image and image.filename)):
+        raise HTTPException(status_code=400, detail="provide either an image file or a talking_photo_id")
+
+    image_bytes = b""
+    image_filename = "image.jpg"
+    if image and image.filename:
+        image_bytes = await image.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="image upload was empty")
+        image_filename = image.filename
+
+    spec = VideoJobSpec(
+        script="",
+        character=character or "indian",
+        voice_id=voice_id or None,
+        video_prompt=video_prompt or None,
+        motion_prompt=motion_prompt or None,
+        width=width,
+        height=height,
+        video_title=video_title,
+        talking_photo_id=talking_photo_id or None,
+        audio_id=audio_id,
+    )
+
+    job_id = uuid.uuid4().hex
+    await video_jobs_store.create(job_id)
+
+    asyncio.create_task(
+        run_video_job(
+            job_id=job_id,
+            spec=spec,
+            image_bytes=image_bytes,
+            image_filename=image_filename,
+            output_dir=OUTPUT_DIR,
             jobs_store=video_jobs_store,
             runtime_config=runtime_config,
         )
@@ -516,6 +594,7 @@ async def tts_elevenlabs(payload: ElevenLabsTTSRequest, request: Request):
                 similarity_boost=payload.similarity_boost,
                 style=payload.style,
                 use_speaker_boost=payload.use_speaker_boost,
+                speed=payload.speed,
             ),
         )
     except ValueError as exc:
@@ -537,4 +616,5 @@ async def tts_elevenlabs(payload: ElevenLabsTTSRequest, request: Request):
     return {
         "tts_url": tts_url,
         "output_file": str(out_path),
+        "audio_id": out_path.stem,
     }

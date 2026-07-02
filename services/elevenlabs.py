@@ -9,10 +9,12 @@ from services.runtime_config import RuntimeConfig, get_config_value
 
 
 DEFAULT_MODEL_ID = "eleven_v3"
+AUDIO_ONLY_MODEL_ID = "eleven_multilingual_v2"
 DEFAULT_STABILITY = 0.5
 DEFAULT_SIMILARITY_BOOST = 0.75
 DEFAULT_STYLE = 0.0
 DEFAULT_USE_SPEAKER_BOOST = True
+DEFAULT_SPEED = 1.0
 
 
 def is_english_language(language_code: str) -> bool:
@@ -43,6 +45,7 @@ class ElevenLabsTTSConfig:
     similarity_boost: float
     style: float
     use_speaker_boost: bool
+    speed: float = DEFAULT_SPEED
 
 
 def get_elevenlabs_api_key(runtime_config: RuntimeConfig | None = None) -> str:
@@ -82,6 +85,7 @@ def _synthesize_once(text: str, *, api_key: str, config: ElevenLabsTTSConfig) ->
             similarity_boost=config.similarity_boost,
             style=config.style,
             use_speaker_boost=config.use_speaker_boost,
+            speed=config.speed,
         ),
     )
 

@@ -115,7 +115,8 @@ def _clamp_heygen_dims(width: int, height: int) -> tuple[int, int]:
 
 
 def _tts_cache_key(*, script: str, voice_id: str, model_id: str, stability: float,
-                   similarity_boost: float, style: float, use_speaker_boost: bool) -> str:
+                   similarity_boost: float, style: float, use_speaker_boost: bool,
+                   speed: float) -> str:
     payload = json.dumps(
         {
             "script": script,
@@ -125,11 +126,26 @@ def _tts_cache_key(*, script: str, voice_id: str, model_id: str, stability: floa
             "similarity_boost": similarity_boost,
             "style": style,
             "use_speaker_boost": use_speaker_boost,
+            "speed": speed,
         },
         sort_keys=True,
         ensure_ascii=False,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def resolve_audio_path(audio_id: str, output_dir: Path) -> Path:
+    """Resolve a `<audio_id>.mp3` file inside output_dir, rejecting traversal.
+
+    audio_id is the file stem returned by POST /tts-elevenlabs. Raises
+    ValueError if the resolved path escapes output_dir or does not exist."""
+    root = output_dir.resolve()
+    candidate = (root / f"{audio_id}.mp3").resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError(f"audio_id escapes output dir: {audio_id!r}")
+    if not candidate.exists():
+        raise ValueError(f"audio not found for audio_id: {audio_id!r}")
+    return candidate
 
 
 def _guess_image_content_type(filename: str) -> str:
@@ -154,16 +170,21 @@ async def run_video_job(
 ) -> None:
     try:
         heygen_key = get_heygen_api_key(runtime_config=runtime_config)
-        eleven_key = get_elevenlabs_api_key(runtime_config=runtime_config)
 
-        voice_id = spec.voice_id or get_voice_id_for_character(
-            spec.character, runtime_config=runtime_config
-        )
-        if not voice_id:
-            raise ValueError(
-                f"Missing voice_id for character '{spec.character}' "
-                "(provide one or set the character's voice env var)"
+        # A pre-approved audio clip (audio-first flow) skips TTS entirely, so it
+        # needs neither an ElevenLabs key nor a resolved voice_id.
+        eleven_key = ""
+        voice_id = spec.voice_id or ""
+        if not spec.audio_id:
+            eleven_key = get_elevenlabs_api_key(runtime_config=runtime_config)
+            voice_id = spec.voice_id or get_voice_id_for_character(
+                spec.character, runtime_config=runtime_config
             )
+            if not voice_id:
+                raise ValueError(
+                    f"Missing voice_id for character '{spec.character}' "
+                    "(provide one or set the character's voice env var)"
+                )
 
         # 1. ElevenLabs TTS — content-hash cached so retries / repeat scripts
         # never re-bill ElevenLabs credits.
@@ -171,41 +192,50 @@ async def run_video_job(
         job_dir.mkdir(parents=True, exist_ok=True)
         audio_path = job_dir / "audio.mp3"
 
-        cache_dir = output_dir / "_audio_cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_key = _tts_cache_key(
-            script=spec.script,
-            voice_id=voice_id,
-            model_id=spec.model_id,
-            stability=spec.stability,
-            similarity_boost=spec.similarity_boost,
-            style=spec.style,
-            use_speaker_boost=spec.use_speaker_boost,
-        )
-        cache_path = cache_dir / f"{cache_key}.mp3"
-
         audio_bytes: bytes
-        if cache_path.exists() and cache_path.stat().st_size > 0:
-            await jobs_store.set_status(job_id, "tts", f"Reusing cached audio ({cache_key[:12]})")
-            audio_bytes = cache_path.read_bytes()
-            logger.info("TTS cache hit for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
+        if spec.audio_id:
+            # Pre-approved clip from the audio-first flow: render it verbatim,
+            # never re-run TTS (what the user heard is what gets rendered).
+            await jobs_store.set_status(job_id, "tts", "Using pre-generated audio")
+            src = resolve_audio_path(spec.audio_id, output_dir)
+            audio_bytes = src.read_bytes()
         else:
-            await jobs_store.set_status(job_id, "tts", "Generating audio with ElevenLabs")
-            audio_bytes = await asyncio.to_thread(
-                synthesize_speech_bytes,
-                spec.script,
-                api_key=eleven_key,
-                config=ElevenLabsTTSConfig(
-                    voice_id=voice_id,
-                    model_id=spec.model_id,
-                    stability=spec.stability,
-                    similarity_boost=spec.similarity_boost,
-                    style=spec.style,
-                    use_speaker_boost=spec.use_speaker_boost,
-                ),
+            cache_dir = output_dir / "_audio_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_key = _tts_cache_key(
+                script=spec.script,
+                voice_id=voice_id,
+                model_id=spec.model_id,
+                stability=spec.stability,
+                similarity_boost=spec.similarity_boost,
+                style=spec.style,
+                use_speaker_boost=spec.use_speaker_boost,
+                speed=spec.speed,
             )
-            cache_path.write_bytes(audio_bytes)
-            logger.info("TTS cache write for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
+            cache_path = cache_dir / f"{cache_key}.mp3"
+
+            if cache_path.exists() and cache_path.stat().st_size > 0:
+                await jobs_store.set_status(job_id, "tts", f"Reusing cached audio ({cache_key[:12]})")
+                audio_bytes = cache_path.read_bytes()
+                logger.info("TTS cache hit for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
+            else:
+                await jobs_store.set_status(job_id, "tts", "Generating audio with ElevenLabs")
+                audio_bytes = await asyncio.to_thread(
+                    synthesize_speech_bytes,
+                    spec.script,
+                    api_key=eleven_key,
+                    config=ElevenLabsTTSConfig(
+                        voice_id=voice_id,
+                        model_id=spec.model_id,
+                        stability=spec.stability,
+                        similarity_boost=spec.similarity_boost,
+                        style=spec.style,
+                        use_speaker_boost=spec.use_speaker_boost,
+                        speed=spec.speed,
+                    ),
+                )
+                cache_path.write_bytes(audio_bytes)
+                logger.info("TTS cache write for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
 
         audio_path.write_bytes(audio_bytes)
         await jobs_store.patch_summary(

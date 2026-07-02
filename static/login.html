@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoDub · Sign in</title>
+<link rel="stylesheet" href="/static/style.css?v=8" />
+<style>
+  .login{ min-height:100vh; display:grid; place-items:center; }
+  .card{ width:min(340px,92vw); border:1px solid var(--line); border-radius:14px; background:rgba(12,12,16,.85); padding:28px 26px; }
+  .card h1{ font-family:var(--sans); font-size:18px; margin:0 0 4px; }
+  .card p{ font-family:var(--mono); font-size:11px; color:var(--faint); margin:0 0 20px; }
+  .card input{ width:100%; font-family:var(--mono); font-size:13px; color:var(--ink); background:rgba(13,13,17,.85); border:1px solid var(--line); border-radius:9px; padding:11px 14px; outline:none; }
+  .card input:focus{ border-color:var(--accent); }
+  .card button{ width:100%; margin-top:14px; font-family:var(--sans); font-weight:600; font-size:13px; color:#16130d; background:linear-gradient(#f4f1ea,#e3dfd4); border:none; border-radius:9px; padding:11px; cursor:pointer; }
+  .err{ color:var(--err); font-family:var(--mono); font-size:11px; margin-top:12px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="login">
+  <form class="card" method="post" action="/auth/login">
+    <h1>AutoDub Studio</h1>
+    <p>enter access password</p>
+    <input type="password" name="password" placeholder="password" autofocus />
+    <button type="submit">Sign in</button>
+    <div class="err" id="err" hidden>Wrong password.</div>
+  </form>
+</div>
+<script>
+  if (new URLSearchParams(location.search).get("e")) document.getElementById("err").hidden = false;
+</script>
+</body>
+</html>

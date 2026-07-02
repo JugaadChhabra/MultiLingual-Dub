@@ -13,10 +13,12 @@ class VideoJobSpec(BaseModel):
     similarity_boost: float = 0.75
     style: float = 0.0
     use_speaker_boost: bool = True
+    speed: float = 1.0
 
     video_prompt: str | None = None
     motion_prompt: str | None = None
     talking_photo_id: str | None = None
+    audio_id: str | None = None
     width: int | None = None
     height: int | None = None
     video_title: str = "HeyGen Avatar IV Job"
