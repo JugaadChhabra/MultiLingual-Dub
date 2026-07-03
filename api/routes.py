@@ -105,10 +105,11 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
 
 @app.get("/")
 def index() -> FileResponse:
-    index_path = Path("./index.html")
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="index.html not found")
-    return FileResponse(index_path)
+    # On this branch the studio page is the product — serve it at root.
+    page = Path("./static/studio.html")
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="studio.html not found")
+    return FileResponse(page)
 
 
 @app.get("/heygen")
