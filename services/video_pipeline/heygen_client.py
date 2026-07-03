@@ -264,6 +264,41 @@ def upload_talking_photo(*, api_key: str, content: bytes, content_type: str) -> 
     return str(tp_id)
 
 
+def _find_render_by_callback_id(
+    *, api_key: str, callback_id: str, poll_tries: int = 4, scan: int = 12
+) -> str | None:
+    """Return the video_id of a recently-created render tagged with ``callback_id``,
+    or None if none exists.
+
+    /video/generate is not idempotent, so when its POST fails with a transport
+    error we cannot tell from the exception whether HeyGen created the render or
+    not. Because every render is tagged with callback_id=job_id, we can look it
+    up: if it exists, adopt it instead of resubmitting (which would duplicate the
+    render). A just-submitted render takes a moment to register, so we poll the
+    most-recent list a few times with backoff. Only walked on the rare error path.
+    """
+    headers = {"X-Api-Key": api_key}
+    for i in range(poll_tries):
+        try:
+            resp = _send(
+                "GET", f"{HEYGEN_API_BASE}/v1/video.list", timeout=DEFAULT_TIMEOUT,
+                what="video.list (callback lookup)", headers=headers, params={"limit": scan},
+            )
+            resp.raise_for_status()
+            vids = (resp.json().get("data") or {}).get("videos") or []
+            for v in vids:
+                vid = v.get("video_id") or v.get("id")
+                if not vid:
+                    continue
+                detail = get_video_status(api_key=api_key, video_id=str(vid))
+                if detail.get("callback_id") == callback_id:
+                    return str(vid)
+        except Exception as exc:  # best-effort lookup; keep polling
+            logger.warning("callback_id lookup attempt %d/%d failed: %s", i + 1, poll_tries, exc)
+        time.sleep(min(2 ** i, 8))
+    return None
+
+
 def create_avatar_iv_video(
     *,
     api_key: str,
@@ -302,21 +337,55 @@ def create_avatar_iv_video(
         body["callback_id"] = callback_id
 
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-    # Retrying /video/generate is safe here: a RemoteProtocolError means the
-    # server disconnected *without sending a response*, so the render was almost
-    # certainly never accepted — no duplicate credit burn.
-    resp = _send(
-        "POST", f"{HEYGEN_API_BASE}/v2/video/generate", timeout=DEFAULT_TIMEOUT,
-        what="video generate", headers=headers, json=body,
-    )
-    if resp.status_code >= 400:
-        logger.error("HeyGen video generate failed: %s %s", resp.status_code, resp.text)
-    resp.raise_for_status()
-    data = resp.json().get("data") or resp.json()
-    video_id = data.get("video_id") or data.get("id")
-    if not video_id:
-        raise RuntimeError(f"HeyGen response missing video_id: {resp.text}")
-    return str(video_id)
+    url = f"{HEYGEN_API_BASE}/v2/video/generate"
+
+    def _parse(resp: httpx.Response) -> str:
+        if resp.status_code >= 400:
+            logger.error("HeyGen video generate failed: %s %s", resp.status_code, resp.text)
+        resp.raise_for_status()
+        data = resp.json().get("data") or resp.json()
+        vid = data.get("video_id") or data.get("id")
+        if not vid:
+            raise RuntimeError(f"HeyGen response missing video_id: {resp.text}")
+        return str(vid)
+
+    # /video/generate is NOT idempotent: blindly retrying after a lost response
+    # (ReadTimeout / RemoteProtocolError once the request has reached HeyGen) would
+    # create a DUPLICATE render — an extra video on the HeyGen dashboard and a
+    # wasted credit — even though only the last video_id is returned, so only one
+    # reaches the NAS. That is exactly the "12 rows in, 15 renders out" bug. So we
+    # submit at most once per pass (retries=1) and, on a transport error, look the
+    # render up by callback_id before resubmitting: HeyGen may have created it
+    # despite dropping the response, in which case we adopt it rather than dupe it.
+    max_passes = 3 if callback_id else 1
+    last_exc: Exception | None = None
+    for attempt in range(1, max_passes + 1):
+        try:
+            resp = _send(
+                "POST", url, timeout=DEFAULT_TIMEOUT, what="video generate",
+                retries=1, headers=headers, json=body,
+            )
+            return _parse(resp)
+        except httpx.TransportError as exc:
+            last_exc = exc
+            if not callback_id:
+                raise  # can't correlate the render; fail rather than risk a duplicate
+            logger.warning(
+                "video generate transport error (pass %d/%d): %s — checking for an "
+                "orphaned render via callback_id before resubmitting",
+                attempt, max_passes, exc,
+            )
+            existing = _find_render_by_callback_id(api_key=api_key, callback_id=callback_id)
+            if existing:
+                logger.info(
+                    "Adopted existing render %s for callback_id %s (avoided duplicate)",
+                    existing, callback_id,
+                )
+                return existing
+            # No render was created (e.g. the connection never reached HeyGen) —
+            # safe to resubmit on the next pass.
+    assert last_exc is not None
+    raise last_exc
 
 
 def get_video_status(*, api_key: str, video_id: str) -> dict:
