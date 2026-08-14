@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
+from pathlib import Path
 
 from batch.models import JobState, JobSummary
+from services.state_mirror import JsonStateMirror
 
 logger = logging.getLogger(__name__)
 
@@ -17,15 +19,50 @@ def _finalize_summary(summary: JobSummary) -> None:
 
 
 class JobsStore:
-    def __init__(self) -> None:
+    """Audio batch jobs, optionally mirrored to disk.
+
+    The mirror is a RECORD, not a resume: an audio batch's work — translations,
+    speech, and audio not yet uploaded — lives in memory and dies with the
+    process. What survives is the account of how far it got, plus any local
+    archive links for activities that finished, whose zips are already on disk.
+    Without it an interrupted batch simply 404s and the user learns nothing.
+    """
+
+    IN_FLIGHT_STATUSES = ("queued", "running")
+
+    def __init__(self, persist_dir: Path | str | None = None) -> None:
         self._jobs: dict[str, JobState] = {}
         self._cancel_flags: set[str] = set()
         self._lock = asyncio.Lock()
+        self._mirror: JsonStateMirror[JobState] | None = None
+        if persist_dir is not None:
+            self._mirror = JsonStateMirror(persist_dir, JobState, lambda s: s.job_id)
+            self._load()
+
+    def _write(self, state: JobState) -> None:
+        if self._mirror is not None:
+            self._mirror.write(state)
+
+    def _load(self) -> None:
+        """Reload persisted jobs, settling any the restart interrupted."""
+        assert self._mirror is not None
+        self._jobs = self._mirror.load()
+        for state in self._jobs.values():
+            if state.status in self.IN_FLIGHT_STATUSES:
+                state.status = "failed"
+                state.error = "Interrupted by a restart"
+                _finalize_summary(state.summary)
+                self._write(state)
+                logger.warning(
+                    "Job %s was in flight at shutdown → marked failed (%d/%d rows done)",
+                    state.job_id, state.summary.rows_processed, state.summary.total_rows,
+                )
 
     async def create(self, job_id: str) -> JobState:
         async with self._lock:
             state = JobState(job_id=job_id, status="queued", summary=JobSummary())
             self._jobs[job_id] = state
+            self._write(state)
             return state
 
     async def get(self, job_id: str) -> JobState | None:
@@ -41,6 +78,7 @@ class JobsStore:
             state.status = "running"
             started_at = datetime.now(timezone.utc)
             state.summary.started_at = started_at
+            self._write(state)
             logger.info("Job %s → running", job_id)
             return started_at
 
@@ -48,6 +86,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.summary = summary
+            self._write(state)
 
     async def complete(self, job_id: str, summary: JobSummary) -> None:
         async with self._lock:
@@ -55,6 +94,7 @@ class JobsStore:
             state.status = "completed"
             _finalize_summary(summary)
             state.summary = summary
+            self._write(state)
             logger.info(
                 "Job %s → completed | rows=%d/%d tasks=%d/%d duration_ms=%s",
                 job_id,
@@ -74,6 +114,7 @@ class JobsStore:
                 summary = state.summary
             _finalize_summary(summary)
             state.summary = summary
+            self._write(state)
             logger.error("Job %s → failed | %s", job_id, message)
 
     async def request_cancel(self, job_id: str) -> bool:
@@ -99,4 +140,5 @@ class JobsStore:
                 summary = state.summary
             _finalize_summary(summary)
             state.summary = summary
+            self._write(state)
             logger.info("Job %s → cancelled", job_id)

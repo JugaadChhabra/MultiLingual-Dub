@@ -3,7 +3,6 @@ from __future__ import annotations
 from deep_translator import GoogleTranslator
 
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig
 
 FREE_TRANSLATE_LANGUAGES = {"fr", "de", "es", "ru", "pt"}
 
@@ -23,11 +22,8 @@ def translate_text_free(
     text: str,
     target_language_code: str,
     *,
-    runtime_config: RuntimeConfig | None = None,
     source_language_code: str = "auto",
 ) -> str:
-    # Keep signature aligned with other translation providers.
-    _ = runtime_config
 
     normalized_target = normalize_language_code(target_language_code)
     normalized_source = normalize_language_code(source_language_code)

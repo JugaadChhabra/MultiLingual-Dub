@@ -14,7 +14,7 @@ def test_should_use_free_translate_for_supported_language_codes() -> None:
 
 def test_translate_text_free_raises_for_unsupported_language() -> None:
     with pytest.raises(ValueError, match="Unsupported in-process free translation"):
-        free_translate.translate_text_free("hello", "hi-IN", runtime_config={})
+        free_translate.translate_text_free("hello", "hi-IN")
 
 
 def test_translate_text_free_uses_google_translator_with_normalized_target(monkeypatch) -> None:
@@ -39,7 +39,6 @@ def test_translate_text_free_uses_google_translator_with_normalized_target(monke
     translated = free_translate.translate_text_free(
         "hello",
         "fr-FR",
-        runtime_config={},
     )
 
     assert translated == "bonjour"
@@ -69,7 +68,6 @@ def test_translate_text_free_returns_input_for_same_source_target_language(monke
         "bonjour",
         "fr",
         source_language_code="fr-FR",
-        runtime_config={},
     )
 
     assert result == "bonjour"
@@ -95,5 +93,4 @@ def test_translate_text_free_raises_for_empty_translation(monkeypatch) -> None:
         free_translate.translate_text_free(
             "hello",
             "fr",
-            runtime_config={},
         )

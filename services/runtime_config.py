@@ -5,20 +5,18 @@ from io import StringIO
 
 from dotenv import dotenv_values
 
+# A parsed session .env, as pasted into the config panel. This is raw input, not
+# resolved configuration — it becomes configuration by being handed to
+# Settings.resolve() at the edge of a request. See services/settings.py.
 RuntimeConfig = dict[str, str]
 
-REQUIRED_ENV_KEYS = [
-    "SARVAM_API",
-    "GEMINI_API_KEY",
-    "AWS_ACCESS_KEY",
-    "AWS_SECRET_KEY",
-    "AWS_BUCKET",
-    "AWS_REGION",
-    "BATCH_ENABLE_QC",
-    "ELEVEN_LABS",
-    "DESI_VOCAL_VOICE",
-    "ENGLISH_VOICE",
-]
+
+class MissingSettingError(ValueError):
+    """One or more required keys were absent from both session config and env."""
+
+    def __init__(self, keys: list[str]) -> None:
+        self.keys = sorted(keys)
+        super().__init__("Missing required configuration: " + ", ".join(self.keys))
 
 
 def parse_env_text(env_text: str) -> RuntimeConfig:
@@ -33,27 +31,33 @@ def parse_env_text(env_text: str) -> RuntimeConfig:
     return result
 
 
-def get_missing_required_keys(config: RuntimeConfig) -> list[str]:
-    missing: list[str] = []
-    for key in REQUIRED_ENV_KEYS:
-        value = config.get(key, "").strip()
-        if not value:
-            missing.append(key)
-    return missing
+def read_setting(key: str, session: RuntimeConfig | None = None) -> str:
+    """Read one key: the session's value if it has a non-empty one, else the
+    process environment. Empty string when neither has it.
 
-
-def get_config_value(key: str, runtime_config: RuntimeConfig | None = None) -> str:
-    if runtime_config is not None:
-        value = runtime_config.get(key, "").strip()
+    ONLY settings resolvers may call this — the ``resolve`` classmethods in
+    nas / s3 / elevenlabs / qc / email / translation / heygen_client. Everything
+    else takes an already-resolved settings object. Calling this from anywhere
+    else reintroduces exactly what we removed: configuration read six frames
+    deep, where a missing key fails a running job instead of a request.
+    tests/test_settings.py enforces this.
+    """
+    if session is not None:
+        value = session.get(key, "").strip()
         if value:
             return value
     return os.getenv(key, "").strip()
 
 
-def get_effective_required_status(runtime_config: RuntimeConfig | None = None) -> tuple[bool, list[str]]:
-    missing: list[str] = []
-    for key in REQUIRED_ENV_KEYS:
-        value = get_config_value(key, runtime_config=runtime_config)
-        if not value:
-            missing.append(key)
-    return (len(missing) == 0, missing)
+def require(keys: tuple[str, ...], session: RuntimeConfig | None) -> dict[str, str]:
+    """Read every key, or raise listing ALL the missing ones at once.
+
+    Reporting them together matters: someone pasting a .env should be told
+    everything that's wrong in one go, not made to discover it one failed
+    request at a time.
+    """
+    values = {key: read_setting(key, session) for key in keys}
+    missing = [key for key, value in values.items() if not value]
+    if missing:
+        raise MissingSettingError(missing)
+    return values

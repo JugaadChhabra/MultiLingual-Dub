@@ -1,6 +1,5 @@
-from services.sarvam import get_sarvam_client
+from services.sarvam import SarvamSettings, get_sarvam_client
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig
 
 
 def _extract_translated_text(response) -> str:
@@ -33,7 +32,7 @@ def translate_text(
     text: str,
     target_language_code: str,
     *,
-    runtime_config: RuntimeConfig | None = None,
+    settings: SarvamSettings,
     source_language_code: str = "auto",
     speaker_gender: str = "Male",
     mode: str = "formal",
@@ -41,7 +40,7 @@ def translate_text(
     numerals_format: str = "native",
 ) -> str:
     def _call():
-        client = get_sarvam_client(runtime_config=runtime_config)
+        client = get_sarvam_client(settings)
         return client.text.translate(
             input=text,
             source_language_code=source_language_code,
@@ -58,5 +57,7 @@ def translate_text(
 
 if __name__ == "__main__":
     sample_text = "Hello! This is a sample translation."
-    translated = translate_text(sample_text, target_language_code="hi-IN")
+    translated = translate_text(
+        sample_text, target_language_code="hi-IN", settings=SarvamSettings.resolve()
+    )
     print(translated)

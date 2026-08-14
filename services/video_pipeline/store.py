@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from services.state_mirror import JsonStateMirror
 from services.video_pipeline.types import VideoJobSpec, VideoJobState, VideoJobSummary
 
 logger = logging.getLogger(__name__)
@@ -29,44 +29,45 @@ class VideoJobsStore:
     later instead of silently losing the finished render.
     """
 
+    # Statuses a job can still be sitting in when the process goes away. None of
+    # them can be true of a reloaded job: the asyncio task that owned it died
+    # with the process.
+    IN_FLIGHT_STATUSES = ("queued", "tts", "uploading", "generating", "polling", "downloading", "nas_upload")
+
     def __init__(self, persist_dir: Path | str | None = None) -> None:
         self._jobs: dict[str, VideoJobState] = {}
         self._lock = asyncio.Lock()
-        self._persist_dir = Path(persist_dir) if persist_dir else None
-        if self._persist_dir is not None:
-            self._persist_dir.mkdir(parents=True, exist_ok=True)
+        self._mirror: JsonStateMirror[VideoJobState] | None = None
+        if persist_dir is not None:
+            self._mirror = JsonStateMirror(persist_dir, VideoJobState, lambda s: s.job_id)
             self._load()
 
     # --- persistence -----------------------------------------------------
-    def _path(self, job_id: str) -> Path:
-        assert self._persist_dir is not None
-        return self._persist_dir / f"{job_id}.json"
-
     def _write(self, state: VideoJobState) -> None:
-        """Atomically mirror one job's state to disk. Best-effort: a persistence
-        failure is logged, never allowed to break the running job."""
-        if self._persist_dir is None:
-            return
-        try:
-            path = self._path(state.job_id)
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(state.model_dump_json())
-            os.replace(tmp, path)
-        except OSError as exc:
-            logger.warning("VideoJob %s: failed to persist state: %s", state.job_id, exc)
+        if self._mirror is not None:
+            self._mirror.write(state)
 
     def _load(self) -> None:
-        assert self._persist_dir is not None
-        count = 0
-        for f in self._persist_dir.glob("*.json"):
-            try:
-                state = VideoJobState.model_validate_json(f.read_text())
-                self._jobs[state.job_id] = state
-                count += 1
-            except Exception as exc:
-                logger.warning("Skipping unreadable persisted job %s: %s", f.name, exc)
-        if count:
-            logger.info("Loaded %d persisted video jobs from %s", count, self._persist_dir)
+        """Reload persisted jobs, settling any that the restart interrupted.
+
+        A job persisted as 'polling' is not polling any more — nothing is. Left
+        as-is it would claim to be in progress forever AND stay invisible to
+        list_recoverable, which only considers failed jobs. So its finished
+        HeyGen render, already paid for, would be stranded. Marking it failed is
+        what makes it recoverable.
+        """
+        assert self._mirror is not None
+        self._jobs = self._mirror.load()
+        for state in self._jobs.values():
+            if state.status in self.IN_FLIGHT_STATUSES:
+                state.status = "failed"
+                state.error = f"Interrupted by a restart while {state.stage_message or state.status}"
+                _finalize(state.summary)
+                self._write(state)
+                logger.warning(
+                    "VideoJob %s was in flight at shutdown → marked failed (recoverable=%s)",
+                    state.job_id, bool(state.summary.heygen_video_id),
+                )
 
     # --- mutations -------------------------------------------------------
     async def create(self, job_id: str) -> VideoJobState:

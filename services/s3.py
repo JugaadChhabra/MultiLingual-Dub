@@ -8,11 +8,20 @@ from pathlib import Path
 import boto3
 from botocore.client import BaseClient
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, get_config_value
+from services.runtime_config import (
+    MissingSettingError,
+    RuntimeConfig,
+    read_setting,
+    require,
+)
 
 
-class S3ConfigError(ValueError):
-    pass
+class S3ConfigError(MissingSettingError):
+    """Kept as its own type because callers catch it specifically to report a
+    cloud-upload problem rather than a generic config one."""
+
+    def __init__(self, keys: list[str]) -> None:
+        super().__init__(keys)
 
 
 @dataclass(frozen=True)
@@ -23,40 +32,29 @@ class S3Config:
     bucket: str
     region: str
 
+    REQUIRED = ("AWS_ACCESS_KEY", "AWS_SECRET_KEY", "AWS_BUCKET", "AWS_REGION")
 
-def _read_s3_keys(runtime_config: RuntimeConfig | None = None) -> tuple[dict[str, str], list[str]]:
-    required = {
-        "AWS_ACCESS_KEY": get_config_value("AWS_ACCESS_KEY", runtime_config=runtime_config),
-        "AWS_SECRET_KEY": get_config_value("AWS_SECRET_KEY", runtime_config=runtime_config),
-        "AWS_BUCKET": get_config_value("AWS_BUCKET", runtime_config=runtime_config),
-        "AWS_REGION": get_config_value("AWS_REGION", runtime_config=runtime_config),
-    }
-    missing = [key for key, value in required.items() if not value]
-    return required, missing
-
-
-def _build_s3_config(required: dict[str, str], runtime_config: RuntimeConfig | None = None) -> S3Config:
-    return S3Config(
-        access_key=required["AWS_ACCESS_KEY"],
-        secret_key=required["AWS_SECRET_KEY"],
-        bucket=required["AWS_BUCKET"],
-        region=required["AWS_REGION"],
-        endpoint=get_config_value("AWS_ENDPOINT_URL", runtime_config=runtime_config) or None,
-    )
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> S3Config:
+        try:
+            values = require(cls.REQUIRED, session)
+        except MissingSettingError as exc:
+            raise S3ConfigError(exc.keys) from exc
+        return cls(
+            access_key=values["AWS_ACCESS_KEY"],
+            secret_key=values["AWS_SECRET_KEY"],
+            bucket=values["AWS_BUCKET"],
+            region=values["AWS_REGION"],
+            endpoint=read_setting("AWS_ENDPOINT_URL", session) or None,
+        )
 
 
 def validate_s3_env() -> tuple[S3Config | None, str | None]:
-    required, missing = _read_s3_keys()
-    if missing:
-        return None, f"Missing AWS environment variables: {', '.join(sorted(missing))}"
-    return _build_s3_config(required), None
-
-
-def get_s3_config(runtime_config: RuntimeConfig | None = None) -> S3Config:
-    required, missing = _read_s3_keys(runtime_config)
-    if missing:
-        raise S3ConfigError(f"Missing AWS environment variables: {', '.join(sorted(missing))}")
-    return _build_s3_config(required, runtime_config)
+    """Startup probe: report whether the process env alone can reach S3."""
+    try:
+        return S3Config.resolve(), None
+    except S3ConfigError as exc:
+        return None, str(exc)
 
 
 class S3Client:

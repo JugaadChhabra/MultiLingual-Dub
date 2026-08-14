@@ -5,6 +5,33 @@ from batch.models import ExcelRow, JobSummary
 from batch.naming import _build_s3_key
 from batch.service import run_excel_batch_job
 from batch.store import JobsStore
+from services.elevenlabs import ElevenLabsSettings
+from services.email import EmailSettings
+from services.nas import NasConfig
+from services.qc import QCSettings
+from services.s3 import S3Config
+from services.sarvam import SarvamSettings
+from services.settings import BatchSettings, Settings
+
+
+def _settings(*, upload_to_s3: bool = True, english_voice: str = "english-voice") -> Settings:
+    """Configuration as a route would have resolved it, before the job starts."""
+    return Settings(
+        s3=S3Config(
+            endpoint=None, access_key="ak", secret_key="sk", bucket="bucket", region="region"
+        ),
+        eleven=ElevenLabsSettings(
+            api_key="key", desi_voice_id="desi-voice", english_voice_id=english_voice
+        ),
+        qc=QCSettings(api_key="gemini-key", models=["model-a"], enabled=True),
+        sarvam=SarvamSettings(api_key="sarvam-key"),
+        nas=NasConfig(
+            mode="local", root_path="./nas_data", server="", share="",
+            username="", password="", domain="", port=445,
+        ),
+        email=EmailSettings(api_key="", from_address="", to_addresses=()),
+        batch=BatchSettings(upload_to_s3=upload_to_s3, max_language_parallelism=None),
+    )
 
 
 def _identity_qc_batch(
@@ -12,8 +39,7 @@ def _identity_qc_batch(
     translations: dict[str, str],
     _target_languages: list[str],
     *,
-    metadata=None,
-    runtime_config=None,
+    settings=None,
     teaching_mode=False,
 ) -> dict[str, str]:
     return dict(translations)
@@ -33,7 +59,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
         ExcelRow(row_index=3, text="row2", emotion="", activity_name="", audio_type="b"),
     ]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -44,18 +70,16 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda text, language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda text, language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-seq-test"
 
@@ -66,6 +90,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
             excel_path="unused.xlsx",
             target_languages=["hi-IN", "ta-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -76,42 +101,6 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
     assert state.summary.rows_succeeded == 2
     assert state.summary.language_tasks_total == 4
     assert state.summary.language_tasks_succeeded == 4
-
-
-def test_run_excel_batch_job_fails_when_s3_config_missing(monkeypatch) -> None:
-    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="", audio_type="a")]
-
-    async def fake_translate_async(text: str, language: str):
-        return language, f"translated:{text}:{language}", None
-
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
-    monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda text, language, runtime_config=None: b"fake-audio",
-    )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
-    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
-
-    store = JobsStore()
-    job_id = "job-missing-s3"
-
-    async def _run():
-        await store.create(job_id)
-        await run_excel_batch_job(
-            job_id=job_id,
-            excel_path="unused.xlsx",
-            target_languages=["hi-IN"],
-            jobs_store=store,
-        )
-        return await store.get(job_id)
-
-    state = asyncio.run(_run())
-    assert state is not None
-    assert state.status == "failed"
-    assert "Batch setup failed" in (state.error or "")
 
 
 def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> None:
@@ -127,10 +116,10 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
 
     captured_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
-    def fake_tts(text: str, language: str, runtime_config=None) -> bytes:
+    def fake_tts(text: str, language: str, settings=None) -> bytes:
         captured_texts.append(text)
         return b"fake-audio"
 
@@ -145,15 +134,13 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
-    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", fake_tts)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-filename-emotion"
 
@@ -164,6 +151,7 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -183,19 +171,16 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     excel_path = tmp_path / "input.xlsx"
     excel_path.write_text("placeholder", encoding="utf-8")
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda text, language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda text, language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
 
     class FakeS3Client:
         def __init__(self, _config):
@@ -206,6 +191,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-delete-excel"
 
@@ -216,6 +202,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
             excel_path=str(excel_path),
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -224,39 +211,14 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     assert state.status == "completed"
     assert not excel_path.exists()
 
-def test_run_excel_batch_job_sets_failed_when_s3_missing(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: (_ for _ in ()).throw(RuntimeError("missing config")))
-
-    store = JobsStore()
-    job_id = "job-missing-s3"
-
-    async def _run():
-        await store.create(job_id)
-        await run_excel_batch_job(
-            job_id=job_id,
-            excel_path="unused.xlsx",
-            target_languages=["hi-IN"],
-            jobs_store=store,
-        )
-        return await store.get(job_id)
-
-    state = asyncio.run(_run())
-    assert state is not None
-    assert state.status == "failed"
-    assert "Batch setup failed" in (state.error or "")
-    assert isinstance(state.summary, JobSummary)
-
-
 def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
     captured_tts_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, None, "429 rate limit"
 
-    def fake_tts(text: str, language: str, runtime_config=None) -> bytes:
+    def fake_tts(text: str, language: str, settings=None) -> bytes:
         captured_tts_texts.append(text)
         return b"fake-audio"
 
@@ -271,15 +233,13 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
-    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", fake_tts)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-translation-placeholder"
 
@@ -290,6 +250,7 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -297,7 +258,6 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
     assert state is not None
     assert state.status == "completed"
     assert state.summary.translation_fallbacks == 1
-    assert state.summary.placeholder_audio_generated == 0
     assert state.summary.language_tasks_succeeded == 0
     assert state.summary.language_tasks_failed == 1
     assert captured_tts_texts == []
@@ -308,7 +268,7 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
 def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
     def failing_tts(_text: str, _language: str, runtime_config=None) -> bytes:
@@ -325,15 +285,13 @@ def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
-    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", failing_tts)
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", failing_tts)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-tts-placeholder"
 
@@ -344,6 +302,7 @@ def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -351,7 +310,6 @@ def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
     assert state is not None
     assert state.status == "completed"
     assert state.summary.translation_fallbacks == 0
-    assert state.summary.placeholder_audio_generated == 0
     assert state.summary.language_tasks_succeeded == 0
     assert state.summary.language_tasks_failed == 1
     assert FakeS3Client.last_instance is not None
@@ -364,10 +322,10 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
     captured_tts_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
-    def fake_tts(text: str, language: str, runtime_config=None) -> bytes:
+    def fake_tts(text: str, language: str, settings=None) -> bytes:
         captured_tts_texts.append(text)
         return b"fake-audio"
 
@@ -392,15 +350,13 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
-    monkeypatch.setattr("batch.service._generate_elevenlabs_audio_bytes", fake_tts)
-    monkeypatch.setattr("batch.service.qc_translations_batch", failing_qc)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", fake_tts)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", failing_qc)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-qc-failure"
 
@@ -411,6 +367,7 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -424,63 +381,13 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
     assert FakeS3Client.last_instance.uploads == []
 
 
-def test_run_excel_batch_job_fails_when_qc_disabled(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "false")
-
-    store = JobsStore()
-    job_id = "job-qc-disabled"
-
-    async def _run():
-        await store.create(job_id)
-        await run_excel_batch_job(
-            job_id=job_id,
-            excel_path="unused.xlsx",
-            target_languages=["hi-IN"],
-            jobs_store=store,
-        )
-        return await store.get(job_id)
-
-    state = asyncio.run(_run())
-    assert state is not None
-    assert state.status == "failed"
-    assert "BATCH_ENABLE_QC must be true" in (state.error or "")
-
-
-def test_run_excel_batch_job_fails_when_qc_toggle_unreadable(monkeypatch) -> None:
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
-
-    def flaky_should_enable_qc(runtime_config=None) -> bool:
-        raise RuntimeError("temporary QC toggle failure")
-
-    monkeypatch.setattr("batch.service._should_enable_qc", flaky_should_enable_qc)
-
-    store = JobsStore()
-    job_id = "job-qc-toggle-error"
-
-    async def _run():
-        await store.create(job_id)
-        await run_excel_batch_job(
-            job_id=job_id,
-            excel_path="unused.xlsx",
-            target_languages=["hi-IN"],
-            jobs_store=store,
-        )
-        return await store.get(job_id)
-
-    state = asyncio.run(_run())
-    assert state is not None
-    assert state.status == "failed"
-    assert "Unable to read BATCH_ENABLE_QC" in (state.error or "")
-
-
 def test_run_excel_batch_job_dedupes_duplicate_filenames(monkeypatch) -> None:
     rows = [
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="promo"),
         ExcelRow(row_index=3, text="row2", emotion="", activity_name="Act", audio_type="promo"),
     ]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -494,18 +401,16 @@ def test_run_excel_batch_job_dedupes_duplicate_filenames(monkeypatch) -> None:
             self.uploads.append((language, audio_files, folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda _text, _language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-dedupe-filenames"
 
@@ -516,6 +421,7 @@ def test_run_excel_batch_job_dedupes_duplicate_filenames(monkeypatch) -> None:
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -540,7 +446,7 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
         ExcelRow(row_index=4, text="row3", emotion="", activity_name="Act 2", audio_type="b1"),
     ]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -554,18 +460,16 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
             self.uploads.append((language, dict(audio_files), folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda _text, _language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-multi-activity"
 
@@ -576,6 +480,7 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -602,7 +507,7 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
     ]
     translate_calls = {"gu-IN": 0}
 
-    async def flaky_translate_async(text: str, language: str, runtime_config=None):
+    async def flaky_translate_async(text: str, language: str, _sarvam=None):
         if language == "gu-IN":
             translate_calls["gu-IN"] += 1
             if translate_calls["gu-IN"] == 1:
@@ -620,18 +525,16 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
             self.uploads.append((language, dict(audio_files), folder_name))
             return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
 
-    monkeypatch.setattr("batch.service._translate_language_async", flaky_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", flaky_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda _text, _language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-retry-before-upload"
 
@@ -642,6 +545,7 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
             excel_path="unused.xlsx",
             target_languages=["gu-IN"],
             jobs_store=store,
+            settings=settings,
         )
         return await store.get(job_id)
 
@@ -662,47 +566,24 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
     assert set(files.keys()) == {"a1.mp3"}
 
 
-def test_run_excel_batch_job_requires_english_voice_for_english_targets(monkeypatch) -> None:
-    monkeypatch.delenv("ENGLISH_VOICE", raising=False)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
-
-    store = JobsStore()
-    job_id = "job-requires-english-voice"
-
-    async def _run():
-        await store.create(job_id)
-        await run_excel_batch_job(
-            job_id=job_id,
-            excel_path="unused.xlsx",
-            target_languages=["en-IN"],
-            jobs_store=store,
-        )
-        return await store.get(job_id)
-
-    state = asyncio.run(_run())
-    assert state is not None
-    assert state.status == "failed"
-    assert "ENGLISH_VOICE is required when generating English batch audio" in (state.error or "")
-
-
 def test_run_excel_batch_job_writes_local_archives_when_s3_disabled(monkeypatch, tmp_path) -> None:
+    """S3 upload turned off: audio still gets zipped, to disk instead."""
     rows = [
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
     ]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda _text, _language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "false")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
 
+    settings = _settings(upload_to_s3=False)
     store = JobsStore()
     job_id = "job-local-fallback-disabled"
 
@@ -713,6 +594,7 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_disabled(monkeypatch,
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
             output_dir=tmp_path,
         )
         return await store.get(job_id)
@@ -739,7 +621,7 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypa
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
     ]
 
-    async def fake_translate_async(text: str, language: str):
+    async def fake_translate_async(text: str, language: str, _sarvam=None):
         return language, f"translated:{text}:{language}", None
 
     class FailingS3Client:
@@ -749,18 +631,16 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypa
         def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
             raise RuntimeError("network down")
 
-    monkeypatch.setattr("batch.service._translate_language_async", fake_translate_async)
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
     monkeypatch.setattr(
-        "batch.service._generate_elevenlabs_audio_bytes",
-        lambda _text, _language, runtime_config=None: b"fake-audio",
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
     )
-    monkeypatch.setattr("batch.service.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
     monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
-    monkeypatch.setenv("BATCH_ENABLE_S3_UPLOAD", "true")
-    monkeypatch.setenv("BATCH_ENABLE_QC", "true")
-    monkeypatch.setattr("batch.service.get_s3_config", lambda runtime_config=None: object())
     monkeypatch.setattr("batch.service.S3Client", FailingS3Client)
 
+    settings = _settings()
     store = JobsStore()
     job_id = "job-local-fallback-failed"
 
@@ -771,6 +651,7 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypa
             excel_path="unused.xlsx",
             target_languages=["hi-IN"],
             jobs_store=store,
+            settings=settings,
             output_dir=tmp_path,
         )
         return await store.get(job_id)
@@ -789,3 +670,123 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypa
     with zipfile.ZipFile(archive.path) as zf:
         assert zf.namelist() == ["a1.mp3"]
         assert zf.read("a1.mp3") == b"fake-audio"
+
+
+def test_retry_batches_qc_per_row_not_per_task(monkeypatch) -> None:
+    """The retry pass and the main pass now run through the same voice_row, so a
+    retry gets the same single batched QC call per row.
+
+    Before they were separate implementations, retry called Gemini once per
+    failed task: four failures across two rows cost four requests.
+    """
+    rows = [
+        ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a1"),
+        ExcelRow(row_index=3, text="row2", emotion="", activity_name="Act", audio_type="a2"),
+    ]
+    attempts: dict[str, int] = {}
+    qc_batches: list[list[str]] = []
+
+    async def flaky_translate(text: str, language: str, _sarvam=None):
+        key = f"{text}:{language}"
+        attempts[key] = attempts.get(key, 0) + 1
+        if attempts[key] == 1:
+            return language, None, "429 rate limit"
+        return language, f"translated:{text}:{language}", None
+
+    def counting_qc(original, translations, languages, *, settings=None, teaching_mode=False):
+        qc_batches.append(sorted(translations))
+        return dict(translations)
+
+    class FakeS3Client:
+        def __init__(self, _config):
+            pass
+
+        def upload_language_zip(self, language, audio_files, folder_name):
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.voiceover._translate_language_async", flaky_translate)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", counting_qc)
+    monkeypatch.setattr(
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
+    )
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
+
+    settings = _settings()
+    store = JobsStore()
+    job_id = "job-retry-qc-batching"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["hi-IN", "ta-IN"],
+            jobs_store=store,
+            settings=settings,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+
+    assert state.status == "completed"
+    # Every language failed its first translation and succeeded on retry.
+    assert state.summary.language_tasks_succeeded == 4
+    assert state.summary.language_tasks_failed == 0
+    assert state.summary.rows_succeeded == 2
+    assert state.summary.rows_failed == 0
+
+    # Two rows retried, one QC call each — not one per failed task.
+    assert qc_batches == [["hi-IN", "ta-IN"], ["hi-IN", "ta-IN"]]
+
+
+def test_collisions_accumulate_across_multiple_activities(monkeypatch) -> None:
+    """Each activity gets a fresh buffer, so its collision count must be added
+    to the job total rather than replacing it."""
+    rows = [
+        ExcelRow(row_index=2, text="r1", emotion="", activity_name="Act 1", audio_type="dup"),
+        ExcelRow(row_index=3, text="r2", emotion="", activity_name="Act 1", audio_type="dup"),
+        ExcelRow(row_index=4, text="r3", emotion="", activity_name="Act 2", audio_type="dup"),
+        ExcelRow(row_index=5, text="r4", emotion="", activity_name="Act 2", audio_type="dup"),
+    ]
+
+    async def fake_translate(text: str, language: str, _sarvam=None):
+        return language, f"t:{text}", None
+
+    class FakeS3Client:
+        def __init__(self, _config):
+            pass
+
+        def upload_language_zip(self, language, audio_files, folder_name):
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr(
+        "batch.voiceover._generate_elevenlabs_audio_bytes",
+        lambda _text, _language, settings=None: b"fake-audio",
+    )
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
+
+    settings = _settings()
+    store = JobsStore()
+    job_id = "job-collisions-two-activities"
+
+    async def _run():
+        await store.create(job_id)
+        await run_excel_batch_job(
+            job_id=job_id,
+            excel_path="unused.xlsx",
+            target_languages=["hi-IN"],
+            jobs_store=store,
+            settings=settings,
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(_run())
+
+    assert state.status == "completed"
+    # One collision in each activity.
+    assert state.summary.filename_collisions_resolved == 2

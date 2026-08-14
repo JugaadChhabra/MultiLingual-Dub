@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
-from services.runtime_config import RuntimeConfig, get_config_value
+from services.runtime_config import RuntimeConfig, read_setting
 
 logger = logging.getLogger(__name__)
 
@@ -23,28 +23,48 @@ class NasConfig:
     password: str
     domain: str
     port: int
+    # Where 'us' character content goes instead of root_path, when set. Lives
+    # here rather than being read at upload time because it is a NAS location,
+    # and this is where NAS locations are resolved.
+    us_character_root_path: str = ""
 
+    # Nothing is required: with no NAS_* set at all this falls back to writing
+    # into ./nas_data locally, which is a supported (if loudly warned about)
+    # mode. So NAS contributes no keys to the required-config check.
+    REQUIRED: tuple[str, ...] = ()
 
-def get_nas_config(runtime_config: RuntimeConfig | None = None) -> NasConfig:
-    mode = get_config_value("NAS_MODE", runtime_config=runtime_config) or "local"
-    if mode not in ("local", "smb"):
-        logger.warning("Invalid NAS_MODE '%s', falling back to 'local'", mode)
-        mode = "local"
-    port_raw = get_config_value("NAS_PORT", runtime_config=runtime_config) or "445"
-    try:
-        port = int(port_raw)
-    except ValueError:
-        port = 445
-    return NasConfig(
-        mode=mode,
-        root_path=get_config_value("NAS_ROOT_PATH", runtime_config=runtime_config) or "./nas_data",
-        server=get_config_value("NAS_SERVER", runtime_config=runtime_config),
-        share=get_config_value("NAS_SHARE", runtime_config=runtime_config),
-        username=get_config_value("NAS_USERNAME", runtime_config=runtime_config),
-        password=get_config_value("NAS_PASSWORD", runtime_config=runtime_config),
-        domain=get_config_value("NAS_DOMAIN", runtime_config=runtime_config),
-        port=port,
-    )
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> NasConfig:
+        mode = read_setting("NAS_MODE", session) or "local"
+        if mode not in ("local", "smb"):
+            logger.warning("Invalid NAS_MODE '%s', falling back to 'local'", mode)
+            mode = "local"
+        port_raw = read_setting("NAS_PORT", session) or "445"
+        try:
+            port = int(port_raw)
+        except ValueError:
+            port = 445
+        return cls(
+            mode=mode,
+            root_path=read_setting("NAS_ROOT_PATH", session) or "./nas_data",
+            server=read_setting("NAS_SERVER", session),
+            share=read_setting("NAS_SHARE", session),
+            username=read_setting("NAS_USERNAME", session),
+            password=read_setting("NAS_PASSWORD", session),
+            domain=read_setting("NAS_DOMAIN", session),
+            port=port,
+            us_character_root_path=read_setting("US_CHARACTER_NAS_ROOT_PATH", session),
+        )
+
+    def for_character(self, character: str | None) -> NasConfig:
+        """The config to upload this character's content with.
+
+        'us' content lands in its own root when one is configured; everything
+        else uses the default.
+        """
+        if (character or "").lower() == "us" and self.us_character_root_path:
+            return replace(self, root_path=self.us_character_root_path)
+        return self
 
 
 def _normalise_date_folder(date_str: str) -> str:

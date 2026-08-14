@@ -2,8 +2,7 @@ import base64
 import binascii
 from pathlib import Path
 import re
-from services.sarvam import get_sarvam_client
-from services.runtime_config import RuntimeConfig
+from services.sarvam import SarvamSettings, get_sarvam_client
 
 
 def _try_base64_decode(text: str) -> bytes | None:
@@ -63,13 +62,13 @@ def text_to_speech(
     text: str,
     target_language_code: str,
     output_path: str,
-    runtime_config: RuntimeConfig | None = None,
+    settings: SarvamSettings,
     speaker: str = "shubh",
     pace: float = 1.1,
     speech_sample_rate: int = 22050,
     model: str = "bulbul:v3",
 ) -> str:
-    client = get_sarvam_client(runtime_config=runtime_config)
+    client = get_sarvam_client(settings)
     response = client.text_to_speech.convert(
         text=text,
         target_language_code=target_language_code,

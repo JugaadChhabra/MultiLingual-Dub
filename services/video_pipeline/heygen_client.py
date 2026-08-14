@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from services.runtime_config import RuntimeConfig, get_config_value
+from services.runtime_config import RuntimeConfig, read_setting, require
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,13 @@ UPLOAD_TIMEOUT = httpx.Timeout(connect=60.0, read=300.0, write=300.0, pool=30.0)
 # a fresh connection so the poisoned pooled socket is discarded.
 _HEYGEN_RETRIES = 4
 
+# Test seam. Left None in production so every attempt opens a real connection;
+# tests set an httpx.MockTransport here to drive the retry / adoption / resume
+# paths without a network. Module-level rather than a parameter because it has
+# to reach _send through a dozen call sites that have no business knowing about
+# transports.
+_transport: httpx.BaseTransport | None = None
+
 
 def _send(
     method: str,
@@ -42,7 +49,7 @@ def _send(
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            with httpx.Client(timeout=timeout) as client:
+            with httpx.Client(timeout=timeout, transport=_transport) as client:
                 return client.request(method, url, **kwargs)
         except httpx.TransportError as exc:
             last_exc = exc
@@ -58,33 +65,48 @@ def _send(
     raise last_exc
 
 
-def get_heygen_api_key(runtime_config: RuntimeConfig | None = None) -> str:
-    api_key = get_config_value("HEYGEN_ISHWARI", runtime_config=runtime_config)
-    if not api_key:
-        raise ValueError("Missing HEYGEN_ISHWARI API key")
-    return api_key
-
-
-# Maps a character handle to the env key holding its ElevenLabs voice id.
+# Maps a character handle to the key holding its ElevenLabs voice id.
 CHARACTER_VOICE_ENV = {
     "indian": "ISHWARI_VOICE_ID",
     "us": "US_VOICE_ID",
 }
 DEFAULT_CHARACTER = "indian"
 
-
-def get_default_voice_id(runtime_config: RuntimeConfig | None = None) -> str | None:
-    return get_config_value("ISHWARI_VOICE_ID", runtime_config=runtime_config) or None
+_DEFAULT_BATCH_CONCURRENCY = 4
 
 
-def get_voice_id_for_character(
-    character: str | None, runtime_config: RuntimeConfig | None = None
-) -> str | None:
-    env_key = CHARACTER_VOICE_ENV.get(
-        (character or DEFAULT_CHARACTER).lower(),
-        CHARACTER_VOICE_ENV[DEFAULT_CHARACTER],
-    )
-    return get_config_value(env_key, runtime_config=runtime_config) or None
+@dataclass(frozen=True)
+class HeyGenSettings:
+    api_key: str
+    # Voice id per character handle. Empty for a character whose voice was never
+    # configured — a job may still supply one explicitly on its spec.
+    character_voice_ids: dict[str, str]
+    batch_concurrency: int
+
+    REQUIRED = ("HEYGEN_ISHWARI",)
+
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> HeyGenSettings:
+        values = require(cls.REQUIRED, session)
+        raw = read_setting("HEYGEN_BATCH_CONCURRENCY", session)
+        try:
+            concurrency = int(raw) if raw else _DEFAULT_BATCH_CONCURRENCY
+        except (TypeError, ValueError):
+            concurrency = _DEFAULT_BATCH_CONCURRENCY
+        return cls(
+            api_key=values["HEYGEN_ISHWARI"],
+            character_voice_ids={
+                character: read_setting(key, session)
+                for character, key in CHARACTER_VOICE_ENV.items()
+            },
+            batch_concurrency=max(1, concurrency),
+        )
+
+    def voice_for_character(self, character: str | None) -> str | None:
+        handle = (character or DEFAULT_CHARACTER).lower()
+        if handle not in self.character_voice_ids:
+            handle = DEFAULT_CHARACTER
+        return self.character_voice_ids.get(handle) or None
 
 
 @dataclass(frozen=True)
@@ -468,7 +490,9 @@ def download_video(url: str, dest_path: str) -> int:
         have = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
         headers = {"Range": f"bytes={have}-"} if have else {}
         try:
-            with httpx.Client(timeout=DOWNLOAD_TIMEOUT, follow_redirects=True) as client:
+            with httpx.Client(
+                timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, transport=_transport
+            ) as client:
                 with client.stream("GET", url, headers=headers) as resp:
                     # Server ignored our Range and is resending the whole file:
                     # truncate so we don't append a duplicate prefix.

@@ -30,3 +30,6 @@ class SessionEnvConfigRequest(BaseModel):
 class SessionEnvConfigResponse(BaseModel):
     configured: bool
     missing_keys: list[str]
+    # Every key the app requires, derived from the settings classes. Sent so the
+    # UI can render an accurate count instead of maintaining its own list.
+    required_keys: list[str] = []

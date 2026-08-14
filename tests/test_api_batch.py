@@ -24,7 +24,7 @@ async def _fake_job_runner(
     target_languages,
     max_language_parallelism=None,
     jobs_store,
-    runtime_config=None,
+    settings=None,
     teaching_mode=False,
     output_dir=None,
     mode="create",
@@ -41,6 +41,31 @@ async def _fake_job_runner(
     await jobs_store.complete(job_id, summary)
 
 
+ENV_TEXT = "\n".join(
+    [
+        "ELEVEN_LABS=test-eleven",
+        "SARVAM_API=test-sarvam",
+        "GEMINI_API_KEY=test-google",
+        "HEYGEN_ISHWARI=test-heygen",
+        "AWS_ACCESS_KEY=abc",
+        "AWS_SECRET_KEY=xyz",
+        "AWS_BUCKET=test-bucket",
+        "AWS_REGION=ap-south-1",
+        "BATCH_ENABLE_S3_UPLOAD=true",
+        "BATCH_ENABLE_QC=true",
+        "DESI_VOCAL_VOICE=v2",
+        "ENGLISH_VOICE=v3",
+    ]
+)
+
+
+def _configure(client: TestClient) -> None:
+    """Configure the session through the real endpoint — route tests have no
+    injection point for settings, and this exercises the path users take."""
+    resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
+    assert resp.status_code == 200, resp.text
+
+
 def _poll_until_done(client: TestClient, job_id: str, retries: int = 20) -> dict:
     """Poll GET /batch/excel-jobs/{job_id} until status is terminal or retries exhausted."""
     for _ in range(retries):
@@ -55,6 +80,7 @@ def _poll_until_done(client: TestClient, job_id: str, retries: int = 20) -> dict
 
 def test_create_excel_job_rejects_non_xlsx() -> None:
     client = TestClient(api.app)
+    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={"file": ("bad.txt", b"hello", "text/plain")},
@@ -66,6 +92,7 @@ def test_create_excel_job_rejects_non_xlsx() -> None:
 
 def test_create_excel_job_rejects_invalid_parallelism() -> None:
     client = TestClient(api.app)
+    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={
@@ -85,6 +112,7 @@ def test_create_and_get_excel_job(monkeypatch) -> None:
     monkeypatch.setattr(api, "run_excel_batch_job", _fake_job_runner)
 
     client = TestClient(api.app)
+    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={
@@ -109,6 +137,7 @@ def test_create_excel_job_deduplicates_repeated_target_languages(monkeypatch) ->
     monkeypatch.setattr(api, "run_excel_batch_job", _fake_job_runner)
 
     client = TestClient(api.app)
+    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files=[
@@ -150,12 +179,12 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
         target_languages,
         max_language_parallelism=None,
         jobs_store,
-        runtime_config=None,
+        settings=None,
         teaching_mode=False,
         output_dir=None,
         mode="create",
     ):
-        captured["runtime_config"] = runtime_config
+        captured["settings"] = settings
         captured["max_language_parallelism"] = max_language_parallelism
         captured["mode"] = mode
         await _fake_job_runner(
@@ -164,7 +193,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
             target_languages=target_languages,
             max_language_parallelism=max_language_parallelism,
             jobs_store=jobs_store,
-            runtime_config=runtime_config,
+            settings=settings,
             teaching_mode=teaching_mode,
             output_dir=output_dir,
             mode=mode,
@@ -173,23 +202,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
     monkeypatch.setattr(api, "run_excel_batch_job", fake_runner)
     client = TestClient(api.app)
 
-    env_text = "\n".join(
-        [
-            "ELEVEN_LABS=test-eleven",
-            "SARVAM_API=test-sarvam",
-            "GEMINI_API_KEY=test-google",
-            "AWS_ACCESS_KEY=abc",
-            "AWS_SECRET_KEY=xyz",
-            "AWS_BUCKET=test-bucket",
-            "AWS_REGION=ap-south-1",
-            "BATCH_ENABLE_S3_UPLOAD=true",
-            "BATCH_ENABLE_QC=true",
-            "DESI_VOCAL_VOICE=v2",
-            "ENGLISH_VOICE=v3",
-        ]
-    )
-    config_resp = client.post("/config/session-env", json={"env_text": env_text})
-    assert config_resp.status_code == 200
+    _configure(client)
 
     response = client.post(
         "/batch/excel-jobs",
@@ -205,7 +218,10 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
     assert response.status_code == 202
     job_id = response.json()["job_id"]
     _poll_until_done(client, job_id)
-    runtime_config = captured.get("runtime_config")
-    assert isinstance(runtime_config, dict)
-    assert runtime_config.get("SARVAM_API") == "test-sarvam"
+    settings = captured.get("settings")
+    assert settings is not None
+    # The pasted session values reach the job as resolved settings.
+    assert settings.sarvam.api_key == "test-sarvam"
+    assert settings.s3.bucket == "test-bucket"
+    assert settings.eleven.english_voice_id == "v3"
     assert captured.get("max_language_parallelism") == 3

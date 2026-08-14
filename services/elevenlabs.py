@@ -5,7 +5,7 @@ from elevenlabs.types import VoiceSettings
 import httpx
 
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, get_config_value
+from services.runtime_config import RuntimeConfig, read_setting, require
 
 
 DEFAULT_MODEL_ID = "eleven_v3"
@@ -14,25 +14,39 @@ DEFAULT_SIMILARITY_BOOST = 0.75
 DEFAULT_STYLE = 0.0
 DEFAULT_USE_SPEAKER_BOOST = True
 
+# Used when DESI_VOCAL_VOICE is unset, which is why that key is not required.
+FALLBACK_DESI_VOICE_ID = "dffT29nmBclERTsFHmHg"
+
 
 def is_english_language(language_code: str) -> bool:
     return language_code.strip().lower().startswith("en")
 
 
-def get_voice_id(voice_name: str = "desi", runtime_config: RuntimeConfig | None = None) -> str:
-    """
-    Get voice ID from environment variables.
+@dataclass(frozen=True)
+class ElevenLabsSettings:
+    api_key: str
+    desi_voice_id: str
+    # Empty unless configured. Only needed when a job actually targets English,
+    # so it is checked against the request rather than required up front.
+    english_voice_id: str
 
-    Supported voice_name values:
-    - "desi": DESI_VOCAL_VOICE (default)
-    - "english": ENGLISH_VOICE
-    """
-    if voice_name == "english":
-        voice_id = get_config_value("ENGLISH_VOICE", runtime_config=runtime_config)
-        if not voice_id:
-            raise ValueError("Missing ENGLISH_VOICE for English audio generation")
-        return voice_id
-    return get_config_value("DESI_VOCAL_VOICE", runtime_config=runtime_config) or "dffT29nmBclERTsFHmHg"
+    REQUIRED = ("ELEVEN_LABS",)
+
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> ElevenLabsSettings:
+        values = require(cls.REQUIRED, session)
+        return cls(
+            api_key=values["ELEVEN_LABS"],
+            desi_voice_id=read_setting("DESI_VOCAL_VOICE", session) or FALLBACK_DESI_VOICE_ID,
+            english_voice_id=read_setting("ENGLISH_VOICE", session),
+        )
+
+    def voice_for_language(self, language_code: str) -> str:
+        if is_english_language(language_code):
+            if not self.english_voice_id:
+                raise ValueError("Missing ENGLISH_VOICE for English audio generation")
+            return self.english_voice_id
+        return self.desi_voice_id
 
 
 @dataclass(frozen=True)
@@ -45,20 +59,11 @@ class ElevenLabsTTSConfig:
     use_speaker_boost: bool
 
 
-def get_elevenlabs_api_key(runtime_config: RuntimeConfig | None = None) -> str:
-    api_key = get_config_value("ELEVEN_LABS", runtime_config=runtime_config)
-    if not api_key:
-        raise ValueError("Missing ELEVEN_LABS API key")
-    return api_key
-
-
-def get_batch_config_for_language(
-    language_code: str,
-    runtime_config: RuntimeConfig | None = None,
+def batch_config_for_language(
+    language_code: str, settings: ElevenLabsSettings
 ) -> ElevenLabsTTSConfig:
-    voice_name = "english" if is_english_language(language_code) else "desi"
     return ElevenLabsTTSConfig(
-        voice_id=get_voice_id(voice_name, runtime_config=runtime_config),
+        voice_id=settings.voice_for_language(language_code),
         model_id=DEFAULT_MODEL_ID,
         stability=DEFAULT_STABILITY,
         similarity_boost=DEFAULT_SIMILARITY_BOOST,

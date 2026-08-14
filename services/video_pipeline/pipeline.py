@@ -4,27 +4,14 @@ import asyncio
 import hashlib
 import json
 import logging
-import struct
-from dataclasses import replace
 from pathlib import Path
 
-from services.elevenlabs import (
-    ElevenLabsTTSConfig,
-    get_elevenlabs_api_key,
-    synthesize_speech_bytes,
-)
-from services.runtime_config import RuntimeConfig, get_config_value
-from services.video_pipeline.heygen_client import (
-    clear_talking_photos,
-    create_avatar_iv_video,
-    download_video,
-    get_voice_id_for_character,
-    get_heygen_api_key,
-    poll_until_done,
-    upload_asset,
-    upload_talking_photo,
-)
-from services.nas import NasService, get_nas_config
+from services.elevenlabs import ElevenLabsTTSConfig
+from services.nas import NasConfig, NasService
+from services.video_pipeline.image_geometry import clamp_for_render, dimensions
+from services.video_pipeline.renderer import VideoRenderer
+from services.video_pipeline.slots import TalkingPhotoSlots
+from services.video_pipeline.speech import SpeechSynth
 from services.video_pipeline.store import VideoJobsStore
 from services.video_pipeline.types import VideoJobSpec
 
@@ -36,82 +23,6 @@ logger = logging.getLogger(__name__)
 # even though the client returns "OK". Serialize the NAS upload step so only one
 # SMB write is ever in flight; renders/polls still run concurrently.
 _nas_upload_lock = asyncio.Lock()
-
-
-def _image_dimensions(content: bytes) -> tuple[int, int] | None:
-    """Return (width, height) for JPEG / PNG / WEBP bytes; None if unknown."""
-    if len(content) < 24:
-        return None
-    # PNG: 8-byte sig + IHDR with width/height at offsets 16, 20
-    if content[:8] == b"\x89PNG\r\n\x1a\n":
-        w, h = struct.unpack(">II", content[16:24])
-        return int(w), int(h)
-    # WEBP: "RIFF....WEBP"
-    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
-        chunk = content[12:16]
-        if chunk == b"VP8 ":
-            w, h = struct.unpack("<HH", content[26:30])
-            return int(w) & 0x3FFF, int(h) & 0x3FFF
-        if chunk == b"VP8L":
-            b0, b1, b2, b3 = content[21], content[22], content[23], content[24]
-            w = 1 + (((b1 & 0x3F) << 8) | b0)
-            h = 1 + (((b3 & 0x0F) << 10) | (b2 << 2) | ((b1 & 0xC0) >> 6))
-            return w, h
-        if chunk == b"VP8X":
-            w = 1 + int.from_bytes(content[24:27], "little")
-            h = 1 + int.from_bytes(content[27:30], "little")
-            return w, h
-    # JPEG: scan SOF markers
-    if content[:2] == b"\xff\xd8":
-        i = 2
-        n = len(content)
-        while i + 9 < n:
-            if content[i] != 0xFF:
-                return None
-            # skip fill bytes
-            while i < n and content[i] == 0xFF:
-                i += 1
-            if i >= n:
-                return None
-            marker = content[i]
-            i += 1
-            # Standalone markers (no length): RSTn (D0-D7), SOI (D8), EOI (D9), TEM (01)
-            if marker in (0x01,) or 0xD0 <= marker <= 0xD9:
-                continue
-            if i + 1 >= n:
-                return None
-            seg_len = struct.unpack(">H", content[i:i+2])[0]
-            # SOF markers (excluding DHT=C4, DAC=CC, JPG=C8)
-            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-                if i + 7 > n:
-                    return None
-                h, w = struct.unpack(">HH", content[i+3:i+7])
-                return int(w), int(h)
-            i += seg_len
-    return None
-
-
-_HEYGEN_DIM_MAX = 4095
-_HEYGEN_DIM_MIN = 128
-
-
-def _clamp_heygen_dims(width: int, height: int) -> tuple[int, int]:
-    """Scale (width, height) to fit HeyGen's [128, 4095] range, preserving aspect.
-    Result dimensions are even (some encoders prefer even sizes)."""
-    w, h = float(width), float(height)
-    longest = max(w, h)
-    if longest > _HEYGEN_DIM_MAX:
-        scale = _HEYGEN_DIM_MAX / longest
-        w *= scale
-        h *= scale
-    shortest = min(w, h)
-    if shortest < _HEYGEN_DIM_MIN:
-        scale = _HEYGEN_DIM_MIN / shortest
-        w *= scale
-        h *= scale
-    iw = max(_HEYGEN_DIM_MIN, min(_HEYGEN_DIM_MAX, int(round(w)) // 2 * 2))
-    ih = max(_HEYGEN_DIM_MIN, min(_HEYGEN_DIM_MAX, int(round(h)) // 2 * 2))
-    return iw, ih
 
 
 def _tts_cache_key(*, script: str, voice_id: str, model_id: str, stability: float,
@@ -132,16 +43,6 @@ def _tts_cache_key(*, script: str, voice_id: str, model_id: str, stability: floa
     return hashlib.sha256(payload).hexdigest()
 
 
-def _guess_image_content_type(filename: str) -> str:
-    suffix = Path(filename).suffix.lower()
-    return {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-    }.get(suffix, "image/jpeg")
-
-
 async def run_video_job(
     *,
     job_id: str,
@@ -150,27 +51,28 @@ async def run_video_job(
     image_filename: str,
     output_dir: Path,
     jobs_store: VideoJobsStore,
-    runtime_config: RuntimeConfig | None = None,
+    renderer: VideoRenderer,
+    speech: SpeechSynth,
+    slots: TalkingPhotoSlots,
+    nas_config: NasConfig,
+    voice_id: str | None = None,
 ) -> None:
     try:
         # Persist the spec first thing: if this job later fails on the download or
         # NAS step, recovery needs the title/character/publish_date to re-run.
         await jobs_store.set_spec(job_id, spec)
 
-        heygen_key = get_heygen_api_key(runtime_config=runtime_config)
-        eleven_key = get_elevenlabs_api_key(runtime_config=runtime_config)
-
-        voice_id = spec.voice_id or get_voice_id_for_character(
-            spec.character, runtime_config=runtime_config
-        )
-        if not voice_id:
+        resolved_voice_id = spec.voice_id or voice_id
+        if not resolved_voice_id:
             raise ValueError(
                 f"Missing voice_id for character '{spec.character}' "
-                "(provide one or set the character's voice env var)"
+                "(provide one or configure the character's voice)"
             )
 
-        # 1. ElevenLabs TTS — content-hash cached so retries / repeat scripts
-        # never re-bill ElevenLabs credits.
+        # 1. Text-to-speech — content-hash cached so retries / repeat scripts
+        # never re-bill the provider. The cache is keyed on everything that can
+        # change the audio, and lives here rather than behind the speech seam
+        # because a hit is reported to the user as a job status.
         job_dir = output_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         audio_path = job_dir / "audio.mp3"
@@ -179,7 +81,7 @@ async def run_video_job(
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_key = _tts_cache_key(
             script=spec.script,
-            voice_id=voice_id,
+            voice_id=resolved_voice_id,
             model_id=spec.model_id,
             stability=spec.stability,
             similarity_boost=spec.similarity_boost,
@@ -194,13 +96,11 @@ async def run_video_job(
             audio_bytes = cache_path.read_bytes()
             logger.info("TTS cache hit for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
         else:
-            await jobs_store.set_status(job_id, "tts", "Generating audio with ElevenLabs")
-            audio_bytes = await asyncio.to_thread(
-                synthesize_speech_bytes,
+            await jobs_store.set_status(job_id, "tts", "Generating audio")
+            audio_bytes = await speech.synthesize(
                 spec.script,
-                api_key=eleven_key,
                 config=ElevenLabsTTSConfig(
-                    voice_id=voice_id,
+                    voice_id=resolved_voice_id,
                     model_id=spec.model_id,
                     stability=spec.stability,
                     similarity_boost=spec.similarity_boost,
@@ -218,30 +118,20 @@ async def run_video_job(
             audio_path=str(audio_path),
         )
 
-        # 2. Upload audio (asset) + resolve talking photo
-        await jobs_store.set_status(job_id, "uploading", "Uploading audio to HeyGen")
-        audio_asset = await asyncio.to_thread(
-            upload_asset, api_key=heygen_key, content=audio_bytes, content_type="audio/mpeg"
-        )
+        # 2. Upload audio + resolve talking photo
+        await jobs_store.set_status(job_id, "uploading", "Uploading audio")
+        audio_asset = await renderer.upload_audio(content=audio_bytes, content_type="audio/mpeg")
 
         if spec.talking_photo_id:
+            # Supplied by the caller — a batch acquires one photo up front and
+            # puts its id on every row, so rows must not acquire their own.
             talking_photo_id = spec.talking_photo_id
         else:
-            # Single generation owns the upload (batch rows reuse a shared id and
-            # skip this branch). Free all 3 slots first so leftover photos from a
-            # prior run can't trip HeyGen's cap. Runs are sequential, so this won't
-            # delete a photo another in-flight render is using.
-            try:
-                await asyncio.to_thread(clear_talking_photos, api_key=heygen_key)
-            except Exception as exc:
-                logger.warning("Job %s | pre-upload slot clear failed (continuing): %s", job_id, exc)
-            await jobs_store.set_status(job_id, "uploading", "Uploading talking photo to HeyGen")
-            image_content_type = _guess_image_content_type(image_filename)
-            talking_photo_id = await asyncio.to_thread(
-                upload_talking_photo,
-                api_key=heygen_key,
-                content=image_bytes,
-                content_type=image_content_type,
+            await jobs_store.set_status(job_id, "uploading", "Uploading talking photo")
+            talking_photo_id = await slots.acquire(
+                image_bytes=image_bytes,
+                image_filename=image_filename,
+                label=f"Job {job_id}",
             )
         await jobs_store.patch_summary(
             job_id,
@@ -249,52 +139,48 @@ async def run_video_job(
             image_key=talking_photo_id,
         )
 
-        # 3. Create Avatar IV video via /v2/video/generate (Talking Photo + use_avatar_iv_model)
-        # Match the source image's aspect ratio so HeyGen doesn't pad with a white border
-        # or fall back to its default 1920x1080 landscape.
+        # 3. Submit the render. Match the source image's aspect ratio so the
+        # provider doesn't pad with a white border or fall back to its default
+        # 1920x1080 landscape.
         out_w, out_h = spec.width, spec.height
         if (not out_w or not out_h) and image_bytes:
-            dims = _image_dimensions(image_bytes)
+            dims = dimensions(image_bytes)
             if dims:
-                out_w, out_h = _clamp_heygen_dims(*dims)
+                out_w, out_h = clamp_for_render(*dims)
                 logger.info(
                     "Detected image dims %sx%s, clamped to %sx%s for job %s",
                     dims[0], dims[1], out_w, out_h, job_id,
                 )
             else:
-                logger.warning("Could not detect image dimensions for job %s; HeyGen will use defaults", job_id)
+                logger.warning("Could not detect image dimensions for job %s; provider defaults apply", job_id)
 
-        await jobs_store.set_status(job_id, "generating", "Submitting Avatar IV render")
-        video_id = await asyncio.to_thread(
-            create_avatar_iv_video,
-            api_key=heygen_key,
-            talking_photo_id=talking_photo_id,
+        await jobs_store.set_status(job_id, "generating", "Submitting render")
+        video_id = await renderer.submit(
+            photo_id=talking_photo_id,
             audio_asset_id=audio_asset.asset_id,
             motion_prompt=spec.motion_prompt or spec.video_prompt,
             width=out_w,
             height=out_h,
             video_title=spec.video_title,
-            callback_id=job_id,
+            correlation_id=job_id,
         )
         await jobs_store.patch_summary(job_id, heygen_video_id=video_id)
 
-        # 4. Poll until complete
+        # 4. Wait for it
         await jobs_store.set_status(job_id, "polling", f"Polling render status (video_id={video_id})")
-        result = await poll_until_done(api_key=heygen_key, video_id=video_id)
-        video_url = result.get("video_url")
-        if not video_url:
-            raise RuntimeError("HeyGen completed but returned no video_url")
+        rendered = await renderer.await_render(video_id=video_id)
 
         # 5 + 6. Download the render, then upload to NAS. Factored out so the
         # exact same tail can be re-run by recover_video_job for a job that got
-        # this far (render finished on HeyGen) but failed on download / NAS.
+        # this far (render finished) but failed on download / NAS.
         await _finalize_video(
             job_id=job_id,
             spec=spec,
-            video_url=video_url,
+            video_url=rendered.video_url,
             job_dir=job_dir,
             jobs_store=jobs_store,
-            runtime_config=runtime_config,
+            renderer=renderer,
+            nas_config=nas_config,
         )
     except Exception as exc:
         logger.exception("Video job %s failed", job_id)
@@ -308,15 +194,16 @@ async def _finalize_video(
     video_url: str,
     job_dir: Path,
     jobs_store: VideoJobsStore,
-    runtime_config: RuntimeConfig | None,
+    renderer: VideoRenderer,
+    nas_config: NasConfig,
 ) -> None:
-    """Download a finished HeyGen render to disk and push it to the NAS, then mark
-    the job completed. Shared by the main pipeline and recovery.
+    """Download a finished render to disk and push it to the NAS, then mark the
+    job completed. Shared by the main pipeline and recovery.
 
-    The render URL + heygen_video_id are recorded BEFORE downloading so that if
-    the download still fails, the persisted job keeps a handle to re-fetch the
-    finished render instead of losing it. download_video itself retries with
-    resume, so a transient CDN connection drop no longer fails the job.
+    The render URL + video id are recorded BEFORE downloading so that if the
+    download still fails, the persisted job keeps a handle to re-fetch the
+    finished render instead of losing it. The renderer's download itself retries
+    with resume, so a transient CDN connection drop no longer fails the job.
     """
     # 5. Download to local storage (URL expires in ~7 days).
     video_path = job_dir / "video.mp4"
@@ -326,19 +213,16 @@ async def _finalize_video(
         video_path=str(video_path),
     )
     await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
-    await asyncio.to_thread(download_video, video_url, str(video_path))
+    await renderer.download(video_url=video_url, dest_path=video_path)
 
     # 6. Upload to NAS
     await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
-    nas_config = get_nas_config(runtime_config=runtime_config)
     # US-character content lands in its own NAS folder, when configured;
-    # everything else uses the default NAS_ROOT_PATH.
-    if (spec.character or "").lower() == "us":
-        us_root = get_config_value("US_CHARACTER_NAS_ROOT_PATH", runtime_config=runtime_config)
-        if us_root:
-            nas_config = replace(nas_config, root_path=us_root)
-            logger.info("Job %s: US character → NAS root '%s'", job_id, us_root)
-    nas = NasService(nas_config)
+    # everything else uses the default root.
+    target = nas_config.for_character(spec.character)
+    if target is not nas_config:
+        logger.info("Job %s: US character → NAS root '%s'", job_id, target.root_path)
+    nas = NasService(target)
     from datetime import date as _date
     publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
     async with _nas_upload_lock:
@@ -355,43 +239,41 @@ async def recover_video_job(
     job_id: str,
     jobs_store: VideoJobsStore,
     output_dir: Path,
-    runtime_config: RuntimeConfig | None = None,
+    renderer: VideoRenderer,
+    nas_config: NasConfig,
 ) -> None:
-    """Re-run the download + NAS-upload tail for a job whose HeyGen render
-    finished but which failed afterward (transient download/NAS error that
-    exhausted retries, or a process crash mid-download).
+    """Re-run the download + NAS-upload tail for a job whose render finished but
+    which failed afterward (transient download/NAS error that exhausted retries,
+    or a process crash mid-download).
 
-    Requires the persisted job to carry a heygen_video_id and its spec. The
-    stored video_url may have expired, so we re-fetch a fresh one from HeyGen.
+    Requires the persisted job to carry a video id and its spec. The stored
+    video_url may have expired, so we re-fetch a fresh one.
     """
     state = await jobs_store.get(job_id)
     if state is None:
         raise ValueError(f"job {job_id} not found")
     video_id = state.summary.heygen_video_id
     if not video_id:
-        raise ValueError(f"job {job_id} has no heygen_video_id — nothing to recover")
+        raise ValueError(f"job {job_id} has no render id — nothing to recover")
     if state.spec is None:
         raise ValueError(f"job {job_id} has no persisted spec — cannot resolve NAS target")
 
     try:
-        heygen_key = get_heygen_api_key(runtime_config=runtime_config)
-        # Re-fetch status: the stored URL expires (~7 days) and this also confirms
-        # the render is still available. poll_until_done returns at once if done.
+        # Re-fetch: the stored URL expires (~7 days) and this also confirms the
+        # render is still available. await_render returns at once if done.
         await jobs_store.set_status(job_id, "polling", f"Re-fetching render (video_id={video_id})")
-        result = await poll_until_done(api_key=heygen_key, video_id=video_id)
-        video_url = result.get("video_url")
-        if not video_url:
-            raise RuntimeError("HeyGen returned no video_url on recovery")
+        rendered = await renderer.await_render(video_id=video_id)
 
         job_dir = output_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         await _finalize_video(
             job_id=job_id,
             spec=state.spec,
-            video_url=video_url,
+            video_url=rendered.video_url,
             job_dir=job_dir,
             jobs_store=jobs_store,
-            runtime_config=runtime_config,
+            renderer=renderer,
+            nas_config=nas_config,
         )
         logger.info("Recovered video job %s", job_id)
     except Exception as exc:

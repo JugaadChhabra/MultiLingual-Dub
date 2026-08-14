@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from services.sarvam import SarvamSettings
 from services.translation import translate_with_fallback
+
+SARVAM = SarvamSettings(api_key='test-key')
 
 
 def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch) -> None:
@@ -12,7 +15,7 @@ def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch)
         text: str,
         target_language_code: str,
         *,
-        runtime_config=None,
+        settings=None,
         source_language_code: str = "auto",
     ) -> str:
         assert text == "hello"
@@ -24,6 +27,7 @@ def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch)
 
     translated = translate_with_fallback(
         "hello",
+        settings=SARVAM,
         target_language_code="hi-IN",
         source_language_code="en-IN",
     )
@@ -42,6 +46,7 @@ def test_translate_with_fallback_uses_free_translate_for_new_languages(monkeypat
 
     translated = translate_with_fallback(
         "hello",
+        settings=SARVAM,
         target_language_code="fr",
         source_language_code="en-IN",
     )
@@ -59,6 +64,7 @@ def test_translate_with_fallback_returns_input_when_source_target_same(monkeypat
 
     translated = translate_with_fallback(
         "already translated",
+        settings=SARVAM,
         target_language_code="hi-IN",
         source_language_code="hi-IN",
     )
@@ -77,6 +83,7 @@ def test_translate_with_fallback_propagates_non_same_language_errors(monkeypatch
     with pytest.raises(RuntimeError, match="unexpected translation failure"):
         translate_with_fallback(
             "hello",
+            settings=SARVAM,
             target_language_code="hi-IN",
             source_language_code="en-IN",
         )

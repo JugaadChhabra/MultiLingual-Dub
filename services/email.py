@@ -1,12 +1,40 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import httpx
+
+from services.runtime_config import RuntimeConfig, read_setting
 
 logger = logging.getLogger(__name__)
 
 _RESEND_API_URL = "https://api.resend.com/emails"
+
+
+@dataclass(frozen=True)
+class EmailSettings:
+    """Entirely optional: with any of these unset, batch notifications are
+    skipped rather than failing the batch. Contributes no required keys."""
+
+    api_key: str
+    from_address: str
+    to_addresses: tuple[str, ...]
+
+    REQUIRED: tuple[str, ...] = ()
+
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> EmailSettings:
+        raw_recipients = read_setting("NOTIFY_EMAILS", session)
+        return cls(
+            api_key=read_setting("RESEND_API_KEY", session),
+            from_address=read_setting("RESEND_FROM_ADDRESS", session),
+            to_addresses=tuple(a.strip() for a in raw_recipients.split(",") if a.strip()),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key and self.from_address and self.to_addresses)
 
 
 def send_batch_summary_email(

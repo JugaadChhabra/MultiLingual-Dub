@@ -1,21 +1,20 @@
 from __future__ import annotations
 
+from services.sarvam import SarvamSettings
 from services.translation.free import should_use_free_translate, translate_text_free
 from services.translation.sarvam import translate_text
-from services.runtime_config import RuntimeConfig
 
 
 def translate_with_fallback(
     text: str,
     *,
-    runtime_config: RuntimeConfig | None = None,
+    settings: SarvamSettings,
     target_language_code: str,
     source_language_code: str = "auto",
 ) -> str:
     if should_use_free_translate(target_language_code):
         return translate_text_free(
             text,
-            runtime_config=runtime_config,
             target_language_code=target_language_code,
             source_language_code=source_language_code,
         )
@@ -23,7 +22,7 @@ def translate_with_fallback(
     try:
         return translate_text(
             text,
-            runtime_config=runtime_config,
+            settings=settings,
             target_language_code=target_language_code,
             source_language_code=source_language_code,
         )

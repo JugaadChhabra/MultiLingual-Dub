@@ -1,44 +1,48 @@
 from __future__ import annotations
 import json
 import logging
+from dataclasses import dataclass
 
 import google.genai as genai
 from google.genai import types
 
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, get_config_value
+from services.runtime_config import RuntimeConfig, read_setting, require
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_QC_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+
+_TRUTHY = {"1", "true", "yes", "on"}
 
 
 class QCError(Exception):
     pass
 
 
-def _cfg(name: str, runtime_config: RuntimeConfig | None = None, default: str = "") -> str:
-    value = get_config_value(name, runtime_config=runtime_config)
-    if value:
-        return value
-    return default
+@dataclass(frozen=True)
+class QCSettings:
+    api_key: str
+    models: list[str]
+    # Audio is only ever generated after Gemini QC, so this being off is a
+    # configuration error rather than a feature toggle. Validated on resolve so
+    # a batch is rejected at submit instead of failing once it starts.
+    enabled: bool
 
+    REQUIRED = ("GEMINI_API_KEY", "BATCH_ENABLE_QC")
 
-def get_gemini_api_key(runtime_config: RuntimeConfig | None = None) -> str:
-    api_key = _cfg("GEMINI_API_KEY", runtime_config=runtime_config)
-    if not api_key:
-        raise ValueError("Missing GEMINI_API_KEY environment variable")
-    return api_key
-
-
-def _get_qc_models(runtime_config: RuntimeConfig | None = None) -> list[str]:
-    raw = _cfg("GEMINI_QC_MODELS", runtime_config=runtime_config).strip()
-    if raw:
-        models = [item.strip() for item in raw.split(",") if item.strip()]
-        if models:
-            return models
-    return DEFAULT_QC_MODELS
+    @classmethod
+    def resolve(cls, session: RuntimeConfig | None = None) -> QCSettings:
+        values = require(cls.REQUIRED, session)
+        enabled = values["BATCH_ENABLE_QC"].strip().lower() in _TRUTHY
+        if not enabled:
+            raise ValueError(
+                "BATCH_ENABLE_QC must be true: audio is generated only after Gemini QC"
+            )
+        raw = read_setting("GEMINI_QC_MODELS", session).strip()
+        models = [item.strip() for item in raw.split(",") if item.strip()] or DEFAULT_QC_MODELS
+        return cls(api_key=values["GEMINI_API_KEY"], models=models, enabled=enabled)
 
 
 def _parse_response_json(response_text: str) -> dict[str, str]:
@@ -55,7 +59,7 @@ def qc_translations_batch(
     translations: dict[str, str],
     target_languages: list[str],
     *,
-    runtime_config: RuntimeConfig | None = None,
+    settings: QCSettings,
     teaching_mode: bool = False,
     thinking_budget: int | None = None,
 ) -> dict[str, str]:
@@ -65,6 +69,7 @@ def qc_translations_batch(
     :param original_text: English source text
     :param translations: Dict of {language_code: translated_text}
     :param target_languages: List of language codes
+    :param settings: Resolved Gemini configuration, from the edge of the request
     :param thinking_budget: Optional Gemini thinking-token budget. When None
         (default) the model's default thinking behaviour is used unchanged.
         Pass 0 to disable thinking. Used by eval tooling to A/B the setting.
@@ -74,9 +79,8 @@ def qc_translations_batch(
         return translations
 
     try:
-        api_key = get_gemini_api_key(runtime_config=runtime_config)
-        client = genai.Client(api_key=api_key)
-        models = _get_qc_models(runtime_config=runtime_config)
+        client = genai.Client(api_key=settings.api_key)
+        models = settings.models
 
         lang_descs = ", ".join(
             f"{lang} ({LANGUAGE_NAMES.get(lang, lang)})"
