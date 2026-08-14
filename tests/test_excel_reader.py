@@ -19,7 +19,7 @@ def test_read_excel_rows_skips_empty_text_and_trims(tmp_path: Path) -> None:
     excel = tmp_path / "input.xlsx"
     _build_workbook(
         excel,
-        ["text", "emotion", "activity_name", "audio_type"],
+        ["voiceover_text", "emotion", "activity_name", "voiceover_title"],
         [
             ["  hello  ", " happy ", " ad_1 ", " promo "],
             ["   ", "sad", "ad_2", "news"],
