@@ -191,7 +191,11 @@ async def create_heygen_video_job(
     motion_prompt: str | None = Form(default=None),
     width: int | None = Form(default=None),
     height: int | None = Form(default=None),
+    # video_title becomes the NAS filename (DD-MM-YYYY/<title>.mp4), so a shared
+    # default silently overwrites the previous render of the day. Callers should
+    # always send a distinct title; the default stays only for compatibility.
     video_title: str = Form(default="HeyGen Avatar IV Job"),
+    publish_date: str | None = Form(default=None),
     stability: float = Form(default=0.5),
     similarity_boost: float = Form(default=0.75),
     style: float = Form(default=0.0),
@@ -222,6 +226,7 @@ async def create_heygen_video_job(
         width=width,
         height=height,
         video_title=video_title,
+        publish_date=publish_date or None,
         stability=stability,
         similarity_boost=similarity_boost,
         style=style,

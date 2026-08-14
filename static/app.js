@@ -23,10 +23,11 @@
     try { const d = await resp.json(); return d.detail || d.error || d.message || fallback; } catch (_) { return fallback; }
   }
 
-  // ── iridescent ramp ────────────────────────
-  const STOPS = [[94,234,212],[125,211,252],[196,181,253],[253,230,138],[252,165,165],[240,171,252],[255,255,255]];
-  const RAMP = [];
-  for (let i = 0; i < 96; i++) { const f = i/95*(STOPS.length-1), a = Math.floor(f), b = Math.min(a+1, STOPS.length-1), t = f-a; RAMP.push(STOPS[a].map((c,k)=>Math.round(c+(STOPS[b][k]-c)*t))); }
+  // ── shared background + sound (static/wave.js, static/audio.js) ──
+  const wave = AutoDubWave.create($("#wave"), "linear");
+  const RAMP = AutoDubWave.RAMP;
+  const sfx = AutoDubAudio.create({ enabled: false });
+  const ping = (pos, c, s, dur) => wave.ping(c, s, dur, pos);
   const cssHue = (code) => { const h = HUE[code]; return h ? `rgb(${h[0]},${h[1]},${h[2]})` : "var(--accent)"; };
 
   // ── language data (display only; codes drive the API) ──
@@ -37,12 +38,12 @@
   const HUE = {}, POSX = {};
 
   // ── DOM refs ───────────────────────────────
-  const eq = $("#eq"), cfgEl = $("#cfg"), dotled = $(".dotled"), sessSeg = $(".hstat .seg");
-  const drop = $("#drop"), fileInput = $("#file"), dropIc = $("#dropIc"), dropMain = $("#dropMain"), dropSub = $("#dropSub");
-  const teach = $("#teach"), teachSt = $("#teachSt");
-  const append = $("#append"), appendSt = $("#appendSt");
-  const mosaic = $("#mosaic"), selN = $("#selN"), echoN = $("#echoN");
-  const runBtn = $("#run"), echoEl = $(".run-echo");
+  const eq = $("#eq"), cfgEl = $("#cfg"), dotled = $("#dot"), sessTxt = $("#sessTxt");
+  const drop = $("#drop"), fileInput = $("#file"), dropIc = $("#dropIc"), dropMain = $("#dropMain"), dropSub = $("#dropSub"), dropClear = $("#dropClear");
+  const teach = $("#teach"), append = $("#append");
+  const mosaic = $("#mosaic"), selN = $("#selN");
+  const runBtn = $("#run"), echoEl = $("#runEcho"), runMsg = $("#runMsg");
+  const cancelBtn = $("#cancel");
   const feedN = $("#feedN"), logN = $("#logN");
   const sumEmpty = $("#sumEmpty"), sumData = $("#sumData"), resList = $("#resList"), feed = $("#feed"), logEl = $("#logs");
 
@@ -50,87 +51,69 @@
   function grp(t) { const g = document.createElement("div"); g.className = "grp"; g.innerHTML = `${t}<span class="r"></span>`; return g; }
   function tile([code, nat, en], idx) {
     const el = document.createElement("button"); el.type = "button"; el.dataset.code = code;
-    el.className = "tile" + (SEL.has(code) ? " on" : "");
+    el.className = "tile";
+    // aria-pressed is both the a11y contract and the styling hook — one source of truth
+    el.setAttribute("aria-pressed", SEL.has(code) ? "true" : "false");
+    el.setAttribute("aria-label", `${en} (${code})`);
     const rgb = RAMP[Math.floor(idx/(ALL.length-1)*95)];
     HUE[code] = rgb; POSX[code] = 0.1 + 0.8 * idx/(ALL.length-1);
-    el.style.setProperty("--tile-hue", `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
-    el.innerHTML = `<span class="dots"></span><span class="code">${code}</span><span class="morph"><span class="en">${en}</span><span class="nat">${nat}</span></span>`;
+    el.innerHTML = `<span class="dots" aria-hidden="true"></span><span class="code" aria-hidden="true">${code}</span><span class="morph" aria-hidden="true"><span class="en">${en}</span><span class="nat">${nat}</span></span>`;
     el.addEventListener("mouseenter", () => ping(POSX[code], rgb, 0.4, 650));
     el.addEventListener("click", () => {
-      const on = !el.classList.contains("on"); el.classList.toggle("on");
+      const on = el.getAttribute("aria-pressed") !== "true";
+      el.setAttribute("aria-pressed", on ? "true" : "false");
       on ? SEL.add(code) : SEL.delete(code);
-      ping(POSX[code], rgb, on ? 1 : 0.5, 900); if (on) note(idx); syncSel();
+      ping(POSX[code], rgb, on ? 1 : 0.5, 900); if (on) note(idx);
+      syncSel();   // re-derives the group toggles from the actual selection
     });
     return el;
   }
+  // group labels name the translation provider: Sarvam for Indian locales,
+  // Google Translate for the rest. TTS is ElevenLabs for both.
   mosaic.appendChild(grp("indian · sarvam"));
   INDIAN.forEach((l, i) => mosaic.appendChild(tile(l, i)));
-  mosaic.appendChild(grp("international · in-process"));
+  mosaic.appendChild(grp("international · google"));
   INTL.forEach((l, i) => mosaic.appendChild(tile(l, INDIAN.length + i)));
-  function syncSel() { const n = SEL.size; selN.textContent = `${n} / 16`; echoN.textContent = `${n} target${n === 1 ? "" : "s"}`; }
+  // `selN` reads "n / 16"; the run column no longer repeats the same count, so the
+  // echo line carries the job endpoint instead of a duplicate target tally.
+  // Each group button is a toggle: on adds its languages, off removes them. That
+  // subsumes what the separate `clear` button did (deselect everything = turn the
+  // active groups off), so there is no fourth destructive button in the row.
+  const GROUPS = { all: ALL, indian: INDIAN, intl: INTL };
+  function groupIsOn(codes) { return codes.length > 0 && codes.every((l) => SEL.has(l[0])); }
+  function syncSel() {
+    selN.textContent = `${SEL.size} / ${ALL.length}`;
+    document.querySelectorAll(".qs button").forEach((b) => {
+      b.setAttribute("aria-pressed", groupIsOn(GROUPS[b.dataset.q] || []) ? "true" : "false");
+    });
+    refreshRunState();
+  }
   document.querySelectorAll(".qs button").forEach((b) => b.addEventListener("click", () => {
-    const q = b.dataset.q; SEL.clear();
-    if (q === "all") ALL.forEach((l) => SEL.add(l[0]));
-    else if (q === "indian") INDIAN.forEach((l) => SEL.add(l[0]));
-    else if (q === "intl") INTL.forEach((l) => SEL.add(l[0]));
-    document.querySelectorAll(".tile").forEach((t) => t.classList.toggle("on", SEL.has(t.dataset.code)));
+    const codes = GROUPS[b.dataset.q] || [];
+    const turnOff = groupIsOn(codes);
+    codes.forEach((l) => (turnOff ? SEL.delete(l[0]) : SEL.add(l[0])));
+    document.querySelectorAll(".tile").forEach((t) => t.setAttribute("aria-pressed", SEL.has(t.dataset.code) ? "true" : "false"));
     syncSel();
-    [...SEL].forEach((code, i) => setTimeout(() => ping(POSX[code], HUE[code], 0.7, 800), i * 55));
+    if (!turnOff) codes.forEach((l, i) => setTimeout(() => ping(POSX[l[0]], HUE[l[0]], 0.7, 800), i * 55));
   }));
 
-  // ── teaching toggle ────────────────────────
-  teach.addEventListener("click", () => { teach.classList.toggle("on"); teachSt.textContent = teach.classList.contains("on") ? "on" : "off"; });
-  if (append) append.addEventListener("click", () => { append.classList.toggle("on"); appendSt.textContent = append.classList.contains("on") ? "on" : "off"; });
+  // ── mode switches (role="switch"; aria-checked drives the visual) ──
+  // The separate "OFF"/"ON" caption is gone — the switch itself already says that,
+  // and the accessible state lives on aria-checked.
+  const isOn = (btn) => Boolean(btn) && btn.getAttribute("aria-checked") === "true";
+  [teach, append].forEach((btn) => {
+    if (!btn) return;
+    btn.addEventListener("click", () => btn.setAttribute("aria-checked", isOn(btn) ? "false" : "true"));
+  });
 
   // ── tabs ───────────────────────────────────
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((x) => x.classList.remove("on")); t.classList.add("on");
+    document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
     document.querySelectorAll("[data-pane]").forEach((p) => { p.hidden = p.dataset.pane !== t.dataset.tab; });
   }));
   const showTab = (tab) => $(`.tab[data-tab="${tab}"]`).click();
 
-  // ── dithered wave background ───────────────
-  const cv = $("#wave"), ctx = cv.getContext("2d");
-  let W = 0, H = 0, DPR = 1, energy = 0, energyTarget = 0, playhead = -1; const CELL = 9;
-  const pulses = [];
-  function ping(x, c, s = 1, dur = 900) { if (reduce) return; pulses.push({ x, c, s, t0: performance.now(), dur }); if (pulses.length > 48) pulses.shift(); }
-  function resize() { const r = cv.getBoundingClientRect(); DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
-  addEventListener("resize", resize);
-  const BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]].map((r) => r.map((v) => v/16));
-  function field(x, t, e) { const nx = x/W; let w = Math.sin(nx*9+t*1.1)*0.5 + Math.sin(nx*23-t*0.7)*0.28 + Math.sin(nx*41+t*1.9)*0.16; w = Math.abs(w); const base = 0.10 + 0.05*Math.sin(nx*5-t*0.5); return base + w*(0.30+0.66*e); }
-  function frame(ts) {
-    const t = ts/1000; energy += (energyTarget - energy) * 0.05;
-    for (let i = pulses.length-1; i >= 0; i--) { if ((ts - pulses[i].t0)/pulses[i].dur >= 1) pulses.splice(i, 1); }
-    ctx.clearRect(0, 0, W, H);
-    const mid = H*0.30;
-    for (let cx = 0; cx < W; cx += CELL) {
-      const x = cx + CELL/2, nx = x/W;
-      let pAdd = 0, pc = null, pcw = 0;
-      for (const p of pulses) { const age = (ts-p.t0)/p.dur, env = Math.sin(age*Math.PI), reach = 0.05+age*0.14, d = Math.abs(nx-p.x), g = Math.max(0,1-d/reach), amt = g*env*p.s; if (amt > 0) { pAdd += amt; if (amt > pcw) { pcw = amt; pc = p.c; } } }
-      const amp = (field(x, t, energy) + pAdd*0.55) * H*0.32;
-      let sweep = 0; if (playhead >= 0) { const d = Math.abs(nx-playhead); sweep = Math.max(0,1-d*7); }
-      const idleSweep = Math.max(0, 1-Math.abs(nx-(((t*0.06)%1.3)-0.15))*9) * 0.18 * (1-energy);
-      for (let cy = 0; cy < H; cy += CELL) {
-        const y = cy + CELL/2, dist = Math.abs(y-mid);
-        let I = 1 - dist/amp; if (I <= 0) continue;
-        I = Math.pow(I, 0.7)*(0.5+0.5*energy) + sweep*0.5 + idleSweep + pAdd*0.45;
-        const th = BAYER[(cx/CELL|0)%4][(cy/CELL|0)%4];
-        if (I < th*0.9) continue;
-        const ci = Math.min(95, Math.floor((nx*0.7 + I*0.5 + energy*0.15)*95)), base = RAMP[ci];
-        let c = base;
-        if (pc && pcw > 0.22) { const m = Math.min(1, pcw); c = [base[0]+(pc[0]-base[0])*m|0, base[1]+(pc[1]-base[1])*m|0, base[2]+(pc[2]-base[2])*m|0]; }
-        const a = Math.min(0.72, (0.08 + I*0.36)*(1+energy*0.7));
-        ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-        const s = Math.max(1, 1.3 + I*2.1);
-        ctx.fillRect(x-s, y-0.7, s*2, 1.4); ctx.fillRect(x-0.7, y-s, 1.4, s*2);
-      }
-    }
-    if (!reduce) requestAnimationFrame(frame);
-  }
-  function startWave() { resize(); requestAnimationFrame(frame); }
-  if (document.fonts) document.fonts.ready.then(resize);
-  startWave();
-  // idle: selected locales softly sing
+  // ── idle: selected locales softly sing through the wave ──
   setInterval(() => {
     if (reduce || running) return;
     const codes = [...SEL];
@@ -139,35 +122,49 @@
   }, 1500);
 
   // ── optional sound ─────────────────────────
-  let audioOn = false, actx = null;
   const snd = $("#snd");
   if (snd) snd.addEventListener("click", () => {
-    audioOn = !audioOn; snd.classList.toggle("on", audioOn); snd.textContent = audioOn ? "♪ on" : "♪ off";
-    if (audioOn) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); note(4); } catch (e) {} }
+    const on = !sfx.enabled();
+    sfx.setEnabled(on);
+    snd.classList.toggle("on", on); snd.setAttribute("aria-pressed", String(on));
+    snd.textContent = on ? "♪ on" : "♪ off";
+    if (on) note(4);
   });
-  const PENTA = [261.63,293.66,329.63,392.0,440.0,523.25,587.33,659.25,783.99,880.0,1046.5];
-  function tone(freq, dur, type, gain) { if (!audioOn) return; try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination); const now = actx.currentTime; g.gain.setValueAtTime(gain, now); g.gain.exponentialRampToValueAtTime(0.0001, now+dur); o.start(now); o.stop(now+dur); } catch (e) {} }
-  function note(i) { tone(PENTA[i % PENTA.length], 0.17, "sine", 0.05); }
-  function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
+  const note = (i) => sfx.note(i);
+  const chord = () => sfx.chord();
 
   // ── config status ──────────────────────────
-  const REQUIRED_ENV_KEYS = ["SARVAM_API_KEY","GEMINI_API_KEY","ELEVEN_LABS","DESI_VOCAL_VOICE","AWS_ACCESS_KEY","AWS_SECRET_KEY","AWS_BUCKET","AWS_REGION","AWS_ENDPOINT_URL","BATCH_ENABLE_S3_UPLOAD","BATCH_ENABLE_QC","GEMINI_QC_MODELS"];
+  // The required-key list comes from the server, which derives it from the
+  // settings classes. Keeping a copy here is how the old counter drifted out of
+  // sync with what the backend actually reads.
+  // One function owns the LED, the label and the config count, so the three can
+  // never disagree. The old catch block left a mint "session ready" on screen
+  // while the status call was failing — the indicator lied exactly when it mattered.
   let envConfigured = false;
+  function setSession(state, label, tip) {
+    envConfigured = state === "ok";
+    if (dotled) { dotled.className = "dotled" + (state === "ok" ? "" : state === "unknown" ? " bad" : " warn"); dotled.title = tip || label; }
+    if (sessTxt) sessTxt.textContent = label;
+    refreshRunState();
+  }
   async function refreshEnvStatus() {
     try {
       const r = await fetch("/config/session-env/status");
       if (!r.ok) throw new Error("status " + r.status);
       const p = await r.json();
       const missing = Array.isArray(p.missing_keys) ? p.missing_keys : [];
-      const total = REQUIRED_ENV_KEYS.length;
-      cfgEl.textContent = `${total - missing.length}/${total}`;
-      envConfigured = Boolean(p.configured);
-      if (dotled) { dotled.style.background = envConfigured ? "var(--ok)" : "var(--accent)"; dotled.style.boxShadow = `0 0 7px ${envConfigured ? "var(--ok)" : "var(--accent)"}`; dotled.title = envConfigured ? "runtime config ready" : "missing: " + missing.join(", "); }
-      if (sessSeg) sessSeg.lastChild.textContent = envConfigured ? " session ready" : " config incomplete";
-    } catch (_) { cfgEl.textContent = "—"; envConfigured = false; }
+      const required = Array.isArray(p.required_keys) ? p.required_keys : [];
+      const total = required.length;
+      cfgEl.textContent = total ? `${total - missing.length}/${total}` : "—";
+      if (p.configured) setSession("ok", "session ready", "runtime config ready");
+      else setSession("incomplete", "config incomplete", "missing: " + missing.join(", "));
+    } catch (_) {
+      cfgEl.textContent = "—";
+      setSession("unknown", "config unreachable", "could not read /config/session-env/status");
+    }
   }
-  refreshEnvStatus();
-  setInterval(refreshEnvStatus, 20000);
+  // kicked off from boot() at the bottom — setSession() touches run state, which
+  // must not be reachable before the run-state bindings below are initialised
 
   // ── file drop + preview ────────────────────
   let selectedFile = null;
@@ -176,20 +173,48 @@
   ["dragover", "dragenter"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.add("over"); }));
   ["dragleave", "drop"].forEach((e) => drop.addEventListener(e, (ev) => { ev.preventDefault(); drop.classList.remove("over"); }));
   drop.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onFile(f); });
+  dropClear.addEventListener("click", clearFile);
+
+  // batch/excel.py requires these four headers. /batch/preview-excel doesn't check
+  // them — it just dumps the first rows — so a wrong sheet used to read as "ready"
+  // and only blow up after the operator committed the run. Check it here, at drop.
+  const REQUIRED_HEADERS = ["voiceover_text", "emotion", "activity_name", "voiceover_title"];
+  let sheetProblem = null, sheetRows = 0;
+
   async function onFile(file) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) { dropSub.textContent = "only .xlsx allowed"; return; }
-    selectedFile = file;
-    drop.classList.add("loaded"); dropIc.textContent = "✓";
+    selectedFile = file; sheetProblem = null; sheetRows = 0;
+    drop.classList.add("loaded"); dropIc.textContent = "✓"; dropClear.hidden = false;
     dropMain.textContent = file.name; dropSub.textContent = `${(file.size/1024).toFixed(0)} KB · reading…`;
-    if (!drop.querySelector(".x")) { const x = document.createElement("button"); x.className = "x"; x.textContent = "×"; x.title = "remove"; x.addEventListener("click", (ev) => { ev.stopPropagation(); clearFile(); }); drop.appendChild(x); }
+    refreshRunState();
     try {
       const fd = new FormData(); fd.append("file", file);
       const r = await fetchTimeout("/batch/preview-excel", { method: "POST", body: fd }, 10000);
-      if (r.ok) { const d = await r.json(); const rows = d.rows || []; if (rows.length) { const cols = (rows[0] || []).length; dropSub.textContent = `${Math.max(0, rows.length-1)} rows × ${cols} cols · ready`; ping(0.5, [255,181,112], 0.9, 900); return; } }
-      dropSub.textContent = `${(file.size/1024).toFixed(0)} KB · ready`;
-    } catch (_) { dropSub.textContent = `${(file.size/1024).toFixed(0)} KB · ready`; }
+      if (!r.ok) throw new Error("preview failed");
+      const rows = (await r.json()).rows || [];
+      const headers = (rows[0] || []).map((h) => String(h).trim().toLowerCase());
+      const missing = REQUIRED_HEADERS.filter((h) => !headers.includes(h));
+      if (missing.length) {
+        sheetProblem = `sheet is missing column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`;
+        drop.classList.remove("loaded"); dropIc.textContent = "!";
+        dropSub.textContent = sheetProblem;
+      } else {
+        sheetRows = Math.max(0, rows.length - 1);
+        dropSub.textContent = `${sheetRows} row${sheetRows === 1 ? "" : "s"} · headers ok`;
+        ping(0.5, [255,181,112], 0.9, 900);
+      }
+    } catch (_) {
+      dropSub.textContent = `${(file.size/1024).toFixed(0)} KB · could not read the sheet`;
+    }
+    refreshRunState();
   }
-  function clearFile() { selectedFile = null; drop.classList.remove("loaded"); dropIc.textContent = "▤"; dropMain.textContent = "Drop .xlsx or click to browse"; dropSub.textContent = "source rows + target columns"; const x = drop.querySelector(".x"); if (x) x.remove(); fileInput.value = ""; }
+  function clearFile() {
+    selectedFile = null; sheetProblem = null; sheetRows = 0;
+    drop.classList.remove("loaded"); dropIc.textContent = "▤";
+    dropMain.textContent = "Drop .xlsx or click to browse";
+    dropSub.textContent = "columns: voiceover_text, emotion, activity_name, voiceover_title";
+    dropClear.hidden = true; fileInput.value = ""; drop.focus(); refreshRunState();
+  }
 
   // ── logs polling ───────────────────────────
   let lastLogId = 0, logTimer = null;
@@ -219,9 +244,35 @@
 
   // ── run / poll / render ────────────────────
   let running = false, currentJobId = null, isCancelling = false, currentTargets = [], pingTimer = null;
-  function setRunLabel(text, mode) { runBtn.childNodes[0].textContent = text + " "; const ret = runBtn.querySelector(".ret"); if (ret) ret.textContent = mode === "run" ? "⏎" : mode === "cancel" ? "✕" : ""; }
-  function flash(msg) { setRunLabel(msg, ""); setTimeout(() => { if (!running) setRunLabel("Run pipeline", "run"); }, 1300); }
+  function setRunLabel(text, mode) { runBtn.childNodes[0].textContent = text + " "; const ret = runBtn.querySelector(".ret"); if (ret) ret.textContent = mode === "run" ? "⏎" : ""; }
   function setM(k, v) { const el = $(`[data-m="${k}"]`); if (el) el.textContent = v; }
+
+  // Errors and blocking reasons live in a persistent aria-live line, not inside the
+  // button label. Overwriting the label hid the CTA's own name, vanished before a
+  // screen reader could read it, and put the message far from the field at fault.
+  function say(msg, isErr) { runMsg.textContent = msg || ""; runMsg.classList.toggle("err", Boolean(isErr)); }
+
+  // What blocks a run, in the order the operator should fix it. Returns null when ready.
+  function blockingReason() {
+    if (!selectedFile) return "drop an .xlsx to enable the run";
+    if (sheetProblem) return sheetProblem;
+    if (SEL.size === 0) return "pick at least one target language";
+    if (!envConfigured) return "runtime config is not ready";
+    return null;
+  }
+  function refreshRunState() {
+    if (running) { runBtn.disabled = true; cancelBtn.hidden = false; return; }
+    cancelBtn.hidden = true;
+    const why = blockingReason();
+    runBtn.disabled = Boolean(why);
+    if (!runMsg.classList.contains("err")) say(why || "");
+    // what this run will actually produce, instead of the endpoint name
+    if (sheetRows > 0 && SEL.size > 0) {
+      echoEl.innerHTML = `<b>${sheetRows}</b> rows × <b>${SEL.size}</b> targets = <b>${sheetRows * SEL.size}</b> clips`;
+    } else {
+      echoEl.textContent = "Ready when you are";
+    }
+  }
 
   function buildResRows(targets) {
     resList.innerHTML = "";
@@ -249,27 +300,52 @@
   }
   const feedSeen = new Set();
   function clearFeed() { feed.innerHTML = ""; feedSeen.clear(); feedN.textContent = 0; }
+  // The feed used to restate the summary ("processed across 11 locales"). It now
+  // carries what the summary can't: when each row landed and how long it took.
+  let lastRowAt = 0;
   function updateFeed(s) {
     s = s || {}; const proc = s.rows_processed || 0, total = s.total_rows || 0;
     for (let i = 1; i <= Math.min(proc, total); i++) {
       const id = "r" + i; if (feedSeen.has(id)) continue; feedSeen.add(id);
+      const now = performance.now();
+      const took = lastRowAt ? `${((now - lastRowAt)/1000).toFixed(1)}s` : "—";
+      lastRowAt = now;
+      const clock = new Date().toLocaleTimeString("en-GB", { hour12: false });
       const el = document.createElement("div"); el.className = "fr";
-      el.innerHTML = `<span class="fc">row ${i}</span><span class="ft">processed across ${currentTargets.length} locales</span><span class="fs" style="color:var(--ok)">done</span>`;
+      el.innerHTML = `<span class="fc">row ${i}</span>`
+        + `<span class="ft">${currentTargets.length} clips · ${clock}</span>`
+        + `<span class="fs" style="color:var(--faint)">${took}</span>`;
       feed.appendChild(el);
     }
     feedN.textContent = feedSeen.size; feed.scrollTop = feed.scrollHeight;
   }
 
-  runBtn.addEventListener("click", () => { if (running) cancelJob(); else startRun(); });
+  runBtn.addEventListener("click", startRun);
+  // Cancelling used to be a click on the same button that displayed progress, so
+  // reflexively clicking a progress readout killed the job. Now it is a separate
+  // control that arms first — two deliberate clicks, no blocking modal.
+  let cancelArmed = null;
+  cancelBtn.addEventListener("click", () => {
+    if (!running || isCancelling) return;
+    if (cancelArmed) { clearTimeout(cancelArmed); cancelArmed = null; cancelJob(); return; }
+    cancelBtn.textContent = "Click again to cancel";
+    cancelBtn.classList.add("armed");
+    cancelArmed = setTimeout(() => {
+      cancelArmed = null; cancelBtn.textContent = "Cancel run"; cancelBtn.classList.remove("armed");
+    }, 4000);
+  });
   document.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (!running) startRun(); } });
 
   async function startRun() {
-    if (SEL.size === 0) { flash("Pick a target first"); return; }
-    if (!selectedFile) { flash("Drop an .xlsx first"); return; }
-    if (!envConfigured) { flash("Config not ready"); return; }
+    const why = blockingReason();
+    if (why) { say(why, true); refreshRunState(); return; }
+    say("");
 
-    running = true; isCancelling = false; currentTargets = [...SEL];
-    setRunLabel("Running…", "cancel"); energyTarget = 1; if (eq) eq.classList.add("run"); showTab("logs");
+    running = true; isCancelling = false; currentTargets = [...SEL]; lastRowAt = 0;
+    setRunLabel("Running…", ""); refreshRunState();
+    // Summary is the run view — it carries the metrics and the per-language rows.
+    // Jumping to the log firehose on submit buried the thing the operator watches.
+    wave.setEnergy(1); if (eq) eq.classList.add("run"); showTab("summary");
     buildResRows(currentTargets);
     sumEmpty.hidden = true; sumData.hidden = false; setM("rows", 0); setM("targets", currentTargets.length); setM("done", 0); setM("failed", 0);
     clearFeed(); startLogs();
@@ -279,18 +355,46 @@
       const fd = new FormData();
       fd.append("file", selectedFile);
       fd.append("max_language_parallelism", "3");
-      if (teach.classList.contains("on")) fd.append("teaching_mode", "true");
-      fd.append("mode", append && append.classList.contains("on") ? "append" : "create");
+      if (isOn(teach)) fd.append("teaching_mode", "true");
+      fd.append("mode", isOn(append) ? "append" : "create");
       currentTargets.forEach((l) => fd.append("target_languages", l));
 
       const cr = await fetch("/batch/excel-jobs", { method: "POST", body: fd });
       if (!cr.ok) { finishRun("failed", null, await safeErr(cr, "Failed to create batch job.")); return; }
       const cp = await cr.json();
       currentJobId = cp.job_id;
-      echoEl.innerHTML = `<span class="p">$</span> job ${escapeHtml(currentJobId || "")}`;
+      rememberJob(currentJobId);
       const final = await poll(currentJobId);
       finishRun(final.status, final.summary, final.error || "");
     } catch (e) { finishRun("failed", null, String((e && e.message) || e)); }
+  }
+
+  // ── surviving a reload ──
+  // The job persists server-side; the id used to live only in this closure, so a
+  // refresh mid-run left the operator with no way to see whether it was still going.
+  const JOB_KEY = "autodub_active_batch_job";
+  function rememberJob(id) { try { localStorage.setItem(JOB_KEY, id); } catch (_) {} }
+  function forgetJob() { try { localStorage.removeItem(JOB_KEY); } catch (_) {} }
+  async function reattach() {
+    let id = null;
+    try { id = localStorage.getItem(JOB_KEY); } catch (_) {}
+    if (!id) return;
+    try {
+      const r = await fetchTimeout(`/batch/excel-jobs/${id}`);
+      if (!r.ok) { forgetJob(); return; }
+      const p = await r.json();
+      if (["completed", "failed", "cancelled"].includes(p.status)) { forgetJob(); return; }
+      running = true; isCancelling = false; currentJobId = id; lastRowAt = 0;
+      currentTargets = [...SEL];
+      setRunLabel("Running…", ""); refreshRunState();
+      wave.setEnergy(1); if (eq) eq.classList.add("run"); showTab("summary");
+      buildResRows(currentTargets);
+      sumEmpty.hidden = true; sumData.hidden = false;
+      clearFeed(); startLogs();
+      addLogLine({ level: "INFO", message: `reattached to job ${id}` });
+      const final = await poll(id);
+      finishRun(final.status, final.summary, final.error || "");
+    } catch (_) { /* offline — keep the record for the next load */ }
   }
 
   async function poll(id) {
@@ -303,7 +407,11 @@
         const p = await r.json(); notFound = 0;
         renderSummary(p.summary, p.status); updateFeed(p.summary);
         const s = p.summary || {}, proc = s.rows_processed || 0, tot = s.total_rows || 0;
-        if (tot > 0) { playhead = Math.min(1, proc/tot); if (!isCancelling) setRunLabel(`${proc}/${tot} rows`, "cancel"); }
+        // progress reads out below the button; the button itself stays labelled
+        if (tot > 0) {
+          wave.setPlayhead(Math.min(1, proc/tot));
+          if (!isCancelling) echoEl.innerHTML = `<b>${proc}</b> of <b>${tot}</b> rows <span class="jid">${escapeHtml(id)}</span>`;
+        }
         if (terminal.has(p.status)) return p;
         await wait(2000);
       } catch (_) { await wait(2000); }
@@ -312,20 +420,29 @@
 
   function finishRun(status, summary, err) {
     running = false; currentJobId = null; if (pingTimer) clearInterval(pingTimer);
-    energyTarget = 0; playhead = -1; if (eq) eq.classList.remove("run");
+    forgetJob();
+    wave.setEnergy(0); wave.setPlayhead(-1); if (eq) eq.classList.remove("run");
     setRunLabel("Run pipeline", "run");
-    // echoEl.innerHTML = `<span class="p">$</span> POST /batch/excel-jobs`;
+    cancelBtn.textContent = "Cancel run"; cancelBtn.classList.remove("armed"); cancelBtn.disabled = false;
     stopLogs(); pullLogs();
     if (summary) renderSummary(summary, status);
     if (err) addLogLine({ level: "ERROR", message: err });
+    say(err ? err : status === "completed" ? "" : `job ${status}`, Boolean(err) || status === "failed");
+    refreshRunState();
     if (status === "completed") chord();
   }
 
   async function cancelJob() {
     if (!currentJobId) return;
-    isCancelling = true; setRunLabel("Cancelling…", "");
+    isCancelling = true;
+    cancelBtn.textContent = "Cancelling…"; cancelBtn.disabled = true; cancelBtn.classList.remove("armed");
+    echoEl.textContent = "Cancelling — finishing the row in flight";
     try { await fetchTimeout(`/batch/excel-jobs/${currentJobId}/cancel`, { method: "POST" }); } catch (_) {}
   }
 
+  // ── boot ───────────────────────────────────
   syncSel();
+  refreshEnvStatus();
+  setInterval(refreshEnvStatus, 20000);
+  reattach();
 })();
