@@ -7,8 +7,8 @@
 <title>AutoDub · Video Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/static/style.css?v=8" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css?v=14" />
 <style>
   /* ── Studio Monitor layout — shares the AutoDub token system, fresh structure ── */
 
@@ -17,11 +17,14 @@
                  mask-image:radial-gradient(120% 120% at 40% 46%, #000 0%, #000 34%, rgba(0,0,0,.5) 66%, rgba(0,0,0,.12) 100%); }
   .scrim{ background:radial-gradient(120% 100% at 40% 46%, transparent 14%, rgba(10,10,12,.55) 52%, var(--bg) 100%); }
 
-  main.studio{ flex:1; min-height:0; display:grid; grid-template-columns:1.5fr 1fr; gap:0 30px; align-content:stretch; padding-bottom:22px; }
+  /* The row is sized by its content and centred, not stretched to the viewport.
+     Stretching is what produced the two voids: a 680px-tall empty monitor on the
+     left and ~300px of dead rail between the last field and the CTA. */
+  main.studio{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1.4fr) minmax(340px,1fr); gap:0 30px; align-content:center; padding-bottom:22px; }
 
   /* ── left: the stage (monitor + transport + tray) ── */
   .stage{ display:flex; flex-direction:column; min-height:0; }
-  .monitor{ flex:1; min-height:240px; position:relative; border:1px solid var(--line); border-radius:14px; background:rgba(9,9,13,.46); backdrop-filter:blur(2px); overflow:hidden; box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
+  .monitor{ flex:1; min-height:340px; max-height:min(58vh,540px); position:relative; border:1px solid var(--line); border-radius:14px; background:rgba(9,9,13,.46); backdrop-filter:blur(2px); overflow:hidden; box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
   .monitor:has(.still),.monitor:has(.feed){ background:#000; backdrop-filter:none; }
   .monitor .mbody{ position:absolute; inset:0; display:grid; place-items:center; }
   .monitor img.still,.monitor video.feed{ max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; background:#000; display:block; }
@@ -30,148 +33,261 @@
   .monitor.live,.monitor:has(video.feed){ cursor:default; }
   .monitor.drag{ box-shadow:inset 0 0 0 2px var(--accent), inset 0 0 70px rgba(0,0,0,.5); }
   .monitor.drag .ph .phbig,.monitor.drag .ph .phsm{ color:var(--accent); }
-  .mfile{ position:absolute; left:0; right:0; bottom:0; z-index:3; display:flex; align-items:center; gap:10px; padding:9px 13px; background:linear-gradient(transparent,rgba(0,0,0,.82)); font-family:var(--mono); font-size:10.5px; pointer-events:none; }
+  .mfile{ position:absolute; left:0; right:0; bottom:0; z-index:3; display:flex; align-items:center; gap:10px; padding:10px 13px; background:linear-gradient(transparent,rgba(0,0,0,.85)); font-size:var(--fs-md); pointer-events:none; }
   .mfile .nm{ color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mfile .sz{ color:var(--faint); flex:none; }
   .mfile .gap{ flex:1; }
-  .mfile button{ pointer-events:auto; flex:none; font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--muted); background:rgba(10,10,12,.6); border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; }
+  .mfile button{ pointer-events:auto; flex:none; font-family:inherit; font-size:var(--fs-md); color:var(--muted); background:rgba(10,10,12,.75); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; }
   .mfile button:hover{ color:var(--accent); border-color:var(--accent); }
   .mfile .rm:hover{ color:var(--err); border-color:var(--err); }
   .monitor .scan{ position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(0deg, rgba(255,255,255,.028) 0 1px, transparent 1px 3px); opacity:.55; mix-blend-mode:overlay; }
-  .monitor .tick{ position:absolute; width:16px; height:16px; border:1.5px solid var(--faint); opacity:.5; pointer-events:none; }
+  .monitor .tick{ position:absolute; width:16px; height:16px; border:1.5px solid var(--ghost); pointer-events:none; }
   .monitor .tl{ top:11px; left:11px; border-right:none; border-bottom:none; }
   .monitor .tr{ top:11px; right:11px; border-left:none; border-bottom:none; }
   .monitor .bl{ bottom:11px; left:11px; border-right:none; border-top:none; }
   .monitor .br{ bottom:11px; right:11px; border-left:none; border-top:none; }
-  .monitor .mtag{ position:absolute; top:13px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--faint); background:rgba(0,0,0,.42); padding:3px 10px; border-radius:5px; }
+  .monitor .mtag{ position:absolute; top:13px; left:50%; transform:translateX(-50%); font-size:var(--fs-sm); font-weight:500; color:var(--faint); background:rgba(0,0,0,.42); padding:4px 10px; border-radius:5px; }
   .monitor.live .mtag{ color:var(--err); }
   .ph{ text-align:center; }
-  .ph .phbig{ font-family:var(--mono); font-size:12px; letter-spacing:.34em; color:var(--muted); margin-top:12px; }
-  .ph .phsm{ font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:7px; letter-spacing:.02em; }
+  .ph .phbig{ font-family:var(--serif); font-style:italic; font-size:var(--fs-xl); color:var(--muted); margin-top:12px; }
+  .ph .phsm{ font-size:var(--fs-md); color:var(--faint); margin-top:7px; }
+  /* the keyboard route to the file picker — dragging onto the monitor is the
+     shortcut, not the only way in */
+  .ph .phrow{ display:flex; gap:9px; justify-content:center; margin-top:15px; }
+  .ph .phbtn{ font-family:inherit; font-size:var(--fs-md); font-weight:500; color:var(--muted); background:rgba(13,13,17,.7); border:1px solid var(--line); border-radius:8px; padding:9px 16px; cursor:pointer; }
+  .ph .phbtn:hover{ color:var(--accent); border-color:var(--accent); }
 
-  .transport{ flex:none; display:flex; align-items:center; gap:13px; margin-top:12px; padding:11px 15px; border:1px solid var(--line); border-radius:10px; background:rgba(12,12,16,.82); backdrop-filter:blur(5px); font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .transport{ flex:none; display:flex; align-items:center; gap:13px; margin-top:12px; padding:10px 15px; border:1px solid var(--line); border-radius:10px; background:rgba(12,12,16,.82); backdrop-filter:blur(5px); font-size:var(--fs-md); color:var(--muted); }
   .rec{ width:9px; height:9px; border-radius:50%; background:#3a3a42; flex:none; }
   .rec.on{ background:#ff5a4d; box-shadow:0 0 8px #ff5a4d; animation:recpulse 1s steps(1) infinite; }
   @keyframes recpulse{ 50%{ opacity:.35; } }
-  .tstate{ color:var(--ink); letter-spacing:.06em; text-transform:uppercase; font-size:10px; }
+  .tstate{ color:var(--ink); font-weight:600; font-size:var(--fs-md); }
   .tstage{ color:var(--faint); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tcode{ color:var(--muted); letter-spacing:.08em; }
-  .logtoggle{ font-family:var(--mono); font-size:10.5px; color:var(--faint); background:none; border:1px solid var(--line); border-radius:6px; padding:4px 9px; cursor:pointer; letter-spacing:.04em; }
+  /* an elapsed-time readout is machine data — mono keeps the digits from dancing */
+  .tcode{ font-family:var(--mono); font-size:var(--fs-sm); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .logtoggle{ font-family:inherit; font-size:var(--fs-md); color:var(--faint); background:none; border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; }
   .logtoggle:hover{ color:var(--muted); border-color:#2a2a31; }
-  .logtoggle .n{ color:var(--accent); margin-left:5px; }
+  /* logs is the only route to progress detail — it should not be the faintest
+     thing in the transport */
+  .logtoggle.strong{ color:var(--muted); border-color:var(--line-hi); }
+  .logtoggle.strong:hover{ color:var(--ink); border-color:var(--muted); }
+  .logtoggle.strong[aria-expanded="true"]{ color:var(--accent); border-color:var(--accent); }
+
+  /* stranded-render recovery — a real affordance for a real failure mode */
+  .recover{ flex:none; display:flex; align-items:center; gap:12px; margin-top:10px; padding:11px 14px;
+    border:1px solid rgba(255,181,112,.32); border-radius:10px; background:var(--accent-dim);
+    font-size:var(--fs-md); color:var(--accent); }
+  .recover .ric{ font-size:14px; flex:none; }
+  .recover .rtx{ flex:1; min-width:0; color:var(--muted); }
+  .recover .rtx b{ color:var(--accent); }
+  .recbtn{ flex:none; font-family:var(--sans); font-weight:600; font-size:var(--fs-md); color:#16130d;
+    background:#F4F1EA; border:none; border-radius:8px; padding:9px 15px; cursor:pointer;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.25); transition:background .14s, transform .1s var(--ease); }
+  .recbtn:hover{ background:#FFFDF7; }
+  .recbtn:active{ transform:scale(.98); }
+  .recbtn:disabled{ cursor:default; color:#5d5a52; background:#38363250; }
+
+  /* where the finished clip actually landed */
+  .naspath{ flex:none; margin-top:10px; padding:9px 13px; border:1px solid var(--line); border-radius:9px;
+    background:rgba(12,12,16,.7); font-size:var(--fs-md); color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .naspath b{ color:var(--ok); font-weight:500; }
+
+  /* single-mode filename field */
+  .titlewrap{ position:relative; }
+  .titlewrap .dateinp{ padding-right:48px; }
+  .titlewrap .ext{ position:absolute; right:14px; top:50%; transform:translateY(-50%);
+    font-size:var(--fs-md); color:var(--faint); pointer-events:none; }
+
+  /* talking-photo picker */
+  .tpdrawer .tpbody{ flex:1; min-height:0; overflow-y:auto; margin-bottom:8px; }
+  .tpgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:10px; }
+  .tpcard{ position:relative; padding:0; border:1px solid var(--line); border-radius:10px; overflow:hidden;
+    background:rgba(13,13,17,.82); cursor:pointer; transition:border-color .14s, transform .08s; }
+  .tpcard:hover{ border-color:var(--line-hi); }
+  .tpcard:active{ transform:translateY(1px); }
+  .tpcard img{ display:block; width:100%; aspect-ratio:4/5; object-fit:cover; background:#000; }
+  .tpcard .tpn{ display:block; padding:7px 9px; font-size:var(--fs-md);
+    color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; }
+  .tpcard .tpnoimg{ display:grid; place-items:center; width:100%; aspect-ratio:4/5; color:var(--ghost); font-size:var(--fs-md); }
+  .logtoggle .n{ font-family:var(--mono); font-size:var(--fs-sm); color:var(--accent); margin-left:6px; font-variant-numeric:tabular-nums; }
   a.dlbtn{ text-decoration:none; color:var(--accent); border-color:rgba(255,181,112,.4); background:var(--accent-dim); }
   a.dlbtn:hover{ color:var(--accent); border-color:var(--accent); filter:brightness(1.08); }
 
   .tray{ flex:none; margin-top:12px; max-height:0; overflow:hidden; border-radius:10px; transition:max-height .26s ease; }
   .tray.open{ max-height:248px; border:1px solid var(--line); background:rgba(12,12,16,.82); backdrop-filter:blur(5px); }
   .trayhead{ display:flex; gap:2px; border-bottom:1px solid var(--line); padding:0 8px; }
-  .trayhead .tt{ font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--muted); background:none; border:none; border-bottom:1.5px solid transparent; padding:9px 11px; cursor:pointer; }
-  .trayhead .tt.on{ color:var(--accent); border-bottom-color:var(--accent); }
-  .trayhead .tt .n{ color:var(--faint); margin-left:5px; }
+  .trayhead .tt{ font-family:inherit; font-size:var(--fs-md); font-weight:500; color:var(--faint); background:none; border:none; border-bottom:1.5px solid transparent; padding:10px 12px; cursor:pointer; transition:color .14s; }
+  .trayhead .tt:hover{ color:var(--ink); }
+  .trayhead .tt.on{ color:var(--ink); border-bottom-color:var(--accent); }
+  .trayhead .tt .n{ font-family:var(--mono); font-size:var(--fs-sm); color:var(--ghost); margin-left:6px; font-variant-numeric:tabular-nums; }
+  .trayhead .tt.on .n{ color:var(--accent); }
   .traybody{ max-height:200px; overflow:auto; padding:2px 14px 10px; }
 
   /* ── right: control rail ── */
-  .rail{ display:flex; flex-direction:column; min-height:0; }
-  .railscroll{ flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
-  .railscroll .lbl:not(:first-child){ margin-top:22px; }
-  .railfoot{ flex:none; padding-top:16px; }
+  /* railscroll no longer flexes, so the CTA sits directly under the form it
+     submits instead of being pinned to the bottom of the viewport */
+  .rail{ display:flex; flex-direction:column; min-height:0; justify-content:flex-start; }
+  .railscroll{ flex:0 1 auto; min-height:0; overflow-y:auto; padding-right:4px; }
+  .railfoot{ flex:none; padding-top:20px; }
+
+  /* Form label. Replaces .lbl's uppercase-mono-plus-hairline-rule treatment, which
+     read as terminal chrome rather than as a field name. Only fields that cannot
+     describe themselves get one — the script textarea and both drop zones do not. */
+  .flbl{ display:block; margin:0 0 8px; font-size:var(--fs-md); font-weight:500; color:var(--muted); }
+  .railscroll .flbl:not(:first-child){ margin-top:20px; }
+  .flbl .hint{ font-weight:400; color:var(--faint); }
+  .tool .flbl{ margin-top:0; }
 
   .seg2{ position:relative; display:inline-flex; padding:4px; border:1px solid var(--line); border-radius:10px; background:rgba(13,13,17,.72); }
   .seg-ind{ position:absolute; top:4px; bottom:4px; left:4px; width:0; border-radius:7px; background:linear-gradient(var(--accent-dim),rgba(255,181,112,.04)); box-shadow:inset 0 0 0 1px var(--accent), 0 5px 16px -7px var(--accent); transition:left .24s cubic-bezier(.4,0,.2,1), width .24s cubic-bezier(.4,0,.2,1); pointer-events:none; }
-  .seg2 button{ position:relative; z-index:1; display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:none; border:none; border-radius:7px; padding:7px 18px; cursor:pointer; transition:color .16s; }
+  .seg2 button{ position:relative; z-index:1; display:inline-flex; align-items:center; gap:7px; font-family:inherit; font-size:var(--fs-md); font-weight:500; color:var(--muted); background:none; border:none; border-radius:7px; padding:9px 18px; cursor:pointer; transition:color .16s; }
   .seg2 button svg{ width:12px; height:12px; opacity:.85; }
   .seg2 button:hover{ color:var(--ink); }
   .seg2 button.on{ color:var(--accent); }
 
-  /* mode + voice share one compact row */
+  /* mode + voice share one row, but they are not peers: mode reshapes the whole
+     form (amber, wider), voice sets one parameter (neutral, narrower). */
   .toolrow{ display:flex; gap:16px; }
-  .toolrow .tool{ flex:1; min-width:0; }
+  .toolrow .tool{ min-width:0; }
+  .toolrow .tool.primary{ flex:1.35; }
+  .toolrow .tool.secondary{ flex:1; }
   .toolrow .seg2{ display:flex; width:100%; }
   .toolrow .seg2 button{ flex:1; justify-content:center; padding:7px 8px; }
+  #charInd{ background:linear-gradient(rgba(255,255,255,.07),rgba(255,255,255,.015)); box-shadow:inset 0 0 0 1px var(--line-hi); }
+  #charSeg button.on{ color:var(--ink); }
 
+  /* A category is one selectable thing plus one editable thing. Both must be real
+     buttons — a <span> click-target inside a <button> is unreachable by keyboard —
+     but they have to LOOK like one object. The edit affordance as its own floating
+     card next to "+ new" read as a mystery third button, so the frame (border,
+     background, radius, selected ring) now belongs to the wrapper and the two
+     buttons sit inside it, split by a hairline. */
   .chips{ display:flex; gap:8px; overflow-x:auto; padding-bottom:5px; }
-  .chip .pen{ display:none; margin-left:1px; font-size:11px; color:inherit; opacity:.8; }
-  .chip.on .pen{ display:inline-flex; align-items:center; }
-  .chip .pen:hover{ opacity:1; color:#fff; }
-  .chip{ position:relative; flex:none; display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:10px; padding:9px 14px; cursor:pointer; white-space:nowrap; overflow:hidden; transition:border-color .14s, color .14s, box-shadow .18s, transform .08s; }
-  .chip .dots{ position:absolute; inset:0; opacity:0; transition:opacity .25s; background-image:radial-gradient(currentColor .9px, transparent 1.1px); background-size:7px 7px; color:var(--tile-hue,var(--accent)); -webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); pointer-events:none; }
-  .chip .swatch{ position:relative; width:7px; height:7px; border-radius:50%; background:var(--tile-hue,var(--faint)); box-shadow:0 0 7px var(--tile-hue,transparent); flex:none; }
-  .chip .big{ position:relative; font-family:var(--native); font-size:14px; letter-spacing:0; text-transform:none; color:var(--ink); }
-  .chip:hover{ border-color:#34343d; box-shadow:0 10px 26px -14px var(--tile-hue,#34343d); }
+  .chipwrap{ position:relative; flex:none; display:flex; align-items:stretch; overflow:hidden;
+    background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:10px;
+    transition:border-color .14s, box-shadow .18s; }
+  .chipwrap:hover{ border-color:var(--line-hi); }
+  .chipwrap.on{ border-color:transparent; box-shadow:inset 0 0 0 1px var(--accent); }
+
+  .chip{ position:relative; display:flex; align-items:center; gap:9px; font-family:inherit; font-size:var(--fs-md); color:var(--faint); background:none; border:none; padding:9px 13px; cursor:pointer; white-space:nowrap; transition:color .14s, transform .08s; }
+  .chip .dots{ position:absolute; inset:0; opacity:0; transition:opacity .25s; background-image:radial-gradient(currentColor .9px, transparent 1.1px); background-size:7px 7px; color:var(--accent); -webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 82%); pointer-events:none; }
+  .chip .swatch{ position:relative; width:7px; height:7px; border-radius:50%; background:var(--line-hi); flex:none; transition:background .14s, box-shadow .14s; }
+  .chip .big{ position:relative; font-family:var(--native); font-size:var(--fs-md); font-weight:500; color:var(--muted); }
+  .chip:hover .big{ color:var(--ink); }
   .chip:active{ transform:translateY(1px); }
-  .chip.on{ border-color:transparent; box-shadow:inset 0 0 0 1px var(--tile-hue,var(--accent)); color:var(--tile-hue,var(--accent)); }
-  .chip.on .dots{ opacity:.42; animation:tiledrift 7s linear infinite; }
-  .chip.on .big{ color:#fff; }
-  .chip.add{ border-style:dashed; border-color:#2a2a31; color:var(--faint); }
-  .chip.add:hover{ border-color:var(--accent); color:var(--accent); box-shadow:none; }
+  /* selection is amber here too — the same state wears the same colour everywhere */
+  .chip[aria-pressed="true"] .swatch{ background:var(--accent); box-shadow:0 0 7px var(--accent); }
+  .chip[aria-pressed="true"] .big{ color:var(--ink); }
+  .chip[aria-pressed="true"] .dots{ opacity:.4; animation:tiledrift 7s linear infinite; }
+
+  /* right half of the split control: a hairline divider, no frame of its own */
+  .pen{ display:grid; place-items:center; width:30px; font-size:12px; color:var(--ghost);
+    background:none; border:none; border-left:1px solid var(--line); cursor:pointer;
+    transition:color .14s, background .14s; }
+  .pen svg{ width:13px; height:13px; }
+  .pen:hover,.pen:focus-visible{ color:var(--accent); background:rgba(255,255,255,.045); }
+  .chipwrap.on .pen{ color:var(--muted); border-left-color:rgba(255,181,112,.3); }
+
+  /* "+ new" stands alone, so it carries its own dashed frame */
+  .chip.add{ background:rgba(13,13,17,.7); border:1px dashed #2a2a31; border-radius:10px; color:var(--faint); padding:9px 14px; }
+  .chip.add:hover{ border-color:var(--accent); color:var(--accent); }
 
   .drop{ padding:13px 15px; }
 
-  .dateinp{ width:100%; font-family:var(--mono); font-size:12.5px; color:var(--ink); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:9px; padding:11px 14px; outline:none; transition:border-color .15s; }
+  .dateinp{ width:100%; font-family:inherit; font-size:var(--fs-lg); font-variant-numeric:tabular-nums; color:var(--ink); background:rgba(13,13,17,.82); border:1px solid var(--line); border-radius:9px; padding:11px 14px; outline:none; transition:border-color .15s; }
   .dateinp:hover{ border-color:#2a2a31; }
   .dateinp:focus{ border-color:var(--accent); }
   .dateinp::-webkit-calendar-picker-indicator{ filter:invert(.7) sepia(1) saturate(3) hue-rotate(330deg); cursor:pointer; }
 
-  .scriptbox{ width:100%; min-height:96px; resize:vertical; font-family:var(--sans); font-size:13.5px; line-height:1.55; color:var(--ink); background:linear-gradient(180deg,rgba(255,255,255,.018),transparent 36%), rgba(13,13,17,.82); backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:10px; padding:13px 15px; outline:none; transition:border-color .15s, box-shadow .15s; }
+  .scriptbox{ width:100%; min-height:96px; resize:vertical; font-family:var(--sans); font-size:var(--fs-md); line-height:1.55; color:var(--ink); background:linear-gradient(180deg,rgba(255,255,255,.018),transparent 36%), rgba(13,13,17,.82); backdrop-filter:blur(3px); border:1px solid var(--line); border-radius:10px; padding:13px 15px; outline:none; transition:border-color .15s, box-shadow .15s; }
   .scriptbox:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
   .scriptbox::placeholder{ color:var(--faint); }
   .script-wrap{ position:relative; }
   .script-wrap .scriptbox{ padding-bottom:34px; }
   .script-foot{ position:absolute; left:14px; right:14px; bottom:11px; display:flex; align-items:center; justify-content:space-between; pointer-events:none; }
-  .script-foot .char{ font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+  .script-foot .char{ font-family:var(--mono); font-size:var(--fs-sm); color:var(--faint); font-variant-numeric:tabular-nums; }
   .script-foot .spark{ font-size:12px; color:var(--accent); opacity:.5; }
 
   /* script is the rail centerpiece — give it real height */
   #scriptInput{ min-height:248px; }
 
   .run-btn .recdot{ width:9px; height:9px; border-radius:50%; background:#c0362b; box-shadow:0 0 6px rgba(192,54,43,.8); flex:none; }
-  .run-btn:disabled .recdot{ background:#8a8377; box-shadow:none; }
-  .run-hint{ margin-top:10px; text-align:center; font-family:var(--mono); font-size:11px; color:var(--faint); cursor:pointer; }
-  .run-hint .lk{ color:var(--accent); text-decoration:underline; }
-  .run-hint:hover .lk{ filter:brightness(1.1); }
+  .run-btn:disabled .recdot{ background:#4a4740; box-shadow:none; }
+  /* one live region under the CTA carries every blocking reason and error, so the
+     button label never has to double as an error channel */
+  .run-msg{ min-height:18px; margin-top:10px; text-align:center; font-size:var(--fs-md); color:var(--muted); }
+  .run-msg.err{ color:var(--err); }
+  .run-msg:empty{ min-height:0; margin-top:0; }
+  .run-msg .lk{ color:var(--accent); background:none; border:none; padding:0 0 1px; font:inherit; text-decoration:underline; cursor:pointer; }
+  .run-msg .lk:hover{ filter:brightness(1.12); }
 
-  /* result bits inside monitor/tray */
-  .badge{ display:inline-flex; align-items:center; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px; border-radius:999px; background:rgba(140,140,150,.12); color:var(--muted); }
+  /* queue row status — was inline styles in JS while this CSS sat unused */
+  .badge{ display:inline-flex; align-items:center; font-size:var(--fs-sm); font-weight:500; padding:3px 10px; border-radius:999px; background:rgba(168,168,180,.12); color:var(--muted); }
   .badge.completed{ background:rgba(124,245,196,.12); color:var(--ok); }
   .badge.partial{ background:rgba(255,181,112,.14); color:var(--accent); }
   .badge.failed{ background:rgba(255,138,128,.13); color:var(--err); }
-  .reslinks{ position:absolute; left:0; right:0; bottom:0; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; padding:9px 12px; background:linear-gradient(transparent,rgba(0,0,0,.7)); font-family:var(--mono); font-size:11px; }
-  .reslinks a{ color:var(--accent); text-decoration:none; }
-  .reslinks a:hover{ text-decoration:underline; }
+  .qrow{ display:grid; grid-template-columns:56px minmax(0,1fr) auto auto auto; align-items:center; gap:12px; padding:9px 2px; border-bottom:1px solid var(--line-2); font-size:var(--fs-md); }
+  .qrow .qi{ font-family:var(--mono); font-size:var(--fs-sm); color:var(--faint); }
+  .qrow .qt{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); }
+  .qrow .qnas{ font-family:var(--mono); font-size:var(--fs-xs); color:var(--faint); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qrow .qdl{ font-family:inherit; font-size:var(--fs-md); font-weight:500; color:var(--accent); text-decoration:none; }
+  .qrow .qdl:hover{ text-decoration:underline; }
+  .qrow .qerr{ font-size:var(--fs-md); color:var(--err); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   /* category editor drawer */
   .drawer-scrim{ position:fixed; inset:0; z-index:40; background:rgba(4,4,6,.55); backdrop-filter:blur(3px); opacity:0; pointer-events:none; transition:opacity .2s; }
   .drawer-scrim.open{ opacity:1; pointer-events:auto; }
   .drawer{ position:fixed; top:0; right:0; z-index:41; height:100vh; width:min(440px,92vw); background:rgba(12,12,16,.96); backdrop-filter:blur(14px); border-left:1px solid var(--line); padding:26px 26px 22px; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .26s cubic-bezier(.4,0,.2,1); overflow-y:auto; }
   .drawer.open{ transform:translateX(0); }
-  .drawer h2{ font-family:var(--sans); font-weight:600; font-size:16px; letter-spacing:-.02em; margin-bottom:3px; }
-  .drawer .sub{ font-family:var(--mono); font-size:11px; color:var(--faint); margin-bottom:22px; }
-  .drawer .fld{ display:flex; flex-direction:column; gap:9px; margin-bottom:20px; }
-  .drawer .fld textarea{ min-height:120px; }
-  .drawer .actions{ margin-top:auto; padding-top:18px; border-top:1px solid var(--line); display:flex; align-items:center; gap:10px; }
-  .drawer .del{ font-family:var(--mono); font-size:11px; color:var(--faint); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 13px; cursor:pointer; transition:all .14s; }
-  .drawer .del:hover{ color:var(--err); border-color:var(--err); }
+  .drawer h2{ font-family:var(--sans); font-weight:600; font-size:var(--fs-xl); letter-spacing:-.02em; margin-bottom:3px; }
+  .drawer .sub{ font-size:var(--fs-md); color:var(--faint); }
+  .dhead{ display:flex; align-items:flex-start; gap:12px; margin-bottom:24px; }
+  .dhead > div{ flex:1; min-width:0; }
+  .dclose{ flex:none; display:grid; place-items:center; width:30px; height:30px; font-size:13px; color:var(--faint); background:none; border:1px solid transparent; border-radius:8px; cursor:pointer; transition:color .14s, background .14s; }
+  .dclose:hover{ color:var(--ink); background:rgba(255,255,255,.05); }
+
+  .flrow{ display:flex; align-items:baseline; gap:10px; }
+  .flrow .flbl{ flex:1; min-width:0; }
+  /* these prompts run long — show the length so it is not a surprise */
+  .fcount{ flex:none; font-family:var(--mono); font-size:var(--fs-sm); color:var(--ghost); font-variant-numeric:tabular-nums; }
+  .dirty{ font-size:var(--fs-md); color:var(--accent); }
+  .savebtn .kbd{ margin-left:8px; font-family:var(--mono); font-size:var(--fs-sm); opacity:.45; }
+  /* the prompts ARE this panel's content — they get the space, not the padding
+     below them. Previously they showed 4 of 12 lines behind an inner scrollbar
+     while 250px of the drawer sat empty. */
+  .drawer .fld{ display:flex; flex-direction:column; gap:9px; margin-bottom:18px; }
+  .drawer .fld.grow{ flex:1 1 0; min-height:150px; margin-bottom:16px; }
+  .drawer .fld.grow textarea{ flex:1; min-height:130px; resize:none; }
+  .drawer .actions{ flex:none; margin-top:6px; padding-top:18px; border-top:1px solid var(--line); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  /* secondary actions are all quiet by default; only Delete turns hostile on hover */
+  .drawer .del{ font-family:inherit; font-size:var(--fs-md); color:var(--faint); background:none; border:1px solid var(--line); border-radius:8px; padding:9px 13px; cursor:pointer; transition:color .14s, border-color .14s; }
+  .drawer .del:hover{ color:var(--ink); border-color:var(--line-hi); }
+  .drawer #edDelete:hover{ color:var(--err); border-color:var(--err); }
   .drawer .spacer{ flex:1; }
-  .drawer .cancel{ font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 14px; cursor:pointer; }
-  .drawer .cancel:hover{ color:var(--ink); border-color:#34343d; }
-  .drawer .savebtn{ font-family:var(--sans); font-weight:600; font-size:12.5px; color:#16130d; background:linear-gradient(#f4f1ea,#e3dfd4); border:none; border-radius:7px; padding:9px 18px; cursor:pointer; }
-  .drawer .savebtn:hover{ filter:brightness(1.03); }
-  .drawer .saved{ font-family:var(--mono); font-size:11px; color:var(--ok); opacity:0; transition:opacity .25s; }
-  .drawer .saved.show{ opacity:1; }
+  .drawer .savebtn{ font-family:var(--sans); font-weight:600; font-size:var(--fs-md); color:#17140f; background:#F4F1EA; border:none; border-radius:8px; padding:10px 18px; cursor:pointer;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.25); transition:background .14s, transform .1s var(--ease); }
+  .drawer .savebtn:hover{ background:#FFFDF7; }
+  .drawer .savebtn:active{ transform:scale(.98); }
+  .drawer .fmsg{ font-size:var(--fs-md); color:var(--err); min-height:15px; }
+  .drawer .fmsg:empty{ display:none; }
 
   /* popup / alert */
   .pop-scrim{ position:fixed; inset:0; z-index:50; background:rgba(4,4,6,.6); backdrop-filter:blur(4px); opacity:0; pointer-events:none; transition:opacity .2s; }
   .pop-scrim.open{ opacity:1; pointer-events:auto; }
   .pop{ position:fixed; z-index:51; top:50%; left:50%; width:min(380px,92vw); transform:translate(-50%,-46%) scale(.96); opacity:0; pointer-events:none; background:rgba(14,14,18,.97); backdrop-filter:blur(14px); border:1px solid var(--line); border-radius:14px; padding:26px 24px 20px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,.6); transition:opacity .2s, transform .2s cubic-bezier(.4,0,.2,1); }
   .pop.open{ opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
-  .pop-ic{ width:44px; height:44px; margin:0 auto 14px; display:grid; place-items:center; border-radius:50%; background:var(--accent-dim); border:1px solid rgba(255,181,112,.35); color:var(--accent); font-family:var(--mono); font-size:20px; }
-  .pop-title{ font-family:var(--sans); font-weight:600; font-size:15px; color:var(--ink); margin-bottom:7px; }
-  .pop-msg{ font-size:12.5px; line-height:1.55; color:var(--muted); margin-bottom:20px; }
+  .pop-ic{ width:44px; height:44px; margin:0 auto 14px; display:grid; place-items:center; border-radius:50%; background:var(--accent-dim); border:1px solid rgba(255,181,112,.35); color:var(--accent); font-size:20px; font-weight:600; }
+  .pop-title{ font-family:var(--sans); font-weight:600; font-size:var(--fs-lg); color:var(--ink); margin-bottom:7px; }
+  .pop-msg{ font-size:var(--fs-md); line-height:1.55; color:var(--muted); margin-bottom:20px; }
   .pop-actions{ display:flex; gap:9px; justify-content:center; }
-  .pop-dismiss{ font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--line); border-radius:7px; padding:8px 16px; cursor:pointer; }
-  .pop-dismiss:hover{ color:var(--ink); border-color:#34343d; }
-  .pop-action{ font-family:var(--sans); font-weight:600; font-size:12px; color:#16130d; background:linear-gradient(#f4f1ea,#e3dfd4); border:none; border-radius:7px; padding:9px 16px; cursor:pointer; }
-  .pop-action:hover{ filter:brightness(1.03); }
+  .pop-dismiss{ font-family:inherit; font-size:var(--fs-md); color:var(--muted); background:none; border:1px solid var(--line); border-radius:7px; padding:9px 16px; cursor:pointer; }
+  .pop-dismiss:hover{ color:var(--ink); border-color:var(--line-hi); }
+  .pop-action{ font-family:var(--sans); font-weight:600; font-size:var(--fs-md); color:#17140f; background:#F4F1EA; border:none; border-radius:8px; padding:10px 16px; cursor:pointer;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.25); transition:background .14s; }
+  .pop-action:hover{ background:#FFFDF7; }
+  .pop-ic.danger{ background:rgba(255,138,128,.12); border-color:rgba(255,138,128,.35); color:var(--err); }
+  .pop-action.danger{ color:#2a0f0d; background:linear-gradient(#ffb3ac,#ff8a80); }
 
   @media (max-width:880px){
     body{ overflow:auto; }
@@ -185,15 +301,15 @@
 </style>
 </head>
 <body>
-<canvas id="wave"></canvas>
+<canvas id="wave" aria-hidden="true"></canvas>
 <div class="scrim"></div>
 
 <div class="app">
   <header>
-    <div class="mark">autodub<span class="d">.</span></div>
+    <h1 class="mark">autodub<span class="d">.</span></h1>
     <div class="hstat">
-      <span class="seg"><span class="dotled"></span> session ready</span>
-      <span class="seg hide-sm">studio <b>video</b></span>
+      <span class="seg"><span class="dotled" id="dot"></span> <span id="sessTxt">checking config…</span></span>
+      <span class="seg hide-sm">config <b id="cfg">—</b></span>
     </div>
   </header>
 
@@ -205,38 +321,52 @@
         <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
         <div class="mbody" id="mbody">
           <div class="ph" id="mph">
-            <div class="phbig">NO SIGNAL</div>
-            <div class="phsm">drop an avatar here · or click to browse</div>
+            <div class="phbig">No avatar yet</div>
+            <div class="phsm">Drag an image here, or pick one below</div>
+            <div class="phrow">
+              <button type="button" class="phbtn" id="imgBrowse">Upload image</button>
+              <button type="button" class="phbtn" id="tpOpen">Reuse an avatar</button>
+            </div>
           </div>
         </div>
-        <div class="scan"></div>
-        <div class="mtag" id="mtag">standby</div>
+        <div class="scan" aria-hidden="true"></div>
+        <div class="mtag" id="mtag">No input</div>
         <div class="mfile" id="mfile" hidden>
           <span class="nm" id="imgName"></span>
           <span class="sz" id="imgSize"></span>
           <span class="gap"></span>
-          <button type="button" class="rep" id="imgReplace">↻ replace</button>
-          <button type="button" class="rm" id="imgRm" title="remove">✕</button>
+          <button type="button" class="rep" id="imgReplace">Replace</button>
+          <button type="button" class="rm" id="imgRm" aria-label="Remove avatar image">✕</button>
         </div>
       </div>
 
       <div class="transport">
-        <span class="rec" id="rec"></span>
-        <span class="tstate" id="tstate">standby</span>
+        <span class="rec" id="rec" aria-hidden="true"></span>
+        <span class="tstate" id="tstate" role="status" aria-live="polite">Standby</span>
         <span class="tstage" id="tstage"></span>
         <span class="tcode" id="tcode">00:00</span>
-        <a class="logtoggle dlbtn" id="dlBtn" download hidden>↓ download</a>
-        <button class="logtoggle" id="logToggle">logs<span class="n" id="logBadge"></span></button>
+        <a class="logtoggle dlbtn" id="dlBtn" download hidden>Download</a>
+        <button class="logtoggle strong" id="logToggle" aria-expanded="false" aria-controls="tray">Logs<span class="n" id="logBadge"></span></button>
       </div>
 
-      <div class="tray" id="tray">
+      <!-- Renders that finished on HeyGen but died on the download/NAS tail are
+           re-runnable. The endpoints existed all along; this is the way in. -->
+      <div class="recover" id="recover" hidden>
+        <span class="ric" aria-hidden="true">⟲</span>
+        <span class="rtx"><b id="recoverN">0</b> <span id="recoverWord">renders</span> finished on HeyGen but never reached the NAS.</span>
+        <button type="button" class="recbtn" id="recoverBtn">Recover</button>
+      </div>
+
+      <div class="naspath" id="nasPath" hidden></div>
+
+      <div class="tray" id="tray" inert>
         <div class="trayhead">
-          <button class="tt on" data-tray="logs" type="button">logs<span class="n" id="logN">0</span></button>
-          <button class="tt" data-tray="queue" type="button">queue<span class="n" id="queueN">0</span></button>
+          <button class="tt on" data-tray="logs" type="button">Logs<span class="n" id="logN">0</span></button>
+          <button class="tt" data-tray="queue" type="button">Queue<span class="n" id="queueN">0</span></button>
         </div>
         <div class="traybody">
-          <div class="logs" data-traypane="logs" id="logs"><div class="row"><span class="p">$</span><span class="mut">waiting for a render…</span></div></div>
-          <div class="feed" data-traypane="queue" id="queue" hidden><div class="empty"><div class="sm">batch rows appear here during a run.</div></div></div>
+          <div class="logs" data-traypane="logs" id="logs"><div class="row"><span class="p">$</span><span class="mut">Waiting for a render</span></div></div>
+          <div class="feed" data-traypane="queue" id="queue" hidden><div class="empty"><div class="sm">Batch rows appear here during a run</div></div></div>
         </div>
       </div>
     </section>
@@ -244,58 +374,71 @@
     <!-- right: control rail -->
     <aside class="rail">
       <div class="railscroll">
+        <!-- Two segmented controls side by side, so each still needs a name to tell
+             them apart. The decorative hairline rule and the mono caps are gone. -->
         <div class="toolrow">
-          <div class="tool">
-            <div class="lbl">mode<span class="r"></span></div>
+          <div class="tool primary">
+            <span class="flbl">Mode</span>
             <div class="seg2" id="modeSeg">
               <span class="seg-ind" id="segInd"></span>
-              <button type="button" class="on" data-mode="single">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>single
+              <button type="button" class="on" data-mode="single" aria-pressed="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>Single
               </button>
-              <button type="button" data-mode="batch">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="3" rx="1"/><rect x="2" y="14" width="20" height="3" rx="1"/><rect x="2" y="3" width="20" height="2" rx="1" opacity=".5"/></svg>batch
+              <button type="button" data-mode="batch" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="7" width="20" height="3" rx="1"/><rect x="2" y="14" width="20" height="3" rx="1"/><rect x="2" y="3" width="20" height="2" rx="1" opacity=".5"/></svg>Batch
               </button>
             </div>
           </div>
-          <div class="tool">
-            <div class="lbl">voice<span class="r"></span></div>
+          <div class="tool secondary">
+            <span class="flbl">Voice</span>
             <div class="seg2" id="charSeg">
-              <span class="seg-ind" id="charInd"></span>
-              <button type="button" class="on" data-char="indian">Indian</button>
-              <button type="button" data-char="us">US</button>
+              <span class="seg-ind" id="charInd" aria-hidden="true"></span>
+              <button type="button" class="on" data-char="indian" aria-pressed="true">Indian</button>
+              <button type="button" data-char="us" aria-pressed="false">US</button>
             </div>
           </div>
         </div>
 
-        <div class="lbl">category<span class="r"></span><span class="n">tap ✎ on a chip to edit</span></div>
-        <div class="chips" id="cats"></div>
+        <span class="flbl">Category</span>
+        <div class="chips" id="cats" role="group" aria-label="Prompt category"></div>
+
+        <!-- shared by both modes: the NAS folder every render of this run lands in -->
+        <label class="flbl" for="pubDate">NAS folder date</label>
+        <input type="date" id="pubDate" class="dateinp" />
 
         <div id="singleFields">
-          <div class="lbl">script<span class="r"></span><span class="n">avatar speaks</span></div>
+          <!-- no header: the placeholder already says what this is -->
           <div class="script-wrap">
             <textarea class="scriptbox" id="scriptInput" maxlength="1000" placeholder="Type the line the avatar should speak…"></textarea>
             <div class="script-foot"><span class="char" id="charCount">0 / 1000</span><span class="spark" aria-hidden="true">✦</span></div>
           </div>
+
+          <!-- the title IS the NAS filename; without it every render of the day
+               overwrites the one before it -->
+          <label class="flbl" for="titleInput">File name</label>
+          <div class="titlewrap">
+            <input type="text" id="titleInput" class="dateinp" maxlength="80" placeholder="e.g. aries_week32" />
+            <span class="ext" aria-hidden="true">.mp4</span>
+          </div>
         </div>
 
         <div id="batchFields" hidden>
-          <div class="lbl">publish<span class="r"></span><span class="n">folder date</span></div>
-          <input type="date" id="pubDate" class="dateinp" />
-          <div class="lbl">scripts<span class="r"></span><span class="n">.xlsx</span></div>
-          <div class="drop" id="xlsDrop">
-            <span class="ic" id="xlsIc">▤</span>
-            <div>
-              <div class="dm" id="xlsMain">Drop .xlsx or click to browse</div>
-              <div class="ds" id="xlsSub">columns: script, video_title (opt)</div>
-            </div>
+          <div class="dropwrap">
+            <button type="button" class="drop" id="xlsDrop" aria-describedby="xlsSub">
+              <span class="ic" id="xlsIc" aria-hidden="true">▤</span>
+              <span class="dtx">
+                <span class="dm" id="xlsMain">Drop .xlsx or click to browse</span>
+                <span class="ds" id="xlsSub">columns: script, video_title (opt)</span>
+              </span>
+            </button>
             <input type="file" id="xlsFile" accept=".xlsx" hidden />
           </div>
         </div>
       </div>
 
       <div class="railfoot">
-        <button class="run-btn" id="run"><span class="recdot"></span><span class="rlabel">Generate video</span></button>
-        <div class="run-hint" id="runHint" hidden>No category yet — <span class="lk">create one</span> to start</div>
+        <button class="run-btn" id="run"><span class="recdot" aria-hidden="true"></span><span class="rlabel">Generate video</span></button>
+        <div class="run-msg" id="runMsg" role="status" aria-live="polite"></div>
       </div>
     </aside>
   </main>
@@ -303,33 +446,65 @@
 
 <!-- category editor drawer -->
 <div class="drawer-scrim" id="drawerScrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true">
-  <h2 id="drawerTitle">New category</h2>
-  <div class="sub" id="drawerSub">video + motion prompt preset</div>
-  <div class="fld">
-    <div class="lbl" style="margin:0">name<span class="r"></span></div>
-    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. Horoscope" />
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" inert>
+  <div class="dhead">
+    <div>
+      <h2 id="drawerTitle">New category</h2>
+      <div class="sub" id="drawerSub">Video and motion prompt preset</div>
+    </div>
+    <button type="button" class="dclose" id="edClose" aria-label="Close">✕</button>
   </div>
+
   <div class="fld">
-    <div class="lbl" style="margin:0">video prompt<span class="r"></span><span class="n">how it should look/feel</span></div>
-    <textarea class="scriptbox" id="edVideo" placeholder="calm tone, soft cinematic lighting, natural head movement…"></textarea>
+    <label class="flbl" for="edLabel">Name</label>
+    <input type="text" class="dateinp" id="edLabel" placeholder="e.g. Horoscope" maxlength="40" />
+    <div class="fmsg" id="edErr"></div>
   </div>
-  <div class="fld">
-    <div class="lbl" style="margin:0">motion prompt<span class="r"></span><span class="n">optional</span></div>
+
+  <!-- These prompts run 800–1200 characters. Copying one and adjusting it is the
+       real workflow, so the fork lives next to the field instead of being a
+       retype-from-scratch job. -->
+  <div class="fld grow">
+    <div class="flrow">
+      <label class="flbl" for="edVideo">Video prompt <span class="hint">how it should look and feel</span></label>
+      <span class="fcount" id="edVideoCount">0</span>
+    </div>
+    <textarea class="scriptbox" id="edVideo" placeholder="Calm tone, soft cinematic lighting, natural head movement…"></textarea>
+  </div>
+  <div class="fld grow">
+    <div class="flrow">
+      <label class="flbl" for="edMotion">Motion prompt <span class="hint">optional</span></label>
+      <span class="fcount" id="edMotionCount">0</span>
+    </div>
     <textarea class="scriptbox" id="edMotion" placeholder="[body part] + [action] + [emotion/intensity]"></textarea>
   </div>
+
   <div class="actions">
-    <button type="button" class="del" id="edDelete">delete</button>
-    <span class="saved" id="edSaved">saved</span>
+    <button type="button" class="del" id="edDelete">Delete</button>
+    <button type="button" class="del" id="edReset" hidden>Reset to default</button>
+    <button type="button" class="del" id="edDuplicate" hidden>Duplicate</button>
     <span class="spacer"></span>
-    <button type="button" class="cancel" id="edCancel">close</button>
-    <button type="button" class="savebtn" id="edSave">Save</button>
+    <span class="dirty" id="edDirty" hidden>Unsaved</span>
+    <button type="button" class="savebtn" id="edSave">Save<span class="kbd" aria-hidden="true">⌘⏎</span></button>
+  </div>
+</aside>
+
+<!-- talking-photo picker: avatars already uploaded to HeyGen, so the same
+     reference image is not re-uploaded on every render -->
+<div class="drawer-scrim" id="tpScrim"></div>
+<aside class="drawer tpdrawer" id="tpDrawer" role="dialog" aria-modal="true" aria-labelledby="tpTitle" inert>
+  <h2 id="tpTitle">Reuse an avatar</h2>
+  <div class="sub">Already on HeyGen — no re-upload needed</div>
+  <div class="tpbody" id="tpBody"><div class="empty"><div class="sm">loading…</div></div></div>
+  <div class="actions">
+    <span class="spacer"></span>
+    <button type="button" class="cancel" id="tpCancel">close</button>
   </div>
 </aside>
 
 <!-- popup / alert -->
 <div class="pop-scrim" id="popScrim"></div>
-<div class="pop" id="pop" role="alertdialog" aria-modal="true" aria-labelledby="popTitle" aria-hidden="true">
+<div class="pop" id="pop" role="alertdialog" aria-modal="true" aria-labelledby="popTitle" aria-describedby="popMsg" inert>
   <div class="pop-ic" id="popIc" aria-hidden="true">!</div>
   <div class="pop-title" id="popTitle"></div>
   <div class="pop-msg" id="popMsg"></div>
@@ -339,6 +514,8 @@
   </div>
 </div>
 
+<script src="/static/wave.js?v=2"></script>
+<script src="/static/audio.js?v=2"></script>
 <script>
 (() => {
   "use strict";
@@ -346,19 +523,22 @@
   const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
   const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  // ── iridescent ramp (shared with autodub) ──
-  const STOPS = [[94,234,212],[125,211,252],[196,181,253],[253,230,138],[252,165,165],[240,171,252],[255,255,255]];
-  const RAMP = [];
-  for (let i = 0; i < 96; i++) { const f = i/95*(STOPS.length-1), a = Math.floor(f), b = Math.min(a+1, STOPS.length-1), t = f-a; RAMP.push(STOPS[a].map((c,k)=>Math.round(c+(STOPS[b][k]-c)*t))); }
+  // ── shared background + sound (static/wave.js, static/audio.js) ──
+  const wave = AutoDubWave.create($("#wave"), "iris");
+  const RAMP = AutoDubWave.RAMP;
+  const ping = (c, s, dur) => wave.ping(c, s, dur);
+  const sfx = AutoDubAudio.create({ enabled: true });
+  sfx.unlockOnFirstGesture();
+  const chord = () => sfx.chord();
 
-  // ── seed categories (the old hardcoded presets) ──
+  // ── seed categories ──
+  // Shipped presets. localStorage holds only the user's changes on top of these
+  // (see the store below), so editing this array ships new copy immediately —
+  // except to a user who personally edited that same category.
   const SEED = [
     { id: "sunsign", label: "Horoscope",
       video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
       motion_prompt: "A serene spiritual guide delivering a divine message. Movement style: Graceful, slow, and highly empathetic. Maintain a gentle, compassionate smile throughout with micro-expressions of wisdom. Head movements should be fluid—incorporating soft lateral tilts, slow meditative nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile). Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in a fluid, non-repetitive 'open-palm' gesture near the chest area to convey openness and peace. The overall presence should be calm, avoiding any sudden jerks, reflecting a meditative state of being." },
-    { id: "birthday", label: "Birthday",
-      video_prompt: "The character is speaking directly to the camera in a warm, affectionate, and heartfelt tone, delivering a personal birthday greeting and an uplifting forecast for the year ahead. Visuals: Soft cinematic lighting with a warm, celebratory glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts that convey friendliness and care. Expressions: A genuine, joyful, and tender smile with micro-expressions shifting between celebratory warmth, thoughtful reflection, and encouraging optimism. Eyes: Soft, sparkling, and prolonged eye contact with the camera, natural blinking, and 'smiling eyes' (Duchenne smile) to convey sincere well-wishes. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures near the chest to convey affection, blessings, and warmth, avoiding stiffness.",
-      motion_prompt: "A warm, affectionate presenter delivering a heartfelt birthday greeting and a hopeful year-ahead forecast. Movement style: Graceful, gentle, and emotionally engaged. Maintain a genuine, joyful smile throughout with micro-expressions that shift between celebratory warmth (for the wishes), thoughtful curiosity (for the trivia and traits), and encouraging optimism (for career, finance, relationships, and health segments). Head movements should be fluid—incorporating soft lateral tilts, slow nods of affirmation, and a subtle, rhythmic breathing pattern. Eyes should remain warm and focused on the camera with natural blinking and 'smiling eyes' (Duchenne smile), softening further during the affectionate closing message. Mouth movements must be highly articulated for Hindi phonemes, showing realistic jaw tension and natural teeth visibility. Hands should move in fluid, non-repetitive 'open-palm' gestures near the chest area to convey blessings, sincerity, and care. The overall presence should feel personal, celebratory, and reassuring—like a close well-wisher offering heartfelt birthday blessings." },
   ];
 
   // ── category store (localStorage; DB later) ──
@@ -371,6 +551,10 @@
   const ACTIVE_KEY = "autodub_video_active_cat";
   const CAT_FIELDS = ["label", "video_prompt", "motion_prompt"];
   const SEED_IDS = new Set(SEED.map((c) => c.id));
+  // Ids that used to ship as presets. They must stay listed: a retired id is no
+  // longer in SEED_IDS, so without this the migration path and any stored `user`
+  // array would treat it as a user-created category and resurrect it.
+  const RETIRED_IDS = new Set(["birthday"]);
   const seedById = (id) => SEED.find((c) => c.id === id);
   let cats = [];
   let activeId = null;
@@ -382,7 +566,9 @@
     try {
       const old = JSON.parse(localStorage.getItem(CATS_KEY));
       if (Array.isArray(old) && old.length) {
-        const user = old.filter((c) => c && c.id && !SEED_IDS.has(c.id)).map((c) => ({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt }));
+        const user = old
+          .filter((c) => c && c.id && !SEED_IDS.has(c.id) && !RETIRED_IDS.has(c.id))
+          .map((c) => ({ id: c.id, label: c.label, video_prompt: c.video_prompt, motion_prompt: c.motion_prompt }));
         const deleted = SEED.map((c) => c.id).filter((id) => !old.some((c) => c && c.id === id));
         return { overrides: {}, deleted, user };
       }
@@ -396,7 +582,7 @@
     const overrides = s.overrides && typeof s.overrides === "object" ? s.overrides : {};
     const out = [];
     SEED.forEach((c) => { if (!deleted.has(c.id)) out.push({ ...c, ...(overrides[c.id] || {}) }); });
-    if (Array.isArray(s.user)) s.user.forEach((c) => { if (c && c.id) out.push({ ...c }); });
+    if (Array.isArray(s.user)) s.user.forEach((c) => { if (c && c.id && !RETIRED_IDS.has(c.id)) out.push({ ...c }); });
     return out;
   }
 
@@ -426,26 +612,44 @@
   function renderCats() {
     catsEl.innerHTML = "";
     cats.forEach((c, i) => {
-      const rgb = RAMP[Math.floor(i / Math.max(1, cats.length) * 95)];
-      HUE[c.id] = rgb;
+      // hue still identifies the category to the background canvas; it no longer
+      // colours the selected state, which is amber like every other active control
+      HUE[c.id] = RAMP[Math.floor(i / Math.max(1, cats.length) * 95)];
+      const wrap = document.createElement("div");
+      // the wrapper carries the frame and the selected ring; the chip carries the state
+      wrap.className = "chipwrap" + (c.id === activeId ? " on" : "");
       const el = document.createElement("button");
-      el.type = "button"; el.className = "chip" + (c.id === activeId ? " on" : ""); el.dataset.id = c.id;
-      el.style.setProperty("--tile-hue", `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`);
-      el.innerHTML = `<span class="dots"></span><span class="swatch"></span><span class="big">${escapeHtml(c.label)}</span><span class="pen" title="edit category">✎</span>`;
-      el.addEventListener("click", (e) => { if (e.target.closest(".pen")) { openEditor(c.id); return; } selectCat(c.id); });
-      catsEl.appendChild(el);
+      el.type = "button"; el.className = "chip"; el.dataset.id = c.id;
+      el.setAttribute("aria-pressed", c.id === activeId ? "true" : "false");
+      el.innerHTML = `<span class="dots" aria-hidden="true"></span><span class="swatch" aria-hidden="true"></span><span class="big">${escapeHtml(c.label)}</span>`;
+      el.addEventListener("click", () => selectCat(c.id));
+      const pen = document.createElement("button");
+      pen.type = "button"; pen.className = "pen";
+      // SVG rather than the ✎ glyph, which renders at wildly different weights
+      // across fonts; this matches the mode-segment icons.
+      pen.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+      pen.setAttribute("aria-label", `Edit ${c.label} prompts`);
+      pen.title = `Edit ${c.label} prompts`;
+      pen.addEventListener("click", () => openEditor(c.id));
+      wrap.append(el, pen);
+      catsEl.appendChild(wrap);
     });
     const add = document.createElement("button");
-    add.type = "button"; add.className = "chip add"; add.innerHTML = "+ new";
+    add.type = "button"; add.className = "chip add"; add.textContent = "+ new";
+    add.setAttribute("aria-label", "New prompt category");
     add.addEventListener("click", () => openEditor(null));
     catsEl.appendChild(add);
     refreshRunState();
   }
   function selectCat(id) {
     activeId = id;
-    document.querySelectorAll(".chip").forEach((t) => t.classList.toggle("on", t.dataset.id === id));
+    document.querySelectorAll(".chip[data-id]").forEach((t) => {
+      const on = t.dataset.id === id;
+      t.setAttribute("aria-pressed", on ? "true" : "false");
+      if (t.parentElement) t.parentElement.classList.toggle("on", on);
+    });
     const c = activeCat(); if (c) ping(HUE[c.id], 1, 1000);
-    persist();
+    persist(); refreshRunState();
   }
   // ── mode (single / batch) ──
   let isBatch = false;
@@ -456,10 +660,14 @@
   addEventListener("resize", updateSegInd);
   function setMode(batch) {
     isBatch = batch;
-    document.querySelectorAll("#modeSeg button").forEach((b) => b.classList.toggle("on", (b.dataset.mode === "batch") === batch));
+    document.querySelectorAll("#modeSeg button").forEach((b) => {
+      const on = (b.dataset.mode === "batch") === batch;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
     updateSegInd();
     singleFields.hidden = batch; batchFields.hidden = !batch;
     setRunLabel(batch ? "Generate batch" : "Generate video");
+    refreshRunState();
   }
 
   // ── voice / character toggle ──
@@ -469,7 +677,10 @@
   function updateCharInd() { const on = $("#charSeg button.on"); if (on && charInd) { charInd.style.left = on.offsetLeft + "px"; charInd.style.width = on.offsetWidth + "px"; } }
   function setCharacter(val) {
     character = val;
-    document.querySelectorAll("#charSeg button").forEach((b) => b.classList.toggle("on", b.dataset.char === val));
+    document.querySelectorAll("#charSeg button").forEach((b) => {
+      const on = b.dataset.char === val;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
     updateCharInd();
     localStorage.setItem(CHAR_KEY, val);
   }
@@ -478,35 +689,78 @@
 
   // ── char counter ──
   const scriptInput = $("#scriptInput"), charCount = $("#charCount");
-  scriptInput.addEventListener("input", () => { charCount.textContent = `${scriptInput.value.length} / 1000`; });
+  scriptInput.addEventListener("input", () => { charCount.textContent = `${scriptInput.value.length} / 1000`; refreshRunState(); });
+
+  // ── single-mode filename ──
+  // This is the NAS filename. The API defaults it to a constant, which means two
+  // single renders on one day resolve to the same DD-MM-YYYY/<title>.mp4 and the
+  // second overwrites the first. Sanitised here and always sent.
+  const titleInput = $("#titleInput");
+  const safeTitle = () => titleInput.value.trim().replace(/[\\/:*?"<>|]+/g, "_").replace(/\.mp4$/i, "");
+  titleInput.addEventListener("input", refreshRunState);
+
+  // ── where the finished clip landed ──
+  const nasPathEl = $("#nasPath");
+  function showNasPath(path) {
+    if (!path) { nasPathEl.hidden = true; return; }
+    nasPathEl.innerHTML = `saved to NAS <b>${escapeHtml(path)}</b>`;
+    nasPathEl.hidden = false;
+  }
 
   // ── monitor ──
   const monitor = $("#monitor"), mbody = $("#mbody"), mtag = $("#mtag");
   let stillURL = null;
+  // mtag names what the monitor is SHOWING; the transport names what the JOB is
+  // doing. They used to both say "standby", which read as one fact stated twice.
   function showPlaceholder() {
     monitor.classList.remove("live");
-    mbody.innerHTML = `<div class="ph"><div class="phbig">NO SIGNAL</div><div class="phsm">drop an avatar here · or click to browse</div></div>`;
-    mtag.textContent = "standby"; mfile.hidden = true;
+    mbody.innerHTML = `<div class="ph"><div class="phbig">No avatar yet</div><div class="phsm">Drag an image here, or pick one below</div>`
+      + `<div class="phrow"><button type="button" class="phbtn" id="imgBrowse">Upload image</button>`
+      + `<button type="button" class="phbtn" id="tpOpen">Reuse an avatar</button></div></div>`;
+    // this markup is re-created, so its handlers are re-bound with it
+    const b = $("#imgBrowse"); if (b) b.addEventListener("click", (e) => { e.stopPropagation(); if (!running) imgFile.click(); });
+    const t = $("#tpOpen"); if (t) t.addEventListener("click", (e) => { e.stopPropagation(); if (!running) openTp(); });
+    mtag.textContent = "No input"; mfile.hidden = true;
   }
   function showStill(tag) {
     monitor.classList.remove("live");
-    mbody.innerHTML = stillURL ? `<img class="still" src="${stillURL}" alt="reference avatar" />` : "";
-    mtag.textContent = tag || "standby"; mfile.hidden = !imageFile;
+    mbody.innerHTML = stillURL ? `<img class="still" src="${stillURL}" alt="Selected reference avatar" />` : "";
+    mtag.textContent = tag || "Reference";
+    mfile.hidden = !(imageFile || talkingPhotoId);
   }
-  function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "rec ● rendering"; mfile.hidden = true; }
+  function showRendering() { monitor.classList.add("live"); if (stillURL && !mbody.querySelector(".still")) mbody.innerHTML = `<img class="still" src="${stillURL}" alt="" />`; mtag.textContent = "Rendering"; mfile.hidden = true; }
   function showVideo(url) {
     monitor.classList.remove("live");
     mbody.innerHTML = `<video class="feed" src="${url}" controls autoplay playsinline></video>`;
-    mtag.textContent = "playback"; mfile.hidden = true;
+    mtag.textContent = "Playback"; mfile.hidden = true;
+    // A rendered job whose file did not land is a real case here. Note that a
+    // truncated or undecodable file does NOT reliably fire `error` — Chrome sits
+    // at networkState=LOADING, readyState=0 forever and shows a dead spinner. So
+    // give up on a metadata timeout as well as on an explicit error.
+    const v = mbody.querySelector("video");
+    if (!v) return;
+    let settled = false;
+    const giveUp = (why) => {
+      if (settled) return; settled = true;
+      clearTimeout(timer);
+      showStill("Clip unavailable");
+      addLog(`could not play ${url} (${why})`, "error");
+    };
+    const timer = setTimeout(() => giveUp("no metadata after 12s"), 12000);
+    v.addEventListener("loadedmetadata", () => { settled = true; clearTimeout(timer); }, { once: true });
+    v.addEventListener("error", () => giveUp("media error"), { once: true });
   }
 
   // ── transport ──
   const rec = $("#rec"), tstate = $("#tstate"), tstage = $("#tstage"), tcode = $("#tcode");
   let clockTimer = null, t0 = 0;
+  const titleCase = (t) => String(t).charAt(0).toUpperCase() + String(t).slice(1);
   function setTransport(state, stage) {
+    // server statuses arrive lowercase; the transport is UI copy, so normalise here
+    state = titleCase(state);
     tstate.textContent = state;
     if (stage !== undefined) tstage.textContent = stage || "";
-    const live = state === "rendering" || state === "submitting";
+    const live = state === "Rendering" || state === "Submitting";
     rec.classList.toggle("on", live);
   }
   function startClock() { t0 = performance.now(); stopClock(); clockTimer = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); tcode.textContent = `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }, 500); }
@@ -530,6 +784,7 @@
   ["dragover", "dragenter"].forEach((e) => monitor.addEventListener(e, (ev) => { ev.preventDefault(); if (!running) monitor.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((e) => monitor.addEventListener(e, (ev) => { ev.preventDefault(); monitor.classList.remove("drag"); }));
   monitor.addEventListener("drop", (ev) => { if (running) return; const f = ev.dataTransfer.files[0]; if (f) onImage(f); });
+  $("#imgBrowse").addEventListener("click", (e) => { e.stopPropagation(); if (!running) imgFile.click(); });
   $("#imgReplace").addEventListener("click", (e) => { e.stopPropagation(); if (!running) imgFile.click(); });
   $("#imgRm").addEventListener("click", (e) => { e.stopPropagation(); if (!running) clearImage(); });
   function onImage(file) {
@@ -538,15 +793,86 @@
     if (stillURL) URL.revokeObjectURL(stillURL);
     stillURL = URL.createObjectURL(file);
     imgName.textContent = file.name; imgSize.textContent = `${(file.size/1024).toFixed(0)} KB`;
-    if (!running) showStill("standby");
+    if (!running) showStill("Reference");
     const c = activeCat(); ping(c ? HUE[c.id] : [255,181,112], 0.9, 900);
+    refreshRunState();
   }
   function clearImage() {
-    imageFile = null;
+    imageFile = null; talkingPhotoId = null;
     if (stillURL) { URL.revokeObjectURL(stillURL); stillURL = null; }
     imgFile.value = "";
     if (!running) showPlaceholder();
+    refreshRunState();
   }
+
+  // ── reuse an avatar already on HeyGen ──
+  // The API has always accepted talking_photo_id instead of an image upload; the
+  // UI never offered it, so the same reference was re-uploaded on every render.
+  let talkingPhotoId = null;
+  const tpDrawer = $("#tpDrawer"), tpScrim = $("#tpScrim"), tpBody = $("#tpBody");
+  const tpTrap = trapTab(tpDrawer);
+  let tpLastFocus = null;
+  function openTp() {
+    tpLastFocus = document.activeElement;
+    tpDrawer.removeAttribute("inert");
+    tpDrawer.classList.add("open"); tpScrim.classList.add("open");
+    tpDrawer.addEventListener("keydown", tpTrap);
+    loadTalkingPhotos();
+    setTimeout(() => $("#tpCancel").focus(), 60);
+  }
+  function closeTp() {
+    tpDrawer.classList.remove("open"); tpScrim.classList.remove("open");
+    tpDrawer.removeEventListener("keydown", tpTrap);
+    tpDrawer.setAttribute("inert", "");
+    restoreFocus(tpLastFocus, () => $("#imgBrowse"));
+    tpLastFocus = null;
+  }
+  tpScrim.addEventListener("click", closeTp);
+  $("#tpCancel").addEventListener("click", closeTp);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && tpDrawer.classList.contains("open")) closeTp(); });
+
+  async function loadTalkingPhotos() {
+    tpBody.innerHTML = `<div class="empty"><div class="sm">loading avatars…</div></div>`;
+    try {
+      const r = await fetch("/video/heygen/talking-photos");
+      if (!r.ok) throw new Error(await r.text() || `HTTP ${r.status}`);
+      const items = (await r.json()).items || [];
+      if (!items.length) {
+        tpBody.innerHTML = `<div class="empty"><div class="big">No avatars yet.</div><div class="sm">upload an image once and it appears here.</div></div>`;
+        return;
+      }
+      const grid = document.createElement("div"); grid.className = "tpgrid";
+      items.forEach((it) => {
+        // HeyGen returns talking_photo_id / name / preview_url; the others are
+        // tolerated in case the shape shifts between API versions
+        const id = it.talking_photo_id || it.id || "";
+        const name = it.name || it.talking_photo_name || id.slice(0, 8);
+        const url = it.preview_url || it.preview_image_url || it.image_url || "";
+        const card = document.createElement("button");
+        card.type = "button"; card.className = "tpcard";
+        card.setAttribute("aria-label", `Use avatar ${name}`);
+        card.innerHTML = (url ? `<img src="${escapeHtml(url)}" alt="" />` : `<span class="tpnoimg">no preview</span>`)
+          + `<span class="tpn">${escapeHtml(name)}</span>`;
+        card.addEventListener("click", () => useTalkingPhoto(id, name, url));
+        grid.appendChild(card);
+      });
+      tpBody.innerHTML = ""; tpBody.appendChild(grid);
+    } catch (e) {
+      tpBody.innerHTML = `<div class="empty"><div class="big">Could not load avatars.</div><div class="sm">${escapeHtml(e.message)}</div></div>`;
+    }
+  }
+
+  function useTalkingPhoto(id, name, url) {
+    if (!id) return;
+    talkingPhotoId = id; imageFile = null; imgFile.value = "";
+    if (stillURL) { URL.revokeObjectURL(stillURL); stillURL = null; }
+    stillURL = url || null;
+    imgName.textContent = name; imgSize.textContent = "on HeyGen";
+    if (!running) showStill("Reference");
+    const c = activeCat(); ping(c ? HUE[c.id] : [255,181,112], 0.9, 900);
+    closeTp(); refreshRunState();
+  }
+  $("#tpOpen").addEventListener("click", (e) => { e.stopPropagation(); if (!running) openTp(); });
 
   // ── excel drop ──
   let excelFile = null;
@@ -556,23 +882,56 @@
   ["dragover", "dragenter"].forEach((e) => xlsDrop.addEventListener(e, (ev) => { ev.preventDefault(); xlsDrop.classList.add("over"); }));
   ["dragleave", "drop"].forEach((e) => xlsDrop.addEventListener(e, (ev) => { ev.preventDefault(); xlsDrop.classList.remove("over"); }));
   xlsDrop.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onExcel(f); });
-  function onExcel(file) {
+  // batch_excel.py requires a `script` column. Checking it here means a wrong
+  // sheet is caught at drop time instead of after the operator commits the run.
+  const HEYGEN_REQUIRED = ["script"];
+  let excelProblem = null;
+  async function onExcel(file) {
     if (!file.name.toLowerCase().endsWith(".xlsx")) { xlsSub.textContent = "only .xlsx allowed"; return; }
-    excelFile = file; xlsDrop.classList.add("loaded"); xlsIc.textContent = "✓";
-    xlsMain.textContent = file.name; xlsSub.textContent = `${(file.size/1024).toFixed(0)} KB · ready`;
+    excelFile = file; excelProblem = null;
+    xlsDrop.classList.add("loaded"); xlsIc.textContent = "✓";
+    xlsMain.textContent = file.name; xlsSub.textContent = `${(file.size/1024).toFixed(0)} KB · reading…`;
+    refreshRunState();
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await fetch("/batch/preview-excel", { method: "POST", body: fd });
+      if (!r.ok) throw new Error("preview failed");
+      const rows = (await r.json()).rows || [];
+      const headers = (rows[0] || []).map((h) => String(h).trim().toLowerCase());
+      const missing = HEYGEN_REQUIRED.filter((h) => !headers.includes(h));
+      if (missing.length) {
+        excelProblem = `sheet is missing column: ${missing.join(", ")}`;
+        xlsDrop.classList.remove("loaded"); xlsIc.textContent = "!";
+        xlsSub.textContent = excelProblem;
+      } else {
+        xlsSub.textContent = `${Math.max(0, rows.length - 1)} rows · ready`;
+      }
+    } catch (_) {
+      xlsSub.textContent = `${(file.size/1024).toFixed(0)} KB · ready`;
+    }
+    refreshRunState();
   }
 
+  // local date, not UTC — toISOString() showed yesterday's publish folder to an
+  // IST operator working before 05:30
   const pubDate = $("#pubDate");
-  try { pubDate.value = new Date().toISOString().slice(0, 10); } catch (_) {}
+  try { const d = new Date(); pubDate.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; } catch (_) {}
 
   // ── tray (logs / queue) ──
   const tray = $("#tray"), logToggle = $("#logToggle");
-  logToggle.addEventListener("click", () => tray.classList.toggle("open"));
+  // a collapsed tray is max-height:0, which hides it visually but leaves its tabs
+  // focusable — inert is what actually takes them out of the keyboard path
+  function setTrayOpen(open) {
+    tray.classList.toggle("open", open);
+    if (open) tray.removeAttribute("inert"); else tray.setAttribute("inert", "");
+    logToggle.setAttribute("aria-expanded", String(open));
+  }
+  logToggle.addEventListener("click", () => setTrayOpen(!tray.classList.contains("open")));
   document.querySelectorAll(".trayhead .tt").forEach((t) => t.addEventListener("click", () => {
     document.querySelectorAll(".trayhead .tt").forEach((x) => x.classList.remove("on")); t.classList.add("on");
     document.querySelectorAll("[data-traypane]").forEach((p) => { p.hidden = p.dataset.traypane !== t.dataset.tray; });
   }));
-  const showTray = (pane) => { tray.classList.add("open"); $(`.trayhead .tt[data-tray="${pane}"]`).click(); };
+  const showTray = (pane) => { setTrayOpen(true); $(`.trayhead .tt[data-tray="${pane}"]`).click(); };
 
   const logsEl = $("#logs"), logN = $("#logN"), logBadge = $("#logBadge");
   let logCount = 0;
@@ -597,12 +956,14 @@
       const s = row.status || "pending";
       const id = "r" + row.row_index;
       let el = queueEl.querySelector(`[data-row="${row.row_index}"]`);
-      if (!el) { if (queueEl.querySelector(".empty")) queueEl.innerHTML = ""; el = document.createElement("div"); el.className = "fr"; el.dataset.row = row.row_index; queueEl.appendChild(el); }
-      const link = row.video_local_url ? `<a href="${row.video_local_url}" download style="color:var(--accent);text-decoration:none">download</a>`
-        : row.error ? `<span style="color:var(--err)">err</span>` : "—";
-      const nas = row.nas_path ? `<span class="fc" style="width:auto;color:var(--muted)" title="NAS: ${escapeHtml(row.nas_path)}">NAS: ${escapeHtml(row.nas_path)}</span>` : "";
-      const col = s === "completed" ? "var(--ok)" : s === "failed" ? "var(--err)" : "var(--muted)";
-      el.innerHTML = `<span class="fc">row ${row.row_index}</span><span class="ft" style="font-family:var(--sans)">${escapeHtml(row.video_title || "untitled")}</span><span class="fs" style="color:${col}">${s}</span>${nas}<span class="fc" style="width:auto">${link}</span>`;
+      if (!el) { if (queueEl.querySelector(".empty")) queueEl.innerHTML = ""; el = document.createElement("div"); el.className = "qrow"; el.dataset.row = row.row_index; queueEl.appendChild(el); }
+      // the status badge already says "failed"; this column carries the reason,
+      // not a second copy of the state
+      const link = row.video_local_url ? `<a class="qdl" href="${row.video_local_url}" download>download</a>`
+        : row.error ? `<span class="qerr" title="${escapeHtml(row.error)}">${escapeHtml(row.error)}</span>`
+        : `<span class="qi">—</span>`;
+      const nas = row.nas_path ? `<span class="qnas" title="NAS: ${escapeHtml(row.nas_path)}">NAS ${escapeHtml(row.nas_path)}</span>` : `<span></span>`;
+      el.innerHTML = `<span class="qi">row ${row.row_index}</span><span class="qt">${escapeHtml(row.video_title || "untitled")}</span>${nas}<span class="badge ${badgeCls(s)}">${titleCase(s)}</span>${link}`;
       if (s === "completed" && !feedSeen.has(id)) { feedSeen.add(id); const c = activeCat(); if (c) ping(HUE[c.id], 0.85, 850); if (row.video_local_url) { lastClipUrl = row.video_local_url; showVideo(lastClipUrl); } }
     });
     queueN.textContent = (state.rows || []).length;
@@ -610,99 +971,183 @@
 
   // ── category editor drawer ──
   const drawer = $("#drawer"), drawerScrim = $("#drawerScrim"), drawerTitle = $("#drawerTitle"), drawerSub = $("#drawerSub");
-  const edLabel = $("#edLabel"), edVideo = $("#edVideo"), edMotion = $("#edMotion"), edDelete = $("#edDelete"), edSaved = $("#edSaved");
+  const edLabel = $("#edLabel"), edVideo = $("#edVideo"), edMotion = $("#edMotion");
+  const edDelete = $("#edDelete"), edReset = $("#edReset"), edDuplicate = $("#edDuplicate");
+  const edErr = $("#edErr"), edDirty = $("#edDirty");
+  const edVideoCount = $("#edVideoCount"), edMotionCount = $("#edMotionCount");
   let editingId = null;
-  function openEditor(id) {
-    editingId = id;
-    const c = id ? cats.find((x) => x.id === id) : null;
-    drawerTitle.textContent = c ? "Edit category" : "New category";
-    drawerSub.textContent = c ? c.label : "video + motion prompt preset";
-    edLabel.value = c ? c.label : "";
-    edVideo.value = c ? c.video_prompt : "";
-    edMotion.value = c ? c.motion_prompt : "";
-    edDelete.style.display = c ? "" : "none";
-    drawer.classList.add("open"); drawerScrim.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
-    setTimeout(() => edLabel.focus(), 60);
+
+  // ── unsaved-change tracking ──
+  // These prompts are 800–1200 characters of hand-tuned text. Escape or a stray
+  // scrim click used to discard an edit silently, with no warning and no undo.
+  let snapshot = null;
+  const fields = () => ({ label: edLabel.value.trim(), video_prompt: edVideo.value.trim(), motion_prompt: edMotion.value.trim() });
+  const isDirty = () => snapshot !== null && JSON.stringify(fields()) !== JSON.stringify(snapshot);
+  function refreshEditorState() {
+    edDirty.hidden = !isDirty();
+    edVideoCount.textContent = edVideo.value.length || "";
+    edMotionCount.textContent = edMotion.value.length || "";
+    // a seed only differs from its shipped default once the user has edited it
+    const seed = editingId ? seedById(editingId) : null;
+    const cur = editingId ? cats.find((c) => c.id === editingId) : null;
+    edReset.hidden = !(seed && cur && CAT_FIELDS.some((k) => cur[k] !== seed[k]));
   }
-  function closeEditor() { drawer.classList.remove("open"); drawerScrim.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); }
+  [edLabel, edVideo, edMotion].forEach((el) => el.addEventListener("input", refreshEditorState));
+
+  // `inert` is what actually takes a closed panel out of the tab order. The old
+  // version only set aria-hidden, so keyboard focus could still land inside a
+  // drawer that was translated off-screen and hidden from screen readers.
+  let lastFocus = null;
+  // renderCats() replaces the chip that opened the drawer, and a programmatic
+  // open may have had no focused trigger at all — so restoring needs a fallback,
+  // otherwise focus is left stranded inside a now-inert panel.
+  function restoreFocus(el, fallback) {
+    if (el && el !== document.body && document.contains(el) && el.offsetParent !== null) { el.focus(); return; }
+    const f = fallback && fallback();
+    if (f) f.focus();
+  }
+  function trapTab(panel) {
+    return (e) => {
+      if (e.key !== "Tab") return;
+      const f = [...panel.querySelectorAll('button,input,textarea,select,a[href],[tabindex]:not([tabindex="-1"])')].filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+  }
+  const drawerTrap = trapTab(drawer);
+
+  // `from` optionally seeds the fields, which is how Duplicate works.
+  function openEditor(id, from) {
+    editingId = id;
+    lastFocus = document.activeElement;
+    const c = id ? cats.find((x) => x.id === id) : from || null;
+    drawerTitle.textContent = id ? "Edit category" : "New category";
+    drawerSub.textContent = id ? c.label : from ? `Copy of ${from.label}` : "Video and motion prompt preset";
+    edLabel.value = c ? (id ? c.label : `${c.label} copy`) : "";
+    edVideo.value = c ? c.video_prompt || "" : "";
+    edMotion.value = c ? c.motion_prompt || "" : "";
+    edDelete.hidden = !id; edDuplicate.hidden = !id; edErr.textContent = "";
+    snapshot = fields();          // baseline for the dirty check
+    refreshEditorState();
+    drawer.removeAttribute("inert");
+    drawer.classList.add("open"); drawerScrim.classList.add("open");
+    drawer.addEventListener("keydown", drawerTrap);
+    setTimeout(() => { edLabel.focus(); edLabel.select(); }, 60);
+  }
+
+  function reallyCloseEditor() {
+    drawer.classList.remove("open"); drawerScrim.classList.remove("open");
+    drawer.removeEventListener("keydown", drawerTrap);
+    drawer.setAttribute("inert", "");
+    snapshot = null; editingId = null;
+    restoreFocus(lastFocus, () => catsEl.querySelector('.chip[aria-pressed="true"]') || catsEl.querySelector("button"));
+    lastFocus = null;
+  }
+  // Closing with unsaved edits asks first — losing a tuned prompt to a stray
+  // Escape is the worst thing this panel can do.
+  function closeEditor() {
+    if (!isDirty()) { reallyCloseEditor(); return; }
+    showPopup("Discard your changes?",
+      "This category has edits that have not been saved yet.",
+      "Discard", () => reallyCloseEditor(), true);
+  }
   drawerScrim.addEventListener("click", closeEditor);
-  $("#edCancel").addEventListener("click", closeEditor);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && drawer.classList.contains("open")) closeEditor(); });
-  $("#edSave").addEventListener("click", () => {
-    const label = edLabel.value.trim(); if (!label) { edLabel.focus(); return; }
-    const data = { label, video_prompt: edVideo.value.trim(), motion_prompt: edMotion.value.trim() };
-    if (editingId) { const c = cats.find((x) => x.id === editingId); Object.assign(c, data); }
-    else { const id = newId(label); cats.push({ id, ...data }); editingId = id; activeId = id; }
-    persist(); renderCats(); drawerSub.textContent = label;
-    edSaved.classList.add("show"); setTimeout(() => edSaved.classList.remove("show"), 1400);
+  $("#edClose").addEventListener("click", closeEditor);
+  document.addEventListener("keydown", (e) => {
+    if (!drawer.classList.contains("open")) return;
+    if (e.key === "Escape" && !pop.classList.contains("open")) { e.preventDefault(); closeEditor(); }
+    // the fields are textareas, so plain Enter must stay a newline
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveEditor(); }
   });
+
+  function saveEditor() {
+    const label = edLabel.value.trim();
+    if (!label) { edErr.textContent = "A name is required."; edLabel.focus(); return; }
+    if (cats.some((c) => c.id !== editingId && c.label.toLowerCase() === label.toLowerCase())) {
+      edErr.textContent = "Another category already uses that name."; edLabel.focus(); return;
+    }
+    edErr.textContent = "";
+    const data = fields();
+    if (editingId) { Object.assign(cats.find((x) => x.id === editingId), data); }
+    else { const id = newId(label); cats.push({ id, ...data }); activeId = id; }
+    persist(); renderCats();
+    // Save means done. It used to leave the drawer open with a fleeting "saved"
+    // chip, so finishing took two clicks and the state was ambiguous.
+    reallyCloseEditor();
+  }
+  $("#edSave").addEventListener("click", saveEditor);
+
+  edDuplicate.addEventListener("click", () => {
+    const c = cats.find((x) => x.id === editingId);
+    if (!c) return;
+    if (isDirty()) {
+      showPopup("Discard your changes?", "Duplicating starts a new category from the last saved version of this one.",
+        "Discard and duplicate", () => openEditor(null, c), true);
+      return;
+    }
+    openEditor(null, c);
+  });
+
+  edReset.addEventListener("click", () => {
+    const seed = seedById(editingId);
+    if (!seed) return;
+    showPopup("Reset to the shipped default?",
+      `“${seed.label}” goes back to the prompts this build ships with. Your edits to it are lost.`,
+      "Reset", () => {
+        edLabel.value = seed.label; edVideo.value = seed.video_prompt; edMotion.value = seed.motion_prompt;
+        Object.assign(cats.find((x) => x.id === editingId), { label: seed.label, video_prompt: seed.video_prompt, motion_prompt: seed.motion_prompt });
+        persist(); renderCats();
+        snapshot = fields(); refreshEditorState();
+        drawerSub.textContent = seed.label;
+      }, true);
+  });
+  // deleting a preset is irreversible and used to happen on a single click
   edDelete.addEventListener("click", () => {
     if (!editingId) return;
-    cats = cats.filter((c) => c.id !== editingId);
-    if (activeId === editingId) activeId = cats[0] ? cats[0].id : null;
-    persist(); renderCats(); closeEditor();
+    // capture the id: reallyCloseEditor() clears editingId, and the confirm runs later
+    const id = editingId;
+    const c = cats.find((x) => x.id === id);
+    showPopup("Delete this category?", `“${c ? c.label : "This category"}” and its video and motion prompts will be removed. This cannot be undone.`, "Delete", () => {
+      cats = cats.filter((x) => x.id !== id);
+      if (activeId === id) activeId = cats[0] ? cats[0].id : null;
+      persist(); renderCats();
+      reallyCloseEditor();   // not closeEditor — deleting is not an unsaved edit to rescue
+    }, true);
   });
 
   // ── popup / alert ──
-  const popScrim = $("#popScrim"), pop = $("#pop"), popTitle = $("#popTitle"), popMsg = $("#popMsg"), popAction = $("#popAction");
-  let popOnAction = null;
-  function showPopup(title, msg, actionLabel, onAction) {
+  const popScrim = $("#popScrim"), pop = $("#pop"), popTitle = $("#popTitle"), popMsg = $("#popMsg"), popAction = $("#popAction"), popIc = $("#popIc"), popDismiss = $("#popDismiss");
+  let popOnAction = null, popLastFocus = null;
+  const popTrap = trapTab(pop);
+  function showPopup(title, msg, actionLabel, onAction, danger) {
+    popLastFocus = document.activeElement;
     popTitle.textContent = title; popMsg.textContent = msg;
+    popIc.textContent = danger ? "!" : "!";
+    popIc.classList.toggle("danger", Boolean(danger));
+    popAction.classList.toggle("danger", Boolean(danger));
     if (actionLabel) { popAction.textContent = actionLabel; popAction.hidden = false; popOnAction = onAction || null; }
     else { popAction.hidden = true; popOnAction = null; }
-    popScrim.classList.add("open"); pop.classList.add("open"); pop.setAttribute("aria-hidden", "false");
+    pop.removeAttribute("inert");
+    popScrim.classList.add("open"); pop.classList.add("open");
+    pop.addEventListener("keydown", popTrap);
+    // focus lands on the safe choice, so Enter never destroys anything by accident
+    setTimeout(() => popDismiss.focus(), 60);
   }
-  function closePopup() { popScrim.classList.remove("open"); pop.classList.remove("open"); pop.setAttribute("aria-hidden", "true"); }
+  function closePopup() {
+    popScrim.classList.remove("open"); pop.classList.remove("open");
+    pop.removeEventListener("keydown", popTrap);
+    pop.setAttribute("inert", "");
+    restoreFocus(popLastFocus, () => (drawer.classList.contains("open") ? edLabel : catsEl.querySelector("button")));
+    popLastFocus = null;
+  }
   popScrim.addEventListener("click", closePopup);
-  $("#popDismiss").addEventListener("click", closePopup);
+  popDismiss.addEventListener("click", closePopup);
   popAction.addEventListener("click", () => { const fn = popOnAction; closePopup(); if (fn) fn(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && pop.classList.contains("open")) closePopup(); });
 
-  // ── dithered iris background ──
-  const cv = $("#wave"), ctx = cv.getContext("2d");
-  let W = 0, H = 0, DPR = 1, energy = 0, energyTarget = 0; const CELL = 9;
-  const pulses = [];
-  function ping(c, s = 1, dur = 900) { if (reduce) return; pulses.push({ c, s, t0: performance.now(), dur }); if (pulses.length > 40) pulses.shift(); }
-  function resize() { const r = cv.getBoundingClientRect(); DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
-  addEventListener("resize", resize);
-  const BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]].map((r) => r.map((v) => v/16));
-  function frame(ts) {
-    const t = ts/1000; energy += (energyTarget - energy) * 0.05;
-    for (let i = pulses.length-1; i >= 0; i--) { if ((ts - pulses[i].t0)/pulses[i].dur >= 1) pulses.splice(i, 1); }
-    ctx.clearRect(0, 0, W, H);
-    const cx = W*0.40, cy = H*0.46;
-    const maxR = Math.hypot(Math.max(cx, W-cx), Math.max(cy, H-cy)) || 1;
-    const k = 6 + energy*7;            // ring frequency tightens as it focuses
-    const spd = 0.5 - energy*2.4;      // rings drift inward while rendering
-    for (let gx = 0; gx < W; gx += CELL) {
-      for (let gy = 0; gy < H; gy += CELL) {
-        const x = gx + CELL/2, y = gy + CELL/2;
-        const dx = x-cx, dy = y-cy, r = Math.hypot(dx, dy), nr = Math.min(1, r/maxR), ang = Math.atan2(dy, dx);
-        const ring = Math.abs(Math.sin(nr*k*Math.PI + t*spd));
-        const blade = 0.58 + 0.42*Math.sin(ang*6 + t*0.25);   // 6 aperture blades, slow rotation
-        const breath = 0.78 + 0.22*Math.sin(t*0.5 - nr*2.5);
-        let pAdd = 0, pc = null, pcw = 0;
-        for (const p of pulses) { const age = (ts-p.t0)/p.dur, env = Math.sin(age*Math.PI), pr = 0.04 + age*0.95, g = Math.max(0, 1-Math.abs(nr-pr)/0.07), amt = g*env*p.s; if (amt > 0) { pAdd += amt; if (amt > pcw) { pcw = amt; pc = p.c; } } }
-        let I = (0.26 + 0.74*ring)*blade*breath*(0.62 + 0.5*energy);   // concentric rings across the field
-        I *= (1 - Math.pow(nr, 1.7));                                  // soft edge vignette only
-        I += pAdd*0.8;
-        const th = BAYER[(gx/CELL|0)%4][(gy/CELL|0)%4];
-        if (I < th*0.40 + 0.045) continue;
-        const ci = Math.min(95, Math.floor((nr*0.85 + I*0.25 + energy*0.1)*95)), base = RAMP[ci];
-        let c = base;
-        if (pc && pcw > 0.2) { const m = Math.min(1, pcw); c = [base[0]+(pc[0]-base[0])*m|0, base[1]+(pc[1]-base[1])*m|0, base[2]+(pc[2]-base[2])*m|0]; }
-        const a = Math.min(0.72, (0.07 + I*0.4)*(1 + energy*0.5));
-        ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-        const s = Math.max(1, 1.2 + I*1.9);
-        ctx.fillRect(x-s, y-0.7, s*2, 1.4); ctx.fillRect(x-0.7, y-s, 1.4, s*2);
-      }
-    }
-    if (!reduce) requestAnimationFrame(frame);
-  }
-  function startWave() { resize(); if (reduce) { frame(0); } else { requestAnimationFrame(frame); } }
-  if (document.fonts) document.fonts.ready.then(resize);
-  addEventListener("load", resize);
-  startWave();
+  // ── idle: the active category softly sings through the iris ──
   setInterval(() => {
     if (reduce || running) return;
     const c = activeCat();
@@ -710,31 +1155,56 @@
     else ping(RAMP[Math.floor(Math.random()*96)], 0.3, 1500);
   }, 1700);
 
-  // ── sound (always on; AudioContext unlocked on first user gesture per autoplay policy) ──
-  const audioOn = true; let actx = null;
-  function unlockAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {} }
-  ["pointerdown", "keydown"].forEach((e) => addEventListener(e, unlockAudio, { once: true }));
-  const PENTA = [261.63,293.66,329.63,392.0,440.0,523.25,587.33,659.25,783.99,880.0,1046.5];
-  function tone(freq, dur, type, gain) { if (!audioOn) return; try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = freq; o.connect(g); g.connect(actx.destination); const now = actx.currentTime; g.gain.setValueAtTime(gain, now); g.gain.exponentialRampToValueAtTime(0.0001, now+dur); o.start(now); o.stop(now+dur); } catch (e) {} }
-  function note(i) { tone(PENTA[i % PENTA.length], 0.17, "sine", 0.05); }
-  function chord() { [0,2,4].forEach((n, k) => setTimeout(() => tone(PENTA[n+4], 0.55, "sine", 0.04), k*95)); }
-
   // ── run ──
-  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel"), runHint = $("#runHint");
+  const runBtn = $("#run"), rlabel = runBtn.querySelector(".rlabel"), runMsg = $("#runMsg");
   function setRunLabel(text) { rlabel.textContent = text; }
   let running = false;
-  function refreshRunState() { const empty = cats.length === 0; runBtn.disabled = empty || running; runHint.hidden = !empty || running; }
-  runHint.addEventListener("click", () => openEditor(null));
-  function flash(msg) { const prev = isBatch ? "Generate batch" : "Generate video"; setRunLabel(msg); setTimeout(() => { if (!running) setRunLabel(prev); }, 1400); }
+
+  // Blocking reasons and errors go here, not into the button label. Overwriting
+  // the label for 1.4s hid the CTA's own name, was invisible to screen readers,
+  // and left the button looking fully enabled while the form was invalid.
+  function say(html, isErr) {
+    runMsg.innerHTML = html || "";
+    runMsg.classList.toggle("err", Boolean(isErr));
+    const lk = runMsg.querySelector(".lk"); if (lk) lk.addEventListener("click", () => openEditor(null));
+  }
+  function blockingReason() {
+    if (!cats.length) return 'no category yet — <button type="button" class="lk">create one</button> to start';
+    if (!activeCat()) return "pick a category";
+    if (!imageFile && !talkingPhotoId) return "add an avatar to enable the render";
+    if (isBatch) {
+      // the batch endpoint accepts an upload only, so a reused avatar can't serve it
+      if (!imageFile) return "batch needs an uploaded image, not a reused avatar";
+      if (!excelFile) return "drop a .xlsx of scripts";
+      if (excelProblem) return escapeHtml(excelProblem);
+    } else {
+      if (!scriptInput.value.trim()) return "write the line the avatar should speak";
+      // without a distinct filename this render overwrites the last one
+      if (!safeTitle()) return "name the file so it does not overwrite an earlier render";
+    }
+    return null;
+  }
+  function refreshRunState() {
+    if (running) { runBtn.disabled = true; return; }
+    const why = blockingReason();
+    runBtn.disabled = Boolean(why);
+    if (!runMsg.classList.contains("err")) say(why || "");
+  }
 
   function startRunUi() {
-    running = true; energyTarget = 1; refreshRunState(); hideDownload();
-    resetLogs(); startClock(); setTransport("submitting", "uploading…"); showRendering();
+    running = true; wave.setEnergy(1); hideDownload(); say(""); showNasPath(null);
+    refreshRunState();
+    resetLogs(); startClock(); setTransport("Submitting", "uploading…"); showRendering();
     setRunLabel(isBatch ? "Generating…" : "Rendering…");
+    startServerLogs();
   }
   function endRunUi() {
-    running = false; energyTarget = 0; refreshRunState();
+    running = false; wave.setEnergy(0);
     setRunLabel(isBatch ? "Generate batch" : "Generate video"); stopClock();
+    forgetJob();
+    pullServerLogs().finally(stopServerLogs);   // one last drain
+    refreshRunState();
+    refreshRecoverable();                      // a failure may have stranded a render
   }
 
   let pollTimer = null;
@@ -743,31 +1213,35 @@
 
   async function submit() {
     if (running) return;
-    if (!cats.length) { showPopup("No category yet", "Create a prompt category before you can generate a video — it sets the avatar's video and motion prompts.", "+ New category", () => openEditor(null)); return; }
-    if (!imageFile) { flash("Drop an avatar image"); return; }
-    const c = activeCat(); if (!c) { showPopup("No category selected", "Pick a category to continue.", null, null); return; }
+    const why = blockingReason();
+    if (why) { say(why, true); refreshRunState(); return; }
+    const c = activeCat();
 
     if (!isBatch) {
-      if (!scriptInput.value.trim()) { flash("Write a script first"); return; }
       startRunUi();
       const fd = new FormData();
-      fd.append("image", imageFile);
+      // an uploaded image or an avatar already on HeyGen — never both
+      if (imageFile) fd.append("image", imageFile);
+      else fd.append("talking_photo_id", talkingPhotoId);
       fd.append("script", scriptInput.value.trim());
       fd.append("character", character);
+      fd.append("video_title", safeTitle());
+      if (pubDate.value) fd.append("publish_date", pubDate.value);
       if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
       if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
-      addLog(`submitting single · category ${c.label}`);
+      addLog(`submitting single · ${safeTitle()}.mp4 · category ${c.label}`);
       try {
         const res = await fetch("/video/heygen", { method: "POST", body: fd });
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
         const data = await res.json();
         addLog(`queued · job ${data.job_id}`, "ok");
+        rememberJob("single", data.job_id);
         pollTimer = setInterval(() => pollSingle(data.job_id), 4000); pollSingle(data.job_id);
-      } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); showStill("error"); endRunUi(); }
+      } catch (e) { addLog(e.message, "error"); setTransport("Failed", e.message); say(escapeHtml(e.message), true); showStill("Failed"); endRunUi(); }
     } else {
-      if (!excelFile) { flash("Drop a .xlsx first"); return; }
       startRunUi(); queueEl.innerHTML = ""; feedSeen.clear(); showTray("queue");
       const fd = new FormData();
+      // POST /video/heygen/batch takes an image upload only — no talking_photo_id
       fd.append("image", imageFile);
       fd.append("excel", excelFile);
       fd.append("character", character);
@@ -780,12 +1254,88 @@
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
         const data = await res.json();
         addLog(`queued · batch ${data.batch_id}`, "ok");
+        rememberJob("batch", data.batch_id);
         pollTimer = setInterval(() => pollBatch(data.batch_id), 4000); pollBatch(data.batch_id);
-      } catch (e) { addLog(e.message, "error"); setTransport("failed", e.message); endRunUi(); }
+      } catch (e) { addLog(e.message, "error"); setTransport("Failed", e.message); say(escapeHtml(e.message), true); endRunUi(); }
     }
   }
 
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  // ── surviving a reload ──
+  // Job state persists server-side, but the id used to live only in this closure,
+  // so refreshing during a 40-minute batch left the operator blind.
+  const JOB_KEY = "autodub_video_active_job";
+  function rememberJob(kind, id) { try { localStorage.setItem(JOB_KEY, JSON.stringify({ kind, id })); } catch (_) {} }
+  function forgetJob() { try { localStorage.removeItem(JOB_KEY); } catch (_) {} }
+  async function reattach() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(JOB_KEY)); } catch (_) {}
+    if (!saved || !saved.id) return;
+    const url = saved.kind === "batch" ? `/video/heygen/batch/${saved.id}` : `/video/heygen/${saved.id}`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) { forgetJob(); return; }
+      const state = await r.json();
+      if (["completed", "failed", "partial"].includes(state.status)) { forgetJob(); return; }
+      isBatch = saved.kind === "batch";
+      setMode(isBatch);
+      startRunUi();
+      addLog(`reattached to ${saved.kind} ${saved.id}`, "ok");
+      if (isBatch) { showTray("queue"); pollTimer = setInterval(() => pollBatch(saved.id), 4000); pollBatch(saved.id); }
+      else { pollTimer = setInterval(() => pollSingle(saved.id), 4000); pollSingle(saved.id); }
+    } catch (_) { /* offline — leave the record for the next load */ }
+  }
+
+  // ── stranded renders ──
+  // A render that finished on HeyGen but died on the download/NAS tail is
+  // re-runnable. These endpoints existed with no way in but curl.
+  const recoverEl = $("#recover"), recoverN = $("#recoverN"), recoverWord = $("#recoverWord"), recoverBtn = $("#recoverBtn");
+  async function refreshRecoverable() {
+    try {
+      const r = await fetch("/video/heygen/jobs/recoverable");
+      if (!r.ok) throw new Error("status " + r.status);
+      const n = (await r.json()).count || 0;
+      recoverEl.hidden = n === 0;
+      recoverN.textContent = n;
+      recoverWord.textContent = n === 1 ? "render" : "renders";
+    } catch (_) { recoverEl.hidden = true; }
+  }
+  recoverBtn.addEventListener("click", async () => {
+    recoverBtn.disabled = true; recoverBtn.textContent = "Recovering…";
+    showTray("logs");
+    try {
+      const r = await fetch("/video/heygen/recover-failed", { method: "POST" });
+      if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+      const d = await r.json();
+      addLog(`recovering ${d.count} render${d.count === 1 ? "" : "s"}: ${(d.job_ids || []).join(", ")}`, "ok");
+    } catch (e) { addLog(`recover failed: ${e.message}`, "error"); }
+    recoverBtn.disabled = false; recoverBtn.textContent = "Recover";
+    setTimeout(refreshRecoverable, 3000);
+  });
+
+  // ── server-side logs ──
+  // The tray only ever held client-side messages, so during a render the operator
+  // could not see what the server was actually doing.
+  let lastLogId = 0, srvLogTimer = null;
+  async function pullServerLogs() {
+    try {
+      const r = await fetch(`/logs/important?since_id=${lastLogId}&limit=100`);
+      if (!r.ok) return;
+      const p = await r.json();
+      (p.logs || []).forEach((it) => {
+        const lvl = (it.level || "INFO").toUpperCase();
+        addLog((it.logger ? it.logger + " — " : "") + (it.message || ""), lvl === "ERROR" ? "error" : null);
+      });
+      if (typeof p.latest_id === "number") lastLogId = Math.max(lastLogId, p.latest_id);
+    } catch (_) {}
+  }
+  async function startServerLogs() {
+    stopServerLogs();
+    try { const r = await fetch("/logs/important?since_id=0&limit=1"); if (r.ok) { const p = await r.json(); if (typeof p.latest_id === "number") lastLogId = p.latest_id; } } catch (_) {}
+    srvLogTimer = setInterval(pullServerLogs, 2500);
+  }
+  function stopServerLogs() { if (srvLogTimer) { clearInterval(srvLogTimer); srvLogTimer = null; } }
 
   async function pollSingle(jobId) {
     try {
@@ -793,15 +1343,17 @@
       if (!res.ok) throw new Error(`status ${res.status}`);
       const state = await res.json();
       const s = state.status || "queued";
-      setTransport(s === "completed" ? "complete" : s === "failed" ? "failed" : "rendering", state.stage_message || "");
+      setTransport(s === "completed" ? "Complete" : s === "failed" ? "Failed" : "Rendering", state.stage_message || "");
       if (state.stage_message) addLog(state.stage_message);
       if (s === "completed" || s === "failed") {
         stopPoll();
         if (s === "completed") {
           const url = state.video_local_url || (state.summary && state.summary.video_url);
-          if (url) { showVideo(url); showDownload(state.video_local_url || url, (state.summary && state.summary.video_title) ? state.summary.video_title + ".mp4" : null); } else showStill("complete");
+          if (url) { showVideo(url); showDownload(state.video_local_url || url, safeTitle() ? safeTitle() + ".mp4" : null); } else showStill("Complete");
+          // say where it landed — the operator's next question, every time
+          showNasPath(state.summary && state.summary.nas_path);
           addLog("render complete", "ok"); chord();
-        } else { showStill("error"); addLog(state.error || "render failed", "error"); }
+        } else { showStill("Failed"); const m = state.error || "render failed"; addLog(m, "error"); say(escapeHtml(m), true); }
         endRunUi();
       }
     } catch (e) { addLog(`polling error: ${e.message}`, "error"); }
@@ -814,15 +1366,36 @@
       const state = await res.json();
       renderQueue(state);
       const done = (state.done || 0) + (state.failed_count || 0), tot = state.total || 0;
-      setTransport(["completed","partial","failed"].includes(state.status) ? state.status : "rendering", `${done}/${tot} rows${state.failed_count ? " · " + state.failed_count + " failed" : ""}`);
+      setTransport(["completed","partial","failed"].includes(state.status) ? state.status : "Rendering", `${done}/${tot} rows${state.failed_count ? " · " + state.failed_count + " failed" : ""}`);
       if (["completed", "partial", "failed"].includes(state.status)) {
         stopPoll();
         addLog(`batch ${state.status} · ${state.done || 0}/${tot}`, state.status === "failed" ? "error" : "ok");
         if (state.status !== "failed") chord();
-        if (!lastClipUrl) showStill("complete");
+        if (!lastClipUrl) showStill("Complete");
         endRunUi();
       }
     } catch (e) { addLog(`polling error: ${e.message}`, "error"); }
+  }
+
+  // ── session status ──
+  // This page used to hardcode a mint LED and the words "session ready", so it
+  // claimed the runtime was configured without ever asking.
+  const dot = $("#dot"), sessTxt = $("#sessTxt"), cfgEl = $("#cfg");
+  async function refreshEnvStatus() {
+    try {
+      const r = await fetch("/config/session-env/status");
+      if (!r.ok) throw new Error("status " + r.status);
+      const p = await r.json();
+      const missing = Array.isArray(p.missing_keys) ? p.missing_keys : [];
+      const total = (Array.isArray(p.required_keys) ? p.required_keys : []).length;
+      cfgEl.textContent = total ? `${total - missing.length}/${total}` : "—";
+      if (p.configured) { dot.className = "dotled"; sessTxt.textContent = "session ready"; dot.title = "runtime config ready"; }
+      else { dot.className = "dotled warn"; sessTxt.textContent = "config incomplete"; dot.title = "missing: " + missing.join(", "); }
+    } catch (_) {
+      cfgEl.textContent = "—";
+      dot.className = "dotled bad"; sessTxt.textContent = "config unreachable";
+      dot.title = "could not read /config/session-env/status";
+    }
   }
 
   // ── boot ──
@@ -833,6 +1406,12 @@
   setMode(false);
   setCharacter(character);
   showPlaceholder();
+  refreshRunState();
+  refreshEnvStatus();
+  setInterval(refreshEnvStatus, 20000);
+  refreshRecoverable();
+  setInterval(() => { if (!running) refreshRecoverable(); }, 30000);
+  reattach();
   requestAnimationFrame(() => { updateSegInd(); updateCharInd(); });
   addEventListener("load", () => { updateSegInd(); updateCharInd(); });
   if (document.fonts) document.fonts.ready.then(() => { updateSegInd(); updateCharInd(); });

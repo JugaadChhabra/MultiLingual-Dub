@@ -7,101 +7,105 @@
 <title>AutoDub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/static/style.css?v=7" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/style.css?v=14" />
 </head>
 <body>
-<canvas id="wave"></canvas>
+<canvas id="wave" aria-hidden="true"></canvas>
   <div class="scrim"></div>
 
   <div class="app">
     <header>
-      <div class="mark">autodub<span class="d">.</span><span class="eq" id="eq"><i></i><i></i><i></i><i></i></span></div>
+      <h1 class="mark">autodub<span class="d">.</span><span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></h1>
       <div class="hstat">
-        <span class="seg"><span class="dotled"></span> session ready</span>
-        <span class="seg hide-sm">config <b id="cfg">9/12</b></span>
-        <button class="snd" id="snd">♪ off</button>
+        <span class="seg"><span class="dotled" id="dot"></span> <span id="sessTxt">checking config…</span></span>
+        <span class="seg hide-sm">config <b id="cfg">—</b></span>
+        <button class="snd" id="snd" aria-pressed="false" aria-label="Sound effects" title="Sound effects">♪</button>
       </div>
     </header>
 
     <main>
       <!-- left -->
       <div class="col">
-        <div class="lbl">source<span class="r"></span><span class="n">.xlsx</span></div>
-        <div class="drop" id="drop">
-          <span class="ic" id="dropIc">▤</span>
-          <div>
-            <div class="dm" id="dropMain">Drop .xlsx or click to browse</div>
-            <div class="ds" id="dropSub">source rows + target columns</div>
-          </div>
+        <div class="dropwrap">
+          <button type="button" class="drop" id="drop" aria-describedby="dropSub">
+            <span class="ic" id="dropIc" aria-hidden="true">▤</span>
+            <span class="dtx">
+              <span class="dm" id="dropMain">Drop .xlsx or click to browse</span>
+              <span class="ds" id="dropSub">columns: voiceover_text, emotion, activity_name, voiceover_title</span>
+            </span>
+          </button>
+          <button type="button" class="x" id="dropClear" hidden aria-label="Remove selected file">×</button>
           <input type="file" id="file" accept=".xlsx" hidden />
         </div>
-        <div class="teach" id="teach">
-          <span class="sw"></span>
-          <span class="tt">Teaching mode</span>
-          <span class="te">Full <span style="font-family:var(--native);font-style:normal">अनुवाद</span></span>
-          <span class="tst" id="teachSt">off</span>
-        </div>
-        <div class="teach" id="append" title="Merge new audio into existing S3 folders named by activity_name. Job fails if a folder is missing.">
-          <span class="sw"></span>
-          <span class="tt">Append mode</span>
-          <span class="te">Merge into existing folders</span>
-          <span class="tst" id="appendSt">off</span>
+        <div class="switches">
+          <button type="button" class="teach" id="teach" role="switch" aria-checked="false"
+                  title="For English-learning sheets: keeps the taught word and letter in English.">
+            <span class="sw" aria-hidden="true"></span><span class="tt">Teaching mode</span>
+          </button>
+          <button type="button" class="teach" id="append" role="switch" aria-checked="false"
+                  title="Merges into existing S3 folders by activity_name. Fails if one is missing.">
+            <span class="sw" aria-hidden="true"></span><span class="tt">Append mode</span>
+          </button>
         </div>
 
-        <div class="lbl">targets<span class="r"></span><span class="n" id="selN">3 / 16</span></div>
         <div class="qs">
-          <button data-q="all">all</button>
-          <button data-q="indian">indian</button>
-          <button data-q="intl">intl</button>
-          <button data-q="none">clear</button>
+          <button data-q="all" aria-pressed="false">All</button>
+          <button data-q="indian" aria-pressed="false">Indian</button>
+          <button data-q="intl" aria-pressed="false">International</button>
+          <span class="qcount" id="selN">1 / 16</span>
         </div>
-        <div class="mosaic" id="mosaic"></div>
+        <div class="mosaic" id="mosaic" role="group" aria-label="Target languages"></div>
       </div>
 
       <div class="vrule"></div>
 
       <!-- right -->
       <div class="col">
-        <div class="lbl">run<span class="r"></span><span class="n" id="echoN">3 targets</span></div>
-        <button class="run-btn" id="run">Run pipeline <span class="ret">⏎</span></button>
-        <div class="run-echo"><span class="p">$</span> POST /batch/excel-jobs</div>
+        <button class="run-btn" id="run">Run pipeline <span class="ret" aria-hidden="true">⏎</span></button>
+        <div class="run-msg" id="runMsg" role="status" aria-live="polite"></div>
+        <!-- progress is a readout; cancelling is a separate, quieter action -->
+        <div class="run-under">
+          <div class="run-echo" id="runEcho" data-idle="true">Ready when you are</div>
+          <button type="button" class="cancel-btn" id="cancel" hidden>Cancel run</button>
+        </div>
 
-        <div class="lbl">console<span class="r"></span></div>
         <div class="consolebox">
-        <div class="tabs">
-          <button class="tab on" data-tab="summary">summary</button>
-          <button class="tab" data-tab="feed">feed<span class="n" id="feedN">0</span></button>
-          <button class="tab" data-tab="logs">logs<span class="n" id="logN">0</span></button>
+        <div class="tabs" role="tablist" aria-label="Run output">
+          <button class="tab" role="tab" id="tab-summary" aria-selected="true" aria-controls="pane-summary" data-tab="summary">Summary</button>
+          <button class="tab" role="tab" id="tab-feed" aria-selected="false" aria-controls="pane-feed" data-tab="feed">Feed<span class="n" id="feedN">0</span></button>
+          <button class="tab" role="tab" id="tab-logs" aria-selected="false" aria-controls="pane-logs" data-tab="logs">Logs<span class="n" id="logN">0</span></button>
         </div>
         <div class="cbody">
-          <div data-pane="summary">
+          <div data-pane="summary" role="tabpanel" id="pane-summary" aria-labelledby="tab-summary" tabindex="0">
             <div class="empty" id="sumEmpty">
-              <div class="mini-eq"><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="big">Nothing dubbed yet.</div>
-              <div class="sm">pick your voices, then hit run.</div>
+              <div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="big">Nothing dubbed yet</div>
+              <div class="sm">Pick your targets, then hit run</div>
             </div>
             <div id="sumData" hidden>
               <div class="metrics">
-                <div class="metric"><div class="v" data-m="rows">0</div><div class="l"><span class="g">+</span> rows</div></div>
-                <div class="metric"><div class="v acc" data-m="targets">0</div><div class="l"><span class="g">+</span> targets</div></div>
-                <div class="metric"><div class="v ok" data-m="done">0</div><div class="l"><span class="g">+</span> done</div></div>
-                <div class="metric"><div class="v er" data-m="failed">0</div><div class="l"><span class="g">+</span> failed</div></div>
+                <div class="metric"><div class="v" data-m="rows">0</div><div class="l">Rows</div></div>
+                <div class="metric"><div class="v acc" data-m="targets">0</div><div class="l">Targets</div></div>
+                <div class="metric"><div class="v ok" data-m="done">0</div><div class="l">Done</div></div>
+                <div class="metric"><div class="v er" data-m="failed">0</div><div class="l">Failed</div></div>
               </div>
               <div id="resList"></div>
             </div>
           </div>
-          <div data-pane="feed" hidden>
-            <div class="feed" id="feed"><div class="empty"><div class="sm">live row activity appears here during a run.</div></div></div>
+          <div data-pane="feed" role="tabpanel" id="pane-feed" aria-labelledby="tab-feed" tabindex="0" hidden>
+            <div class="feed" id="feed"><div class="empty"><div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></div><div class="big">No rows yet</div><div class="sm">Live row activity appears here during a run</div></div></div>
           </div>
-          <div data-pane="logs" hidden>
-            <div class="logs" id="logs"><div class="row"><span class="p">$</span><span class="mut">waiting for batch run…</span></div></div>
+          <div data-pane="logs" role="tabpanel" id="pane-logs" aria-labelledby="tab-logs" tabindex="0" hidden>
+            <div class="logs" id="logs"><div class="empty"><div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></div><div class="big">Console is quiet</div><div class="sm">Waiting for a batch run</div></div></div>
           </div>
         </div>
         </div>
       </div>
     </main>
   </div>
-<script src="/static/app.js?v=7"></script>
+<script src="/static/wave.js?v=2"></script>
+<script src="/static/audio.js?v=2"></script>
+<script src="/static/app.js?v=14"></script>
 </body>
 </html>
