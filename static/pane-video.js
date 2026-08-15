@@ -198,7 +198,7 @@
           state.photoId = id; state.image = null; els.img.value = "";
           if (state.stillURL) URL.revokeObjectURL(state.stillURL);
           state.stillURL = url || null;
-          els.fileName.textContent = name; els.fileSize.textContent = "On HeyGen";
+          els.fileName.textContent = name; els.fileSize.textContent = "Reused";
           if (!state.running) showStill("Reference");
           avOv.close(); refreshRun();
         });
@@ -327,7 +327,7 @@
       poll(url);
     } catch (e) {
       U.banner(els.banners, { kind: "error", title: "Could not start the render",
-        detail: "The request never reached HeyGen.", raw: String(e && e.message || e) });
+        detail: "The request never reached the render service.", raw: String(e && e.message || e) });
       finish("failed", null);
     }
   }

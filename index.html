@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="favicon.png" />
 <title>AutoDub</title>
-<link rel="stylesheet" href="/static/app.css?v=5" />
+<link rel="stylesheet" href="/static/app.css?v=6" />
 </head>
 <body>
 <div class="app">
@@ -27,7 +27,7 @@
         <span class="live" id="audioLive" hidden></span>
       </button>
       <button class="sbi" data-section="video">
-        <span class="g p" aria-hidden="true">▶</span> Video · HeyGen
+        <span class="g p" aria-hidden="true">▶</span> Video generation
         <span class="live" id="videoLive" hidden></span>
       </button>
       <div id="recoverWrap" hidden>
@@ -111,9 +111,9 @@
     </main>
 
     <!-- ══════════════ VIDEO ══════════════ -->
-    <main class="pane" id="pane-video" aria-label="Video · HeyGen" hidden>
+    <main class="pane" id="pane-video" aria-label="Video generation" hidden>
       <div class="pane-inner">
-        <h1>Video · HeyGen</h1>
+        <h1>Video generation</h1>
         <div class="sub">An avatar and a script in, rendered video out, filed to the NAS.</div>
 
         <div id="videoBanners"></div>
@@ -277,7 +277,7 @@
 <div class="scrim" id="avScrim"></div>
 <aside class="drawer" id="avDrawer" role="dialog" aria-modal="true" aria-labelledby="avTitle" inert>
   <div class="dh">
-    <div class="tx"><h2 id="avTitle">Reuse an avatar</h2><div class="dsub">Already on HeyGen — no re-upload needed</div></div>
+    <div class="tx"><h2 id="avTitle">Reuse an avatar</h2><div class="dsub">Already uploaded — no need to send it again</div></div>
     <button class="iconbtn" id="avClose" aria-label="Close">✕</button>
   </div>
   <div class="fld-block grow" style="overflow-y:auto"><div id="avBody"></div></div>
@@ -297,7 +297,7 @@
 
 <script src="/static/ui.js?v=1"></script>
 <script src="/static/pane-audio.js?v=3"></script>
-<script src="/static/pane-video.js?v=2"></script>
-<script src="/static/shell.js?v=1"></script>
+<script src="/static/pane-video.js?v=3"></script>
+<script src="/static/shell.js?v=2"></script>
 </body>
 </html>

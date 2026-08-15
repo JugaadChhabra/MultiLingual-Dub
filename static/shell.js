@@ -95,7 +95,7 @@
     const n = recoverN.textContent;
     U.confirm({
       title: `Recover ${n} stranded render${n === "1" ? "" : "s"}?`,
-      message: "These finished on HeyGen but never reached the NAS. Recovering re-downloads them — it does not re-render, so it costs no credits.",
+      message: "These rendered successfully but never reached the NAS. Recovering re-downloads them — it does not re-render, so it costs no credits.",
       confirmLabel: "Recover", danger: false,
       onOk: async () => {
         show("video");
