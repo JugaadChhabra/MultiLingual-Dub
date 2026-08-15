@@ -14,13 +14,26 @@ def test_html_pages_are_never_heuristically_cached() -> None:
     """
     client = TestClient(api.app)
 
-    for path in ("/", "/heygen"):
+    for path in ("/", "/videogen"):
         response = client.get(path)
         assert response.status_code == 200, path
         cache_control = response.headers.get("cache-control", "")
         assert "no-cache" in cache_control, f"{path} -> {cache_control!r}"
         # an ETag keeps revalidation cheap (304 instead of a full re-download)
         assert response.headers.get("etag"), path
+
+
+def test_old_heygen_url_still_reaches_the_video_section() -> None:
+    """The video editor has /heygen bookmarked. Renaming the route is fine;
+    breaking their bookmark is not, so the old name redirects permanently."""
+    client = TestClient(api.app)
+
+    response = client.get("/heygen", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/videogen"
+
+    # and following it lands on the real page
+    assert client.get("/heygen").status_code == 200
 
 
 def test_static_assets_stay_cacheable() -> None:

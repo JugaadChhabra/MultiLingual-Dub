@@ -8,8 +8,8 @@
   const running = { audio: false, video: false };
 
   // ── sections ─────────────────────────────────────────────────────────────
-  // /heygen still works as a deep link, so the video editor's bookmark and
-  // muscle memory survive the merge into one app.
+  // /videogen is a real, linkable path for the Video section. The old /heygen
+  // redirects to it, so existing bookmarks still land in the right place.
   function show(section, push = true) {
     document.querySelectorAll(".sbi[data-section]").forEach((b) => {
       const on = b.dataset.section === section;
@@ -18,7 +18,7 @@
     $("#pane-audio").hidden = section !== "audio";
     $("#pane-video").hidden = section !== "video";
     document.title = section === "video" ? "AutoDub — Video" : "AutoDub — Audio";
-    if (push) history.replaceState({}, "", section === "video" ? "/heygen" : "/");
+    if (push) history.replaceState({}, "", section === "video" ? "/videogen" : "/");
   }
   document.querySelectorAll(".sbi[data-section]").forEach((b) =>
     b.addEventListener("click", () => show(b.dataset.section)));
@@ -120,7 +120,7 @@
     setRunning, showCause, refreshRecoverable, show,
   };
 
-  show(location.pathname.startsWith("/heygen") ? "video" : "audio", false);
+  show(location.pathname.startsWith("/videogen") ? "video" : "audio", false);
   refreshEnv();
   setInterval(refreshEnv, 20000);
   refreshRecoverable();
