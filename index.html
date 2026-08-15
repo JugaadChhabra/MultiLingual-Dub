@@ -1,111 +1,303 @@
 <!doctype html>
 <html lang="en">
 <head>
-<link rel="icon" href="favicon.png" />
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="favicon.png" />
 <title>AutoDub</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/static/style.css?v=14" />
+<link rel="stylesheet" href="/static/app.css?v=4" />
 </head>
 <body>
-<canvas id="wave" aria-hidden="true"></canvas>
-  <div class="scrim"></div>
+<div class="app">
 
-  <div class="app">
-    <header>
-      <h1 class="mark">autodub<span class="d">.</span><span class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></h1>
-      <div class="hstat">
-        <span class="seg"><span class="dotled" id="dot"></span> <span id="sessTxt">checking config…</span></span>
-        <span class="seg hide-sm">config <b id="cfg">—</b></span>
-        <button class="snd" id="snd" aria-pressed="false" aria-label="Sound effects" title="Sound effects">♪</button>
+  <div class="tb">
+    <span class="title">AutoDub</span>
+    <div class="right">
+      <span id="tbRun" hidden><span class="dot a pulse"></span> <span id="tbRunText"></span></span>
+      <span class="sep" id="tbSep" hidden>·</span>
+      <span><span class="dot" id="cfgDot"></span> <span id="cfgText">checking config…</span></span>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="sb" aria-label="Pipelines">
+      <div class="sbh">Pipelines</div>
+      <button class="sbi" data-section="audio" aria-current="page">
+        <span class="g" aria-hidden="true">♪</span> Audio dubbing
+        <span class="live" id="audioLive" hidden></span>
+      </button>
+      <button class="sbi" data-section="video">
+        <span class="g p" aria-hidden="true">▶</span> Video · HeyGen
+        <span class="live" id="videoLive" hidden></span>
+      </button>
+      <div id="recoverWrap" hidden>
+        <div class="sbh">Needs attention</div>
+        <button class="sbi" id="recoverBtn">
+          <span class="g r" aria-hidden="true">!</span> Stranded renders
+          <span class="meta" id="recoverN">0</span>
+        </button>
       </div>
-    </header>
+    </nav>
 
-    <main>
-      <!-- left -->
-      <div class="col">
-        <div class="dropwrap">
-          <button type="button" class="drop" id="drop" aria-describedby="dropSub">
-            <span class="ic" id="dropIc" aria-hidden="true">▤</span>
-            <span class="dtx">
-              <span class="dm" id="dropMain">Drop .xlsx or click to browse</span>
-              <span class="ds" id="dropSub">columns: voiceover_text, emotion, activity_name, voiceover_title</span>
-            </span>
-          </button>
-          <button type="button" class="x" id="dropClear" hidden aria-label="Remove selected file">×</button>
-          <input type="file" id="file" accept=".xlsx" hidden />
-        </div>
-        <div class="switches">
-          <button type="button" class="teach" id="teach" role="switch" aria-checked="false"
-                  title="For English-learning sheets: keeps the taught word and letter in English.">
-            <span class="sw" aria-hidden="true"></span><span class="tt">Teaching mode</span>
-          </button>
-          <button type="button" class="teach" id="append" role="switch" aria-checked="false"
-                  title="Merges into existing S3 folders by activity_name. Fails if one is missing.">
-            <span class="sw" aria-hidden="true"></span><span class="tt">Append mode</span>
-          </button>
-        </div>
+    <!-- ══════════════ AUDIO ══════════════ -->
+    <main class="pane" id="pane-audio" aria-label="Audio dubbing">
+      <div class="pane-inner">
+        <h1>Audio dubbing</h1>
+        <div class="sub">Spreadsheet in, voiced clips out, uploaded to S3.</div>
 
-        <div class="qs">
-          <button data-q="all" aria-pressed="false">All</button>
-          <button data-q="indian" aria-pressed="false">Indian</button>
-          <button data-q="intl" aria-pressed="false">International</button>
-          <span class="qcount" id="selN">1 / 16</span>
-        </div>
-        <div class="mosaic" id="mosaic" role="group" aria-label="Target languages"></div>
-      </div>
+        <div id="audioBanners"></div>
 
-      <div class="vrule"></div>
-
-      <!-- right -->
-      <div class="col">
-        <button class="run-btn" id="run">Run pipeline <span class="ret" aria-hidden="true">⏎</span></button>
-        <div class="run-msg" id="runMsg" role="status" aria-live="polite"></div>
-        <!-- progress is a readout; cancelling is a separate, quieter action -->
-        <div class="run-under">
-          <div class="run-echo" id="runEcho" data-idle="true">Ready when you are</div>
-          <button type="button" class="cancel-btn" id="cancel" hidden>Cancel run</button>
-        </div>
-
-        <div class="consolebox">
-        <div class="tabs" role="tablist" aria-label="Run output">
-          <button class="tab" role="tab" id="tab-summary" aria-selected="true" aria-controls="pane-summary" data-tab="summary">Summary</button>
-          <button class="tab" role="tab" id="tab-feed" aria-selected="false" aria-controls="pane-feed" data-tab="feed">Feed<span class="n" id="feedN">0</span></button>
-          <button class="tab" role="tab" id="tab-logs" aria-selected="false" aria-controls="pane-logs" data-tab="logs">Logs<span class="n" id="logN">0</span></button>
-        </div>
-        <div class="cbody">
-          <div data-pane="summary" role="tabpanel" id="pane-summary" aria-labelledby="tab-summary" tabindex="0">
-            <div class="empty" id="sumEmpty">
-              <div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="big">Nothing dubbed yet</div>
-              <div class="sm">Pick your targets, then hit run</div>
+        <div id="audioProgress" hidden>
+          <div class="prog">
+            <div class="v" id="apClips">0 <small>of 0 clips</small></div>
+            <div class="k" id="apDetail">Starting…</div>
+            <div class="bar">
+              <i class="up" id="apUp" style="width:0"></i>
+              <i class="done live" id="apDone" style="width:0"></i>
+              <i class="bad" id="apBad" style="width:0"></i>
             </div>
-            <div id="sumData" hidden>
-              <div class="metrics">
-                <div class="metric"><div class="v" data-m="rows">0</div><div class="l">Rows</div></div>
-                <div class="metric"><div class="v acc" data-m="targets">0</div><div class="l">Targets</div></div>
-                <div class="metric"><div class="v ok" data-m="done">0</div><div class="l">Done</div></div>
-                <div class="metric"><div class="v er" data-m="failed">0</div><div class="l">Failed</div></div>
+            <div class="legend">
+              <span><i class="k g"></i>Uploaded <b id="apUpN">0</b></span>
+              <span><i class="k a"></i>Rendered, uploading <b id="apDoneN">0</b></span>
+              <span><i class="k r"></i>Failed <b id="apBadN">0</b></span>
+              <span><i class="k"></i>Queued <b id="apQueueN">0</b></span>
+              <span class="grow" id="apStarted"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="gh">Source</div>
+        <div class="grp">
+          <div class="row">
+            <button type="button" class="drop empty" id="aDrop" data-state="empty">
+              <span class="ic" aria-hidden="true">▤</span>
+              <span class="tx">
+                <span class="t" id="aDropTitle">Drop a .xlsx, or click to browse</span>
+                <span class="s" id="aDropSub">Needs: voiceover_text, emotion, activity_name, voiceover_title</span>
+              </span>
+            </button>
+            <input type="file" id="aFile" accept=".xlsx" hidden />
+          </div>
+          <div class="row">
+            <span class="tx"><span class="t">Teaching mode</span>
+              <span class="s">For English-learning sheets — keeps the taught word and letter in English</span></span>
+            <span class="rt"><button class="switch" id="aTeach" role="switch" aria-checked="false" aria-label="Teaching mode"></button></span>
+          </div>
+          <div class="row">
+            <span class="tx"><span class="t">Append to existing folders</span>
+              <span class="s">Merges by activity_name — fails if a folder is missing</span></span>
+            <span class="rt"><button class="switch" id="aAppend" role="switch" aria-checked="false" aria-label="Append mode"></button></span>
+          </div>
+        </div>
+
+        <div class="gh">Target languages <span id="aSelN"></span></div>
+        <div class="grp">
+          <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
+            <div class="seg" id="aGroups">
+              <button type="button" data-group="all" aria-pressed="false">All</button>
+              <button type="button" data-group="indian" aria-pressed="false">Indian</button>
+              <button type="button" data-group="intl" aria-pressed="false">International</button>
+            </div>
+          </div>
+          <div class="row"><div class="tokens" id="aLangs" role="group" aria-label="Target languages"></div></div>
+        </div>
+
+        <div class="runbar">
+          <button class="btn p big" id="aRun">Run pipeline</button>
+          <button class="btn" id="aCancel" hidden>Cancel run</button>
+          <span class="msg grow" id="aMsg" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </main>
+
+    <!-- ══════════════ VIDEO ══════════════ -->
+    <main class="pane" id="pane-video" aria-label="Video · HeyGen" hidden>
+      <div class="pane-inner">
+        <h1>Video · HeyGen</h1>
+        <div class="sub">An avatar and a script in, rendered video out, filed to the NAS.</div>
+
+        <div id="videoBanners"></div>
+
+        <div class="vstage">
+        <div class="monitor" id="vMonitor">
+          <span class="mtag" id="vTag">No input</span>
+          <div class="mbody" id="vBody">
+            <div class="ph">
+              <div class="t">No avatar yet</div>
+              <div class="s">Drag an image here, or pick one</div>
+              <div class="row">
+                <button type="button" class="btn" id="vBrowse">Upload image</button>
+                <button type="button" class="btn" id="vReuse">Reuse an avatar</button>
               </div>
-              <div id="resList"></div>
             </div>
           </div>
-          <div data-pane="feed" role="tabpanel" id="pane-feed" aria-labelledby="tab-feed" tabindex="0" hidden>
-            <div class="feed" id="feed"><div class="empty"><div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></div><div class="big">No rows yet</div><div class="sm">Live row activity appears here during a run</div></div></div>
+          <div class="mfile" id="vFile" hidden>
+            <span class="nm" id="vFileName"></span>
+            <span class="sz" id="vFileSize"></span>
+            <span class="grow"></span>
+            <button type="button" class="btn" id="vReplace">Replace</button>
+            <button type="button" class="btn" id="vRemove" aria-label="Remove avatar">✕</button>
           </div>
-          <div data-pane="logs" role="tabpanel" id="pane-logs" aria-labelledby="tab-logs" tabindex="0" hidden>
-            <div class="logs" id="logs"><div class="empty"><div class="mini-eq" aria-hidden="true"><i></i><i></i><i></i></div><div class="big">Console is quiet</div><div class="sm">Waiting for a batch run</div></div></div>
+          <input type="file" id="vImg" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+
+        <div id="videoProgress" hidden style="margin-top:var(--s4)">
+          <div class="prog">
+            <div class="v" id="vpCount">0 <small>of 0 videos</small></div>
+            <div class="k" id="vpDetail">Starting…</div>
+            <div class="bar">
+              <i class="up" id="vpUp" style="width:0"></i>
+              <i class="done live" id="vpDone" style="width:0"></i>
+              <i class="bad" id="vpBad" style="width:0"></i>
+            </div>
+            <div class="legend">
+              <span><i class="k g"></i>On NAS <b id="vpUpN">0</b></span>
+              <span><i class="k a"></i>Rendering <b id="vpDoneN">0</b></span>
+              <span><i class="k r"></i>Failed <b id="vpBadN">0</b></span>
+              <span class="grow" id="vpElapsed"></span>
+            </div>
           </div>
+        </div>
+        </div>
+
+        <div class="vrail">
+        <div class="gh">Setup</div>
+        <div class="grp">
+          <div class="row">
+            <span class="tx"><span class="t">Mode</span></span>
+            <span class="rt"><span class="seg" id="vMode">
+              <button type="button" data-mode="single" aria-pressed="true">Single</button>
+              <button type="button" data-mode="batch" aria-pressed="false">Batch</button>
+            </span></span>
+          </div>
+          <div class="row">
+            <span class="tx"><span class="t">Voice</span></span>
+            <span class="rt"><span class="seg" id="vVoice">
+              <button type="button" data-char="indian" aria-pressed="true">Indian</button>
+              <button type="button" data-char="us" aria-pressed="false">US</button>
+            </span></span>
+          </div>
+          <div class="row">
+            <span class="tx"><span class="t">NAS folder date</span>
+              <span class="s">Where this run is filed</span></span>
+            <span class="rt"><input type="date" class="fld" id="vDate" style="width:152px" /></span>
+          </div>
+        </div>
+
+        <div class="gh">Prompt category</div>
+        <div class="grp">
+          <div class="row"><div class="tokens" id="vCats" role="group" aria-label="Prompt category"></div></div>
+        </div>
+
+        <div id="vSingle">
+          <div class="gh">Script</div>
+          <div class="grp">
+            <div class="row" style="display:block;">
+              <textarea class="area" id="vScript" maxlength="1000"
+                placeholder="Type the line the avatar should speak…"></textarea>
+              <div class="counter" id="vCount">0 / 1000</div>
+            </div>
+            <div class="row">
+              <span class="tx"><span class="t">File name</span>
+                <span class="s">Becomes the NAS filename</span></span>
+              <span class="rt"><span class="fldwrap" style="width:212px">
+                <input type="text" class="fld" id="vTitle" maxlength="80" placeholder="e.g. aries_week32" />
+                <span class="suffix">.mp4</span>
+              </span></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="vBatch" hidden>
+          <div class="gh">Scripts</div>
+          <div class="grp">
+            <div class="row">
+              <button type="button" class="drop empty" id="vDrop" data-state="empty">
+                <span class="ic" aria-hidden="true">▤</span>
+                <span class="tx">
+                  <span class="t" id="vDropTitle">Drop a .xlsx, or click to browse</span>
+                  <span class="s" id="vDropSub">Needs: script · video_title optional</span>
+                </span>
+              </button>
+              <input type="file" id="vXls" accept=".xlsx" hidden />
+            </div>
+          </div>
+          <div class="gh">Queue</div>
+          <div class="grp" id="vQueue">
+            <div class="empty"><div class="g" aria-hidden="true">▶</div>
+              <div class="t">Nothing queued</div>
+              <div class="s">Rows appear here once the batch starts</div></div>
+          </div>
+        </div>
+
+        <div class="runbar">
+          <button class="btn p big" id="vRun">Generate video</button>
+          <button class="btn" id="vCancel" hidden>Cancel</button>
+          <span class="msg grow" id="vMsg" role="status" aria-live="polite"></span>
         </div>
         </div>
       </div>
     </main>
   </div>
-<script src="/static/wave.js?v=2"></script>
-<script src="/static/audio.js?v=2"></script>
-<script src="/static/app.js?v=14"></script>
+</div>
+
+<!-- category editor -->
+<div class="scrim" id="catScrim"></div>
+<aside class="drawer" id="catDrawer" role="dialog" aria-modal="true" aria-labelledby="catTitle" inert>
+  <div class="dh">
+    <div class="tx"><h2 id="catTitle">New category</h2><div class="dsub" id="catSub">Video and motion prompt preset</div></div>
+    <button class="iconbtn" id="catClose" aria-label="Close">✕</button>
+  </div>
+  <div class="fld-block">
+    <label class="flbl" for="catName">Name</label>
+    <input type="text" class="fld" id="catName" maxlength="40" placeholder="e.g. Horoscope" />
+    <div class="errtext" id="catErr" hidden></div>
+  </div>
+  <div class="fld-block grow">
+    <div class="flrow"><label class="flbl" for="catVideo">Video prompt <span class="hint">how it should look and feel</span></label>
+      <span class="counter" id="catVideoN"></span></div>
+    <textarea class="area" id="catVideo" placeholder="Calm tone, soft cinematic lighting, natural head movement…"></textarea>
+  </div>
+  <div class="fld-block grow">
+    <div class="flrow"><label class="flbl" for="catMotion">Motion prompt <span class="hint">optional</span></label>
+      <span class="counter" id="catMotionN"></span></div>
+    <textarea class="area" id="catMotion" placeholder="[body part] + [action] + [emotion/intensity]"></textarea>
+  </div>
+  <div class="acts">
+    <button class="btn" id="catDelete">Delete</button>
+    <button class="btn" id="catReset" hidden>Reset to default</button>
+    <button class="btn" id="catDuplicate" hidden>Duplicate</button>
+    <span class="grow"></span>
+    <span class="dirty" id="catDirty" hidden>Unsaved</span>
+    <button class="btn p" id="catSave">Save</button>
+  </div>
+</aside>
+
+<!-- avatar picker -->
+<div class="scrim" id="avScrim"></div>
+<aside class="drawer" id="avDrawer" role="dialog" aria-modal="true" aria-labelledby="avTitle" inert>
+  <div class="dh">
+    <div class="tx"><h2 id="avTitle">Reuse an avatar</h2><div class="dsub">Already on HeyGen — no re-upload needed</div></div>
+    <button class="iconbtn" id="avClose" aria-label="Close">✕</button>
+  </div>
+  <div class="fld-block grow" style="overflow-y:auto"><div id="avBody"></div></div>
+</aside>
+
+<!-- alert -->
+<div class="scrim" id="alertScrim"></div>
+<div class="alert" id="alert" role="alertdialog" aria-modal="true" aria-labelledby="alertTitle" inert>
+  <div class="g" id="alertIcon" aria-hidden="true">!</div>
+  <div class="t" id="alertTitle"></div>
+  <div class="m" id="alertMsg"></div>
+  <div class="acts">
+    <button class="btn" id="alertCancel">Cancel</button>
+    <button class="btn d" id="alertOk">OK</button>
+  </div>
+</div>
+
+<script src="/static/ui.js?v=1"></script>
+<script src="/static/pane-audio.js?v=2"></script>
+<script src="/static/pane-video.js?v=2"></script>
+<script src="/static/shell.js?v=1"></script>
 </body>
 </html>

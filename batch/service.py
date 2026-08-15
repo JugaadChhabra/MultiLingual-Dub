@@ -140,7 +140,7 @@ async def run_excel_batch_job(
         )
     except Exception as exc:
         logger.exception("Job %s crashed unexpectedly: %s", job_id, exc)
-        await jobs_store.fail(job_id, f"Batch execution crashed: {exc}", tally.summary)
+        await jobs_store.fail(job_id, f"Batch execution crashed: {exc}", tally.summary, exc=exc)
 
 
 async def _run_batch_job_impl(
@@ -199,7 +199,7 @@ async def _run_batch_job_impl(
     # No S3ConfigError branch: S3 credentials are resolved at the route now, so
     # a misconfigured bucket rejects the upload rather than failing a started job.
     except Exception as exc:
-        await jobs_store.fail(job_id, f"Batch setup failed: {exc}", tally.summary)
+        await jobs_store.fail(job_id, f"Batch setup failed: {exc}", tally.summary, exc=exc)
         return
 
     if not rows:
@@ -304,7 +304,7 @@ async def _run_batch_job_impl(
 
         await jobs_store.complete(job_id, tally.summary)
     except Exception as exc:
-        await jobs_store.fail(job_id, f"Batch execution failed: {exc}", tally.summary)
+        await jobs_store.fail(job_id, f"Batch execution failed: {exc}", tally.summary, exc=exc)
 
 
 def _languages_still_needed(

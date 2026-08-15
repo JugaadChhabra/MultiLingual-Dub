@@ -27,25 +27,22 @@ def test_static_assets_stay_cacheable() -> None:
     """Only the HTML opts out. Versioned assets should still cache normally."""
     client = TestClient(api.app)
 
-    for path in ("/static/app.js", "/static/wave.js", "/static/audio.js", "/static/style.css"):
+    for path in ("/static/app.css", "/static/ui.js", "/static/shell.js",
+                 "/static/pane-audio.js", "/static/pane-video.js"):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "no-cache" not in response.headers.get("cache-control", ""), path
 
 
 def test_shared_modules_load_before_their_first_use() -> None:
-    """wave.js and audio.js expose plain globals, so load order is load-bearing."""
-    client = TestClient(api.app)
+    """ui.js exposes window.UI, which both panes and the shell consume, so load
+    order is load-bearing — shell.js boots and must come last."""
+    index = TestClient(api.app).get("/").text
 
-    # Studio: both modules must precede the page script that consumes them.
-    index = client.get("/").text
-    for module in ("/static/wave.js", "/static/audio.js"):
-        assert module in index
-        assert index.index(module) < index.index("/static/app.js")
+    for module in ("/static/ui.js", "/static/pane-audio.js", "/static/pane-video.js", "/static/shell.js"):
+        assert module in index, module
 
-    # Video Studio: the page script is inline, so compare against first use.
-    heygen = client.get("/heygen").text
-    for module in ("/static/wave.js", "/static/audio.js"):
-        assert module in heygen
-    assert heygen.index("/static/wave.js") < heygen.index("AutoDubWave.create")
-    assert heygen.index("/static/audio.js") < heygen.index("AutoDubAudio.create")
+    assert index.index("/static/ui.js") < index.index("/static/pane-audio.js")
+    assert index.index("/static/ui.js") < index.index("/static/pane-video.js")
+    assert index.index("/static/pane-audio.js") < index.index("/static/shell.js")
+    assert index.index("/static/pane-video.js") < index.index("/static/shell.js")

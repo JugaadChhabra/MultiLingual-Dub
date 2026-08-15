@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from services.errors import classify
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,11 +116,16 @@ class VideoJobsStore:
             self._write(state)
             logger.info("VideoJob %s → completed", job_id)
 
-    async def fail(self, job_id: str, message: str) -> None:
+    async def fail(self, job_id: str, message: str, *,
+                   exc: BaseException | None = None, stage: str | None = None) -> None:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "failed"
             state.error = message
+            if exc is not None:
+                # state.status is the step it died on — a better stage than any
+                # the call site could pass, since the store tracked it all along
+                state.cause = classify(exc, provider=None, stage=stage or state.status).to_dict()
             _finalize(state.summary)
             self._write(state)
             logger.error("VideoJob %s → failed | %s", job_id, message)

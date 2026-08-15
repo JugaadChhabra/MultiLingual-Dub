@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutoDub — component sheet</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   FOUNDATIONS. Everything on this page is built from these tokens and nothing
+   else — no one-off hex, no one-off px. SF Pro via -apple-system, no webfonts.
+   Both appearances are real: this follows your Mac's Light/Dark setting.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+
+  /* type — macOS sizes, not web sizes. 13px is the system body. */
+  --t-caption2:11px; --t-caption:12px; --t-body:13px; --t-headline:15px;
+  --t-title3:17px; --t-title2:22px; --t-title1:28px; --t-display:34px;
+
+  /* spacing — 4pt grid */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+
+  /* radii */
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:14px; --r-pill:999px;
+
+  /* motion */
+  --dur:180ms; --ease:cubic-bezier(.23,1,.32,1);
+
+  /* light appearance */
+  --bg:#F5F5F7; --card:#FFFFFF; --material:rgba(246,246,248,.80); --raised:#FFFFFF;
+  --label:#1D1D1F; --label2:rgba(60,60,67,.62); --label3:rgba(60,60,67,.32); --label4:rgba(60,60,67,.18);
+  --sep:rgba(60,60,67,.14); --hair:rgba(0,0,0,.08);
+  --accent:#007AFF; --accent-soft:rgba(0,122,255,.12); --accent-ink:#0060DF;
+  --red:#FF3B30; --red-soft:rgba(255,59,48,.10); --red-ink:#C4322A;
+  --green:#34C759; --green-soft:rgba(52,199,89,.12); --green-ink:#248A3D;
+  --orange:#FF9500; --orange-soft:rgba(255,149,0,.12); --orange-ink:#B36B00;
+  --purple:#AF52DE;
+  --fill:rgba(120,120,128,.12); --fill2:rgba(120,120,128,.20); --fill3:rgba(120,120,128,.28);
+  /* hatch lines, one per signal colour — each rides its own base so the line
+     reads as a lighter version of that segment rather than a second hue */
+  --stripe-a:rgba(255,255,255,.34); --stripe-g:rgba(255,255,255,.40);
+  --stripe-r:rgba(255,255,255,.32); --stripe-n:rgba(120,120,128,.16);
+  --shadow-1:0 0 0 .5px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.06);
+  --shadow-2:0 0 0 .5px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.06),0 6px 16px -8px rgba(0,0,0,.14);
+  --shadow-3:0 0 0 .5px rgba(0,0,0,.08),0 14px 40px -8px rgba(0,0,0,.30);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#1E1E1E; --card:#2C2C2E; --material:rgba(38,38,40,.72); --raised:#3A3A3C;
+    --label:#FFFFFF; --label2:rgba(235,235,245,.60); --label3:rgba(235,235,245,.32); --label4:rgba(235,235,245,.18);
+    --sep:rgba(235,235,245,.16); --hair:rgba(255,255,255,.10);
+    --accent:#0A84FF; --accent-soft:rgba(10,132,255,.20); --accent-ink:#409CFF;
+    --red:#FF453A; --red-soft:rgba(255,69,58,.18); --red-ink:#FF6961;
+    --green:#30D158; --green-soft:rgba(48,209,88,.18); --green-ink:#30D158;
+    --orange:#FF9F0A; --orange-soft:rgba(255,159,10,.18); --orange-ink:#FFB340;
+    --purple:#BF5AF2;
+    --fill:rgba(120,120,128,.24); --fill2:rgba(120,120,128,.36); --fill3:rgba(120,120,128,.44);
+    --stripe-a:rgba(255,255,255,.26); --stripe-g:rgba(255,255,255,.28);
+    --stripe-r:rgba(255,255,255,.24); --stripe-n:rgba(235,235,245,.10);
+    --shadow-1:0 0 0 .5px rgba(0,0,0,.5),0 1px 2px rgba(0,0,0,.4);
+    --shadow-2:0 0 0 .5px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.4),0 10px 24px -10px rgba(0,0,0,.6);
+    --shadow-3:0 0 0 .5px rgba(0,0,0,.6),0 18px 44px -8px rgba(0,0,0,.7);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:var(--t-body);
+  line-height:1.45;-webkit-font-smoothing:antialiased;padding:44px 24px 120px;}
+.page{max-width:1080px;margin:0 auto;}
+h1{font-size:var(--t-title1);font-weight:700;letter-spacing:-.022em;margin-bottom:var(--s2);}
+.lede{font-size:var(--t-headline);color:var(--label2);max-width:70ch;margin-bottom:var(--s6);}
+.lede b{color:var(--label);font-weight:590;}
+
+/* sheet scaffolding */
+h2{font-size:var(--t-title3);font-weight:640;letter-spacing:-.015em;margin:var(--s8) 0 var(--s1);
+  padding-top:var(--s5);border-top:.5px solid var(--sep);}
+h2:first-of-type{border-top:none;padding-top:0;}
+h2 .n{color:var(--label3);font-weight:400;margin-right:var(--s2);font-variant-numeric:tabular-nums;}
+.secnote{font-size:var(--t-caption);color:var(--label2);margin-bottom:var(--s5);max-width:74ch;}
+.c{margin-bottom:var(--s6);}
+.c > .h{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s1);}
+.c > .h .name{font-size:var(--t-body);font-weight:590;}
+.c > .h .api{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);}
+.c > .use{font-size:var(--t-caption);color:var(--label2);margin-bottom:var(--s3);max-width:76ch;}
+.c > .use b{color:var(--label);font-weight:510;}
+.demo{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--shadow-1);padding:var(--s4);
+  display:flex;flex-wrap:wrap;gap:var(--s4);align-items:flex-start;}
+.demo.col{flex-direction:column;align-items:stretch;}
+.demo.plain{background:none;box-shadow:none;padding:0;}
+.st{display:flex;flex-direction:column;gap:var(--s2);align-items:flex-start;}
+.st > .lab{font-size:var(--t-caption2);color:var(--label3);font-variant-numeric:tabular-nums;}
+
+/* ── swatches / scales ─────────────────────────────────────────────────── */
+.sw-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:var(--s2);width:100%;}
+.sw{border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-1);}
+.sw i{display:block;height:44px;}
+.sw .m{padding:6px 9px;background:var(--card);}
+.sw .m b{display:block;font-size:var(--t-caption2);font-weight:590;}
+.sw .m span{font-size:10px;color:var(--label2);font-family:var(--mono);}
+.scale{display:flex;flex-direction:column;gap:var(--s2);width:100%;}
+.scale > div{display:flex;align-items:baseline;gap:var(--s4);}
+.scale .k{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);width:112px;flex:none;}
+
+/* ═══ WINDOW & NAVIGATION ═══ */
+.win{border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-3);width:100%;}
+.tb{height:42px;display:flex;align-items:center;gap:var(--s2);padding:0 14px;background:var(--material);
+  backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep);}
+.tl{display:flex;gap:8px;}.tl i{width:12px;height:12px;border-radius:50%;}
+.tl i:nth-child(1){background:#FF5F57}.tl i:nth-child(2){background:#FEBC2E}.tl i:nth-child(3){background:#28C840}
+.tbt{font-size:var(--t-body);font-weight:590;margin-left:6px;}
+.tbr{margin-left:auto;display:flex;align-items:center;gap:var(--s3);font-size:var(--t-caption2);color:var(--label2);}
+.sb{background:var(--material);backdrop-filter:saturate(180%) blur(20px);padding:10px 8px;width:214px;}
+.sbh{font-size:var(--t-caption2);font-weight:590;color:var(--label3);padding:9px 8px 4px;}
+.sbi{display:flex;align-items:center;gap:var(--s2);padding:5px 8px;border-radius:var(--r-sm);font-size:var(--t-body);margin-bottom:1px;}
+.sbi .g{width:17px;height:17px;border-radius:4.5px;display:grid;place-items:center;font-size:10px;color:#fff;background:var(--accent);flex:none;}
+.sbi .g.p{background:var(--purple)}.sbi .g.o{background:var(--orange)}.sbi .g.n{background:var(--label3)}
+.sbi.hover{background:var(--fill);}
+.sbi.on{background:var(--accent);color:#fff;}
+.sbi.on .g{background:rgba(255,255,255,.28);}
+.sbi .r{margin-left:auto;font-size:var(--t-caption2);color:var(--label3);font-variant-numeric:tabular-nums;}
+.sbi.on .r{color:rgba(255,255,255,.75);}
+.sbi .live{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--accent);}
+.sbi.on .live{background:#fff;}
+
+/* ═══ CONTROLS ═══ */
+.btn{font-family:var(--font);font-size:var(--t-body);padding:4px 12px;border-radius:var(--r-sm);border:none;cursor:pointer;
+  background:var(--raised);color:var(--label);box-shadow:var(--shadow-1);transition:filter var(--dur) var(--ease),transform 100ms var(--ease);}
+.btn:hover{filter:brightness(.97)}
+@media (prefers-color-scheme:dark){.btn:hover{filter:brightness(1.15)}}
+.btn:active{transform:scale(.97)}
+.btn.p{background:var(--accent);color:#fff;font-weight:510;box-shadow:0 1px 2px rgba(0,0,0,.14);}
+.btn.d{background:var(--red);color:#fff;font-weight:510;}
+.btn.q{background:none;box-shadow:none;color:var(--accent);}
+.btn.big{font-size:var(--t-headline);padding:7px 20px;border-radius:var(--r-md);}
+.btn[disabled]{opacity:.4;pointer-events:none;}
+.btn.focus{box-shadow:var(--shadow-1),0 0 0 3.5px var(--accent-soft);}
+.btn .spin{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;margin-right:6px;vertical-align:-1px;animation:sp .7s linear infinite;}
+@keyframes sp{to{transform:rotate(360deg)}}
+.iconbtn{width:24px;height:24px;border-radius:var(--r-sm);background:none;border:none;cursor:pointer;color:var(--label2);
+  display:grid;place-items:center;font-size:12px;}
+.iconbtn:hover{background:var(--fill);color:var(--label);}
+
+.seg{display:inline-flex;padding:2px;background:var(--fill);border-radius:var(--r-md);}
+.seg button{font-family:var(--font);font-size:var(--t-body);padding:4px 14px;border:none;border-radius:var(--r-sm);
+  background:none;color:var(--label);cursor:pointer;}
+.seg button.on{background:var(--raised);box-shadow:var(--shadow-1);font-weight:510;}
+
+.sw-t{width:38px;height:22px;border-radius:var(--r-pill);background:var(--fill2);position:relative;flex:none;
+  transition:background var(--dur) var(--ease);cursor:pointer;}
+.sw-t.on{background:var(--accent);}
+.sw-t::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left var(--dur) var(--ease);}
+.sw-t.on::after{left:18px;}
+.sw-t.dis{opacity:.4;}
+
+.fld{font-family:var(--font);font-size:var(--t-body);padding:5px 9px;border-radius:var(--r-sm);width:220px;
+  background:var(--card);color:var(--label);border:none;box-shadow:inset 0 0 0 .5px var(--hair),0 .5px 1px rgba(0,0,0,.04);}
+.fld::placeholder{color:var(--label3);}
+.fld.focus{box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3.5px var(--accent-soft);outline:none;}
+.fld.bad{box-shadow:inset 0 0 0 1px var(--red),0 0 0 3.5px var(--red-soft);}
+.fld[disabled]{opacity:.45;}
+.fldwrap{position:relative;display:inline-block;}
+.fldwrap .suffix{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:var(--t-caption);color:var(--label3);}
+.fldwrap .fld{padding-right:42px;}
+.area{font-family:var(--font);font-size:var(--t-body);line-height:1.5;padding:8px 10px;border-radius:var(--r-md);width:100%;
+  min-height:76px;resize:vertical;background:var(--card);color:var(--label);border:none;
+  box-shadow:inset 0 0 0 .5px var(--hair);}
+.counter{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);text-align:right;margin-top:3px;font-variant-numeric:tabular-nums;}
+.errtext{font-size:var(--t-caption);color:var(--red-ink);margin-top:3px;}
+
+.token{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-body);padding:4px 10px;border-radius:var(--r-sm);
+  background:var(--fill);color:var(--label);cursor:pointer;}
+.token.on{background:var(--accent);color:#fff;}
+.token.add{background:none;box-shadow:inset 0 0 0 1px var(--label4);color:var(--label2);}
+.token .x{opacity:.6;font-size:11px;}
+
+.drop{border-radius:var(--r-lg);padding:var(--s4);display:flex;align-items:center;gap:var(--s3);width:100%;
+  background:var(--card);box-shadow:inset 0 0 0 1px var(--label4);cursor:pointer;}
+.drop.dash{box-shadow:none;border:1.5px dashed var(--label4);background:none;}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);}
+.drop.bad{box-shadow:inset 0 0 0 1px var(--red);}
+.drop .ic{width:30px;height:30px;border-radius:var(--r-sm);background:var(--fill);display:grid;place-items:center;flex:none;color:var(--label2);}
+.drop .ic.ok{background:var(--green);color:#fff;}
+.drop .ic.no{background:var(--red);color:#fff;}
+.drop .t{font-size:var(--t-body);font-weight:510;}
+.drop .s{font-size:var(--t-caption);color:var(--label2);}
+
+/* ═══ DATA DISPLAY ═══ */
+.grp{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--shadow-1);overflow:hidden;width:100%;}
+.gh{font-size:var(--t-caption2);font-weight:590;color:var(--label2);padding:0 4px 6px;}
+.row{display:flex;align-items:center;gap:var(--s3);padding:9px 14px;}
+.row + .row{border-top:.5px solid var(--sep);}
+.row .t{font-size:var(--t-body);}
+.row .s{font-size:var(--t-caption);color:var(--label2);margin-top:1px;}
+.row .rt{margin-left:auto;display:flex;align-items:center;gap:var(--s2);color:var(--label2);}
+.row .chev{color:var(--label3);font-size:11px;}
+
+/* The track carries a faint hatch of its own so "queued" reads as allocated
+   work rather than empty space. --hatch is the one geometry: 45°, 2px line,
+   6px period. Every striped surface in the app uses it. */
+.bar{height:8px;border-radius:4px;overflow:hidden;display:flex;width:100%;
+  background-color:var(--fill);
+  background-image:repeating-linear-gradient(45deg,var(--stripe-n) 0 2px,transparent 2px 6px);}
+.bar i{display:block;height:100%;position:relative;
+  box-shadow:inset -1px 0 0 rgba(0,0,0,.16);}   /* hairline so hatches don't run together */
+.bar i:last-child{box-shadow:none;}
+.bar.thin{height:5px;border-radius:2.5px;}
+.bar .up{background-color:var(--green);
+  background-image:repeating-linear-gradient(45deg,var(--stripe-g) 0 2px,transparent 2px 6px);}
+.bar .done{background-color:var(--accent);
+  background-image:repeating-linear-gradient(45deg,var(--stripe-a) 0 2px,transparent 2px 6px);}
+.bar .bad{background-color:var(--red);
+  background-image:repeating-linear-gradient(45deg,var(--stripe-r) 0 2px,transparent 2px 6px);}
+/* the in-flight segment is the only thing allowed to move: the hatch drifts one
+   full period, so "working right now" is visible without any other animation */
+.bar .done.live{background-size:8.49px 8.49px;animation:hatch 900ms linear infinite;}
+@keyframes hatch{to{background-position:8.49px 0}}
+@media (prefers-reduced-motion:reduce){.bar .done.live{animation:none}}
+/* legend keys carry the same hatch so the mapping is unmistakable */
+.legend i.k{background-color:var(--fill);background-image:repeating-linear-gradient(45deg,var(--stripe-n) 0 1.5px,transparent 1.5px 4.5px);}
+.legend i.k.g{background-color:var(--green);background-image:repeating-linear-gradient(45deg,var(--stripe-g) 0 1.5px,transparent 1.5px 4.5px);}
+.legend i.k.a{background-color:var(--accent);background-image:repeating-linear-gradient(45deg,var(--stripe-a) 0 1.5px,transparent 1.5px 4.5px);}
+.legend i.k.r{background-color:var(--red);background-image:repeating-linear-gradient(45deg,var(--stripe-r) 0 1.5px,transparent 1.5px 4.5px);}
+/* background-color only, so the track hatch inherited from .bar survives */
+.bar.indet{position:relative;background-color:var(--fill);}
+.bar.indet::after{content:"";position:absolute;top:0;left:-35%;width:35%;height:100%;
+  background-color:var(--accent);
+  background-image:repeating-linear-gradient(45deg,var(--stripe-a) 0 2px,transparent 2px 6px);
+  border-radius:4px;animation:ind 1.3s var(--ease) infinite;}
+@keyframes ind{to{left:100%}}
+.legend{display:flex;gap:var(--s4);font-size:var(--t-caption2);color:var(--label2);flex-wrap:wrap;}
+.legend b{color:var(--label);font-weight:510;font-variant-numeric:tabular-nums;}
+.legend i{width:7px;height:7px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:middle;}
+
+.stat .v{font-size:var(--t-title1);font-weight:640;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.1;}
+.stat .v span{font-size:var(--t-headline);font-weight:400;color:var(--label2);letter-spacing:0;}
+.stat .k{font-size:var(--t-caption);color:var(--label2);margin-top:2px;}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-caption2);font-weight:510;padding:2px 8px;border-radius:var(--r-xs);
+  background:var(--fill);color:var(--label2);}
+.badge.g{background:var(--green-soft);color:var(--green-ink);}
+.badge.r{background:var(--red-soft);color:var(--red-ink);}
+.badge.o{background:var(--orange-soft);color:var(--orange-ink);}
+.badge.a{background:var(--accent-soft);color:var(--accent-ink);}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.dot.g{background:var(--green)}.dot.r{background:var(--red)}.dot.o{background:var(--orange)}.dot.a{background:var(--accent)}
+.dot.n{background:var(--label3)}
+.dot.pulse{animation:pl 1.4s ease-in-out infinite;}
+@keyframes pl{50%{opacity:.35}}
+
+.qrow{display:grid;grid-template-columns:52px 1fr auto auto auto;align-items:center;gap:var(--s3);padding:8px 14px;font-size:var(--t-body);}
+.qrow + .qrow{border-top:.5px solid var(--sep);}
+.qrow .i{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);}
+.qrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.qrow .path{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.empty{text-align:center;padding:var(--s8) var(--s4);color:var(--label2);}
+.empty .g{width:38px;height:38px;border-radius:var(--r-lg);background:var(--fill);display:grid;place-items:center;margin:0 auto var(--s3);font-size:17px;}
+.empty .t{font-size:var(--t-headline);font-weight:590;color:var(--label);}
+.empty .s{font-size:var(--t-caption);margin-top:3px;}
+
+/* ═══ FEEDBACK ═══ */
+.banner{display:flex;gap:var(--s3);background:var(--card);border-radius:var(--r-lg);padding:12px 14px;width:100%;
+  box-shadow:var(--shadow-1),0 0 0 1px var(--red-soft);}
+.banner.warn{box-shadow:var(--shadow-1),0 0 0 1px var(--orange-soft);}
+.banner.info{box-shadow:var(--shadow-1),0 0 0 1px var(--accent-soft);}
+.banner.ok{box-shadow:var(--shadow-1),0 0 0 1px var(--green-soft);}
+.banner .ic{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;flex:none;margin-top:1px;background:var(--red);}
+.banner.warn .ic{background:var(--orange)}.banner.info .ic{background:var(--accent)}.banner.ok .ic{background:var(--green)}
+.banner .h{font-size:var(--t-body);font-weight:590;}
+.banner .d{font-size:var(--t-caption);color:var(--label2);margin-top:2px;}
+.banner .d code{font-family:var(--mono);font-size:var(--t-caption2);background:var(--fill);padding:1px 5px;border-radius:var(--r-xs);}
+.banner .a{margin-left:auto;display:flex;gap:6px;flex:none;align-items:flex-start;}
+
+.alert{width:270px;background:var(--card);border-radius:var(--r-xl);box-shadow:var(--shadow-3);padding:var(--s5) var(--s4) var(--s4);text-align:center;}
+.alert .g{width:44px;height:44px;border-radius:var(--r-lg);background:var(--red-soft);color:var(--red);display:grid;place-items:center;
+  font-size:21px;font-weight:700;margin:0 auto var(--s3);}
+.alert .t{font-size:var(--t-body);font-weight:640;}
+.alert .m{font-size:var(--t-caption);color:var(--label2);margin-top:4px;}
+.alert .acts{display:flex;gap:var(--s2);margin-top:var(--s4);}
+.alert .acts .btn{flex:1;justify-content:center;text-align:center;}
+
+.notif{width:340px;background:var(--material);backdrop-filter:saturate(180%) blur(30px);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-3);padding:12px 14px;display:flex;gap:var(--s3);}
+.notif .app{width:32px;height:32px;border-radius:var(--r-md);background:linear-gradient(150deg,var(--accent),var(--purple));
+  flex:none;display:grid;place-items:center;color:#fff;font-size:14px;font-weight:700;}
+.notif .n{font-size:var(--t-body);font-weight:590;}
+.notif .m{font-size:var(--t-caption);color:var(--label2);margin-top:1px;}
+.notif .w{font-size:var(--t-caption2);color:var(--label3);margin-left:auto;flex:none;}
+
+.monitor{border-radius:var(--r-md);background:#000;display:grid;place-items:center;min-height:150px;width:100%;
+  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16);color:rgba(255,255,255,.5);font-size:var(--t-caption);position:relative;}
+.monitor .tag{position:absolute;top:9px;left:50%;transform:translateX(-50%);font-size:var(--t-caption2);
+  background:rgba(0,0,0,.5);color:rgba(255,255,255,.8);padding:3px 9px;border-radius:var(--r-xs);}
+.avgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:var(--s2);width:100%;}
+.avcard{border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-1);background:var(--card);cursor:pointer;}
+.avcard .im{aspect-ratio:4/5;background:linear-gradient(150deg,#5A4A6E,#8A5A3A);}
+.avcard .nm{padding:5px 7px;font-size:var(--t-caption2);color:var(--label2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.avcard.on{box-shadow:var(--shadow-1),0 0 0 2px var(--accent);}
+
+/* error catalogue table */
+table{width:100%;border-collapse:collapse;background:var(--card);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-1);}
+th{text-align:left;font-size:var(--t-caption2);font-weight:590;color:var(--label2);padding:9px 12px;border-bottom:.5px solid var(--sep);}
+td{padding:9px 12px;font-size:var(--t-caption);vertical-align:top;border-bottom:.5px solid var(--sep);}
+tr:last-child td{border-bottom:none;}
+td.w{width:34%;}
+td b{font-weight:590;}
+td .src{font-family:var(--mono);font-size:10.5px;color:var(--label3);display:block;margin-top:2px;}
+.conf{font-size:10px;padding:1px 6px;border-radius:var(--r-xs);white-space:nowrap;}
+.conf.hi{background:var(--green-soft);color:var(--green-ink)}
+.conf.me{background:var(--orange-soft);color:var(--orange-ink)}
+
+.build{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--shadow-1);padding:var(--s4) var(--s5);}
+.build li{margin:0 0 var(--s2) 18px;font-size:var(--t-caption);color:var(--label2);}
+.build li b{color:var(--label);font-weight:590;}
+@media (max-width:760px){.fld{width:100%}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Component sheet</h1>
+<p class="lede">Everything needed to build approach <b>A</b>, in every state. All of it is driven by the token block at the top of this file — <b>no one-off hex, no one-off pixel value</b> — so this page is also the proof that the system holds. Switch your Mac between Light and Dark; this follows.</p>
+
+<!-- ══════════════════ 1 FOUNDATIONS ══════════════════ -->
+<h2><span class="n">1</span>Foundations</h2>
+<p class="secnote">Semantic names only. A component asks for <code>--label2</code>, never for a grey. That is what makes both appearances work from one stylesheet.</p>
+
+<div class="c">
+  <div class="h"><span class="name">Colour — surfaces</span><span class="api">--bg · --card · --material · --raised</span></div>
+  <div class="use">Four surfaces, that is all. <b>--material</b> is the translucent one, used only for the sidebar and the toolbar so they blur what scrolls behind them.</div>
+  <div class="demo plain"><div class="sw-grid">
+    <div class="sw"><i style="background:var(--bg)"></i><div class="m"><b>Window</b><span>--bg</span></div></div>
+    <div class="sw"><i style="background:var(--card)"></i><div class="m"><b>Card</b><span>--card</span></div></div>
+    <div class="sw"><i style="background:var(--material);backdrop-filter:blur(10px)"></i><div class="m"><b>Material</b><span>--material</span></div></div>
+    <div class="sw"><i style="background:var(--raised)"></i><div class="m"><b>Raised</b><span>--raised</span></div></div>
+  </div></div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Colour — labels &amp; signal</span><span class="api">--label…4 · --accent · --red · --green · --orange</span></div>
+  <div class="use">A <b>four-step label ramp</b>, and colour reserved for signal: blue is action and in-flight, green is <b>uploaded and safe</b>, red is failure, orange is a warning that is not yet a failure. Nothing is coloured for decoration.</div>
+  <div class="demo plain"><div class="sw-grid">
+    <div class="sw"><i style="background:var(--label)"></i><div class="m"><b>Primary</b><span>--label</span></div></div>
+    <div class="sw"><i style="background:var(--label2)"></i><div class="m"><b>Secondary</b><span>--label2</span></div></div>
+    <div class="sw"><i style="background:var(--label3)"></i><div class="m"><b>Tertiary</b><span>--label3</span></div></div>
+    <div class="sw"><i style="background:var(--label4)"></i><div class="m"><b>Quaternary</b><span>--label4</span></div></div>
+    <div class="sw"><i style="background:var(--accent)"></i><div class="m"><b>Accent</b><span>--accent</span></div></div>
+    <div class="sw"><i style="background:var(--green)"></i><div class="m"><b>Uploaded</b><span>--green</span></div></div>
+    <div class="sw"><i style="background:var(--red)"></i><div class="m"><b>Failed</b><span>--red</span></div></div>
+    <div class="sw"><i style="background:var(--orange)"></i><div class="m"><b>Warning</b><span>--orange</span></div></div>
+  </div></div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Type scale</span><span class="api">--t-caption2 … --t-display</span></div>
+  <div class="use"><b>13px is the body size</b> — the macOS system size, not the 15–16px web default. Hierarchy comes from weight and label colour far more than from size.</div>
+  <div class="demo col">
+    <div class="scale">
+      <div><span class="k">--t-display 34</span><span style="font-size:34px;font-weight:640;letter-spacing:-.025em;">341</span></div>
+      <div><span class="k">--t-title1 28</span><span style="font-size:28px;font-weight:700;letter-spacing:-.022em;">Week 32 horoscope</span></div>
+      <div><span class="k">--t-title2 22</span><span style="font-size:22px;font-weight:640;letter-spacing:-.02em;">Audio dubbing</span></div>
+      <div><span class="k">--t-title3 17</span><span style="font-size:17px;font-weight:640;">Section heading</span></div>
+      <div><span class="k">--t-headline 15</span><span style="font-size:15px;font-weight:590;">Emphasised body</span></div>
+      <div><span class="k">--t-body 13</span><span style="font-size:13px;">Body — the default for everything</span></div>
+      <div><span class="k">--t-caption 12</span><span style="font-size:12px;color:var(--label2)">Secondary caption</span></div>
+      <div><span class="k">--t-caption2 11</span><span style="font-size:11px;color:var(--label3)">Metadata and counts</span></div>
+      <div><span class="k">--mono</span><span style="font-family:var(--mono);font-size:11px;color:var(--label3)">hi-IN · s3://neela-autodub/ · 17:52:33</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Spacing, radii, motion</span><span class="api">--s1…8 · --r-xs…pill · --dur --ease</span></div>
+  <div class="use">4-point grid. Radii pair with size — 6px on buttons, 10px on cards, 14px on sheets and notifications. One duration (<b>180ms</b>) and one easing curve for everything.</div>
+  <div class="demo">
+    <div class="st"><span class="lab">--r-xs 4</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-xs)"></div></div>
+    <div class="st"><span class="lab">--r-sm 6</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-sm)"></div></div>
+    <div class="st"><span class="lab">--r-md 8</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-md)"></div></div>
+    <div class="st"><span class="lab">--r-lg 10</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-lg)"></div></div>
+    <div class="st"><span class="lab">--r-xl 14</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-xl)"></div></div>
+    <div class="st"><span class="lab">--r-pill</span><div style="width:52px;height:36px;background:var(--fill);border-radius:var(--r-pill)"></div></div>
+  </div>
+</div>
+
+<!-- ══════════════════ 2 WINDOW ══════════════════ -->
+<h2><span class="n">2</span>Window &amp; navigation</h2>
+<p class="secnote">The shell. Built once, holds both pipelines.</p>
+
+<div class="c">
+  <div class="h"><span class="name">Toolbar</span><span class="api">Toolbar</span></div>
+  <div class="use">Translucent, blurs content scrolling under it. Right side carries <b>global truth only</b> — who is configured, and whether something is running.</div>
+  <div class="demo plain"><div class="win" style="box-shadow:var(--shadow-2)">
+    <div class="tb"><span class="tl"><i></i><i></i><i></i></span><span class="tbt">AutoDub</span>
+      <span class="tbr"><span class="dot a pulse"></span><span>Audio running · 6 min left</span><span>·</span><span>9/9 configured</span></span></div>
+  </div></div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Sidebar item</span><span class="api">SidebarItem</span></div>
+  <div class="use">States: <b>default · hover · selected · running · with count</b>. A running pipeline shows a live dot, so the other operator can see the machine is busy without leaving their own section.</div>
+  <div class="demo plain"><div class="sb" style="border-radius:var(--r-lg);box-shadow:var(--shadow-1);width:236px;">
+    <div class="sbh">Pipelines</div>
+    <div class="sbi"><span class="g">♪</span> Audio dubbing</div>
+    <div class="sbi hover"><span class="g p">▶</span> Video · HeyGen</div>
+    <div class="sbi on"><span class="g">♪</span> Audio dubbing <span class="live"></span></div>
+    <div class="sbh">Recent</div>
+    <div class="sbi"><span class="g n">✓</span> Week 32 horoscope <span class="r">Today</span></div>
+    <div class="sbi"><span class="g o">!</span> Birthday batch <span class="r">Yest.</span></div>
+  </div></div>
+</div>
+
+<!-- ══════════════════ 3 CONTROLS ══════════════════ -->
+<h2><span class="n">3</span>Controls</h2>
+<p class="secnote">Every interactive element, every state. Focus rings are the macOS 3.5px accent halo — needed, since both operators may be keyboard-driven.</p>
+
+<div class="c">
+  <div class="h"><span class="name">Button</span><span class="api">Button — primary · secondary · destructive · plain</span></div>
+  <div class="use">States: <b>default · hover · pressed · focused · disabled · loading</b>. One primary per view. Destructive is only for delete.</div>
+  <div class="demo">
+    <div class="st"><span class="lab">primary</span><button class="btn p">Run pipeline</button></div>
+    <div class="st"><span class="lab">secondary</span><button class="btn">Cancel run</button></div>
+    <div class="st"><span class="lab">destructive</span><button class="btn d">Delete</button></div>
+    <div class="st"><span class="lab">plain</span><button class="btn q">Open ElevenLabs</button></div>
+    <div class="st"><span class="lab">focused</span><button class="btn p focus">Run pipeline</button></div>
+    <div class="st"><span class="lab">disabled</span><button class="btn p" disabled>Run pipeline</button></div>
+    <div class="st"><span class="lab">loading</span><button class="btn p"><span class="spin"></span>Submitting</button></div>
+    <div class="st"><span class="lab">large</span><button class="btn p big">Generate video</button></div>
+    <div class="st"><span class="lab">icon</span><button class="iconbtn">✕</button></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Segmented control</span><span class="api">Segmented</span></div>
+  <div class="use">Two-to-three exclusive options that reshape the view: <b>Single/Batch</b>, <b>Indian/US voice</b>. Never for more than three.</div>
+  <div class="demo">
+    <div class="st"><span class="lab">mode</span><div class="seg"><button class="on">Single</button><button>Batch</button></div></div>
+    <div class="st"><span class="lab">voice</span><div class="seg"><button class="on">Indian</button><button>US</button></div></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Switch</span><span class="api">Switch</span></div>
+  <div class="use">Booleans that take effect immediately — Teaching mode, Append mode. States: <b>off · on · disabled</b>. Always paired with a label row, never floating.</div>
+  <div class="demo">
+    <div class="st"><span class="lab">off</span><div class="sw-t"></div></div>
+    <div class="st"><span class="lab">on</span><div class="sw-t on"></div></div>
+    <div class="st"><span class="lab">disabled</span><div class="sw-t on dis"></div></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Text field</span><span class="api">TextField · TextField.suffix · TextArea</span></div>
+  <div class="use">States: <b>default · focus · error · disabled</b>. The suffix variant is the video file-name field, where <code>.mp4</code> is fixed. Errors sit under the field, never in a tooltip.</div>
+  <div class="demo col">
+    <div class="demo plain" style="gap:var(--s4);">
+      <div class="st"><span class="lab">default</span><input class="fld" placeholder="e.g. aries_week32" /></div>
+      <div class="st"><span class="lab">focus</span><input class="fld focus" value="aries_week32" /></div>
+      <div class="st"><span class="lab">suffix</span><span class="fldwrap"><input class="fld" value="aries_week32" /><span class="suffix">.mp4</span></span></div>
+      <div class="st"><span class="lab">disabled</span><input class="fld" value="Locked while running" disabled /></div>
+    </div>
+    <div class="st" style="width:100%;">
+      <span class="lab">error</span>
+      <input class="fld bad" value="Horoscope" style="width:220px" />
+      <div class="errtext">Another category already uses that name.</div>
+    </div>
+    <div class="st" style="width:100%;">
+      <span class="lab">textarea + counter</span>
+      <textarea class="area" placeholder="Type the line the avatar should speak…">आज का दिन शुभ है।</textarea>
+      <div class="counter">17 / 1000</div>
+    </div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Token</span><span class="api">Token — language · category</span></div>
+  <div class="use">Selected languages and prompt categories. States: <b>off · on · removable · add</b>. Native script at body size, never shrunk — Devanagari and Tamil need the height.</div>
+  <div class="demo">
+    <span class="token on">हिन्दी</span><span class="token on">বাংলা</span><span class="token">தமிழ்</span>
+    <span class="token on">తెలుగు <span class="x">✕</span></span><span class="token add">+ Add languages</span>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Drop zone</span><span class="api">DropZone</span></div>
+  <div class="use">States: <b>empty · drag-over · loaded · rejected</b>. The loaded state reports what was actually parsed — row count and header validity — not just the filename.</div>
+  <div class="demo col">
+    <div class="drop dash"><span class="ic">▤</span><span><div class="t">Drop a .xlsx, or click to browse</div><div class="s">Needs: voiceover_text, emotion, activity_name, voiceover_title</div></span></div>
+    <div class="drop over"><span class="ic">▤</span><span><div class="t">Release to add</div><div class="s">horoscope_week32.xlsx</div></span></div>
+    <div class="drop"><span class="ic ok">✓</span><span><div class="t">horoscope_week32.xlsx</div><div class="s">48 rows · headers ok</div></span><span class="rt" style="margin-left:auto"><button class="btn">Replace</button></span></div>
+    <div class="drop bad"><span class="ic no">!</span><span><div class="t">horoscope_week32.xlsx</div><div class="s" style="color:var(--red-ink)">Missing column: activity_name</div></span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ 4 DATA ══════════════════ -->
+<h2><span class="n">4</span>Data display</h2>
+
+<div class="c">
+  <div class="h"><span class="name">Grouped list</span><span class="api">Group · Row</span></div>
+  <div class="use">The System Settings idiom, and the workhorse of the whole app. Rows hold a label, an optional sublabel, and one trailing control. Separators inset from the left edge.</div>
+  <div class="demo plain">
+    <div class="gh">This run</div>
+    <div class="grp">
+      <div class="row"><span><div class="t">horoscope_week32.xlsx</div><div class="s">48 rows · 11 target languages</div></span><span class="rt"><button class="btn">Replace</button></span></div>
+      <div class="row"><span class="t">Teaching mode</span><span class="rt"><div class="sw-t on"></div></span></div>
+      <div class="row"><span><div class="t">Append to existing folders</div><div class="s">Fails if a folder is missing</div></span><span class="rt"><div class="sw-t"></div></span></div>
+      <div class="row"><span class="t">Uploading to</span><span class="rt"><span style="font-family:var(--mono);font-size:var(--t-caption2)">s3://neela-autodub/horoscope_demo/</span><span class="chev">›</span></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Progress</span><span class="api">ProgressBar — segmented · thin · indeterminate</span></div>
+  <div class="use">The segmented bar is the important one. <b>Three states are genuinely different and the current UI conflates them:</b> uploaded and safe, rendered but still uploading, failed. Those map to <code>uploads_succeeded</code>, <code>language_tasks_succeeded</code> and <code>language_tasks_failed</code>, which the backend already tracks. Each segment is hatched at <b>45°, 2px line, 6px period</b>, with its own line colour riding its own base — so the segments stay distinguishable at a glance and even when printed or screenshotted in greyscale.</div>
+  <div class="demo col">
+    <div class="st" style="width:100%"><span class="lab">segmented — the run view</span>
+      <div class="bar"><i class="up" style="width:56%"></i><i class="done" style="width:8%"></i><i class="bad" style="width:1%"></i></div>
+      <div class="legend" style="margin-top:9px;">
+        <span><i class="k g"></i>Uploaded <b>296</b></span>
+        <span><i class="k a"></i>Rendered, uploading <b>45</b></span>
+        <span><i class="k r"></i>Failed <b>4</b></span>
+        <span><i class="k"></i>Queued <b>183</b></span>
+      </div>
+    </div>
+    <div class="st" style="width:100%"><span class="lab">with the in-flight segment moving — hatch drifts one period, 900ms, honours reduced-motion</span>
+      <div class="bar"><i class="up" style="width:56%"></i><i class="done live" style="width:8%"></i><i class="bad" style="width:1%"></i></div>
+    </div>
+    <div class="st" style="width:100%"><span class="lab">early in a run — mostly queued</span>
+      <div class="bar"><i class="up" style="width:9%"></i><i class="done live" style="width:5%"></i></div>
+    </div>
+    <div class="st" style="width:100%"><span class="lab">finished clean — one solid hatch</span>
+      <div class="bar"><i class="up" style="width:100%"></i></div>
+    </div>
+    <div class="st" style="width:100%"><span class="lab">thin — used inside rows</span><div class="bar thin"><i class="done" style="width:64%"></i></div></div>
+    <div class="st" style="width:100%"><span class="lab">indeterminate — submitting, before counts exist</span><div class="bar indet"></div></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Stat</span><span class="api">Stat</span></div>
+  <div class="use">One per view, at most. Tabular numerals so digits do not shift as they climb.</div>
+  <div class="demo">
+    <div class="stat"><div class="v">341 <span>of 528 clips</span></div><div class="k">Row 31 of 48 · about 6 minutes left</div></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Badge &amp; status dot</span><span class="api">Badge · StatusDot</span></div>
+  <div class="use">Badges label a state in a row. Dots mark liveness in tight places — sidebar, toolbar. The pulsing dot means <b>work is happening right now</b>.</div>
+  <div class="demo">
+    <span class="badge">Queued</span><span class="badge a">Rendering</span><span class="badge g">Uploaded</span>
+    <span class="badge r">Failed</span><span class="badge o">Partial</span>
+    <span style="width:var(--s4)"></span>
+    <span class="dot n"></span><span class="dot a pulse"></span><span class="dot g"></span><span class="dot r"></span>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Queue row</span><span class="api">QueueRow</span></div>
+  <div class="use">Video batch rows and per-language audio rows. Carries index, title, destination path, state, and one action. The path matters — "where did it land" is the question they ask after every run.</div>
+  <div class="demo plain"><div class="grp">
+    <div class="qrow"><span class="i">row 1</span><span class="nm">Aries — week 32 forecast</span><span class="path">15-08-2026/aries.mp4</span><span class="badge g">Uploaded</span><button class="btn q">Open</button></div>
+    <div class="qrow"><span class="i">row 2</span><span class="nm">Taurus — week 32 forecast</span><span class="path">—</span><span class="badge a">Rendering</span><span></span></div>
+    <div class="qrow"><span class="i">row 3</span><span class="nm">Gemini — week 32 forecast</span><span class="path">—</span><span class="badge r">Failed</span><button class="btn q">Retry</button></div>
+  </div></div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Empty state</span><span class="api">EmptyState</span></div>
+  <div class="use">Every list needs one. Says what will appear here and what to do — never just "No data".</div>
+  <div class="demo plain"><div class="grp"><div class="empty">
+    <div class="g">♪</div><div class="t">No runs yet today</div>
+    <div class="s">Drop a spreadsheet above to start one.</div>
+  </div></div></div>
+</div>
+
+<!-- ══════════════════ 5 FEEDBACK ══════════════════ -->
+<h2><span class="n">5</span>Feedback</h2>
+<p class="secnote">The part that matters most to your two operators.</p>
+
+<div class="c">
+  <div class="h"><span class="name">Named error banner</span><span class="api">Banner — error · warning · info · success</span></div>
+  <div class="use">Requirement one. <b>A cause, an impact, and a way out</b> — never a stack trace. Appears inline in the detail pane, above the run, and stays until dismissed or resolved.</div>
+  <div class="demo col">
+    <div class="banner"><span class="ic">!</span>
+      <span><div class="h">ElevenLabs credits exhausted</div>
+        <div class="d">4 clips could not be voiced. Your plan resets on 1 Sep. Everything else is still running — Sarvam translation is unaffected.</div></span>
+      <span class="a"><button class="btn q">Open ElevenLabs</button><button class="btn">Retry these 4</button></span></div>
+    <div class="banner warn"><span class="ic">!</span>
+      <span><div class="h">Sarvam translation fell back to Google for 6 rows</div>
+        <div class="d">Quality may differ slightly on those rows. The run continued normally.</div></span>
+      <span class="a"><button class="btn q">Show rows</button></span></div>
+    <div class="banner info"><span class="ic">i</span>
+      <span><div class="h">Reattached to a run already in progress</div>
+        <div class="d">Started 17:44 from this machine. Nothing was lost when the page reloaded.</div></span></div>
+    <div class="banner ok"><span class="ic">✓</span>
+      <span><div class="h">All 528 clips uploaded</div>
+        <div class="d">s3://neela-autodub/horoscope_demo/ · finished 18:07, took 23 minutes.</div></span>
+      <span class="a"><button class="btn q">Open folder</button></span></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Alert</span><span class="api">Alert — destructive · confirm</span></div>
+  <div class="use">Only for irreversible things: cancelling a run, deleting a category. Focus lands on the safe button so Return never destroys anything.</div>
+  <div class="demo">
+    <div class="alert"><div class="g">!</div><div class="t">Cancel this run?</div>
+      <div class="m">31 of 48 rows are done and already uploaded. They stay uploaded.</div>
+      <div class="acts"><button class="btn">Keep running</button><button class="btn d">Cancel run</button></div></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Notification</span><span class="api">Notification — success · failure</span></div>
+  <div class="use">Requirement three. Fired through the Notifications API with a sound. Content rule: <b>say finished, say uploaded, say where</b> — and on failure, name the cause in the banner so they need not open the app to learn it.</div>
+  <div class="demo">
+    <div class="notif"><span class="app">A</span>
+      <span><div class="n">Week 32 horoscope finished</div><div class="m">528 of 528 clips · all uploaded to horoscope_demo/</div></span>
+      <span class="w">now</span></div>
+    <div class="notif"><span class="app" style="background:linear-gradient(150deg,var(--red),var(--orange))">A</span>
+      <span><div class="n">Week 32 horoscope finished with 4 failures</div><div class="m">ElevenLabs credits exhausted · 524 of 528 uploaded</div></span>
+      <span class="w">now</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ 6 VIDEO ══════════════════ -->
+<h2><span class="n">6</span>Video-only components</h2>
+<p class="secnote">Used in the Video section of the sidebar. The monitor keeps a true black surround so a render can be judged honestly.</p>
+
+<div class="c">
+  <div class="h"><span class="name">Monitor</span><span class="api">Monitor — empty · reference · rendering · playback · failed</span></div>
+  <div class="use">Doubles as the avatar drop target when empty. <b>Never tinted</b>, never animated behind — you cannot judge skin tone against a coloured surround.</div>
+  <div class="demo col">
+    <div class="monitor"><span class="tag">No input</span><span>Drag an avatar image here, or choose one</span></div>
+    <div class="monitor" style="min-height:120px;"><span class="tag">Rendering · 04:12</span></div>
+  </div>
+</div>
+
+<div class="c">
+  <div class="h"><span class="name">Avatar picker</span><span class="api">AvatarGrid · AvatarCard</span></div>
+  <div class="use">Talking photos already on HeyGen, so the same reference is not re-uploaded every render. States: <b>default · selected</b>.</div>
+  <div class="demo plain"><div class="avgrid">
+    <div class="avcard on"><div class="im"></div><div class="nm">Ishwari</div></div>
+    <div class="avcard"><div class="im" style="background:linear-gradient(150deg,#4A5A6E,#3A7A5A)"></div><div class="nm">Photo Avatar</div></div>
+    <div class="avcard"><div class="im" style="background:linear-gradient(150deg,#6E4A5A,#8A6A3A)"></div><div class="nm">Studio ref 2</div></div>
+  </div></div>
+</div>
+
+<!-- ══════════════════ 7 ERROR CATALOGUE ══════════════════ -->
+<h2><span class="n">7</span>Error catalogue</h2>
+<p class="secnote">The content behind requirement one. This is the part I cannot fully verify without seeing a real exhausted-credit response — <b>confidence is marked honestly</b>, and anything unclassified falls back to a useful generic rather than a confident guess.</p>
+<table>
+  <tr><th>Condition</th><th class="w">What the operator sees</th><th>Confidence</th></tr>
+  <tr><td>ElevenLabs 401 · <code>quota_exceeded</code><span class="src">services/elevenlabs.py</span></td>
+      <td><b>ElevenLabs credits exhausted</b> — N clips could not be voiced. Translation is unaffected.</td>
+      <td><span class="conf me">needs one real sample</span></td></tr>
+  <tr><td>Sarvam 403 / 429 quota<span class="src">services/translation/sarvam.py</span></td>
+      <td><b>Sarvam credits exhausted</b> — falls back to Google Translate automatically; quality may differ.</td>
+      <td><span class="conf me">needs one real sample</span></td></tr>
+  <tr><td>HeyGen <code>401028</code><span class="src">heygen_client.py — already known</span></td>
+      <td><b>HeyGen avatar limit reached</b> — the oldest avatar is rotated out automatically.</td>
+      <td><span class="conf hi">already handled</span></td></tr>
+  <tr><td>HeyGen credit exhaustion<span class="src">heygen_client.py</span></td>
+      <td><b>HeyGen credits exhausted</b> — rows before this one finished and are on the NAS.</td>
+      <td><span class="conf me">needs one real sample</span></td></tr>
+  <tr><td>Any provider 429<span class="src">services/retry.py — hook exists</span></td>
+      <td><b>Rate limited by {provider}</b> — retrying automatically, N attempts left.</td>
+      <td><span class="conf hi">certain</span></td></tr>
+  <tr><td>Any provider 5xx<span class="src">services/retry.py</span></td>
+      <td><b>{provider} is having problems</b> — their side, not yours. Safe to retry later.</td>
+      <td><span class="conf hi">certain</span></td></tr>
+  <tr><td>S3 upload failure<span class="src">services/s3.py</span></td>
+      <td><b>Rendered but not uploaded</b> — N clips are on this machine only. Retry upload.</td>
+      <td><span class="conf hi">certain</span></td></tr>
+  <tr><td>NAS in local mode<span class="src">services/nas.py — already warns</span></td>
+      <td><b>Saved locally, not to the NAS</b> — NAS_MODE is not set to smb, so nothing reached the share.</td>
+      <td><span class="conf hi">already detected</span></td></tr>
+  <tr><td>Missing config key<span class="src">services/settings.py</span></td>
+      <td><b>{KEY} is not set</b> — the run cannot start. Name the key, link to settings.</td>
+      <td><span class="conf hi">certain</span></td></tr>
+  <tr><td>Anything else</td>
+      <td><b>{Provider} failed at the {stage} step</b> — with the raw message available behind a disclosure, not shown by default.</td>
+      <td><span class="conf hi">fallback</span></td></tr>
+</table>
+
+<!-- ══════════════════ 8 ORDER ══════════════════ -->
+<h2><span class="n">8</span>What I would build, in order</h2>
+<div class="build">
+  <ol>
+    <li><b>Tokens + shell</b> — the block at the top of this file, plus toolbar, sidebar and detail pane. Both appearances working from day one.</li>
+    <li><b>Error classifier</b> — a single module mapping (provider, status, body) to the catalogue above, with the honest fallback. This is backend work and the highest-value item; it is also independent of the UI, so it can ship first.</li>
+    <li><b>Progress + notification</b> — surface the fields <code>JobSummary</code> already collects, derive time remaining from <code>started_at</code>, wire the Notifications API and the sound.</li>
+    <li><b>Audio section</b> — port the dubbing pipeline into the shell using these components.</li>
+    <li><b>Video section</b> — port <code>/heygen</code>, including monitor and avatar picker.</li>
+    <li><b>Recent jobs</b> — the sidebar history. Last, because it is the one thing here you did not ask for, and I would rather confirm it earns its place than assume.</li>
+  </ol>
+</div>
+
+</div>
+</body>
+</html>
