@@ -10,7 +10,7 @@ import tempfile
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.background import spawn
@@ -159,12 +159,19 @@ def index() -> FileResponse:
     return FileResponse(index_path, headers=NO_HTML_CACHE)
 
 
-@app.get("/heygen")
-def heygen_page() -> FileResponse:
-    """Both pipelines live in one app now. This stays a real route so the video
-    editor's bookmark keeps working — the shell reads the path and opens the
-    Video section."""
+@app.get("/videogen")
+def videogen_page() -> FileResponse:
+    """Both pipelines live in one app now. This stays a real route so the Video
+    section can be linked and bookmarked directly — the shell reads the path and
+    opens it."""
     return index()
+
+
+@app.get("/heygen", include_in_schema=False)
+def heygen_page_legacy() -> RedirectResponse:
+    """The old name. Kept as a redirect rather than deleted: the video editor has
+    this bookmarked, and a 308 renames the URL without costing them anything."""
+    return RedirectResponse("/videogen", status_code=308)
 
 
 @app.get("/video/heygen/talking-photos")
