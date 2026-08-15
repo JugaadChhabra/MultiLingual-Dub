@@ -161,10 +161,10 @@ def index() -> FileResponse:
 
 @app.get("/heygen")
 def heygen_page() -> FileResponse:
-    page = Path("./static/heygen.html")
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="heygen.html not found")
-    return FileResponse(page, headers=NO_HTML_CACHE)
+    """Both pipelines live in one app now. This stays a real route so the video
+    editor's bookmark keeps working — the shell reads the path and opens the
+    Video section."""
+    return index()
 
 
 @app.get("/video/heygen/talking-photos")

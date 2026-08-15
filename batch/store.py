@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 
+from services.errors import classify
 from batch.models import JobState, JobSummary
 from services.state_mirror import JsonStateMirror
 
@@ -105,11 +106,23 @@ class JobsStore:
                 summary.duration_ms,
             )
 
-    async def fail(self, job_id: str, message: str, summary: JobSummary | None = None) -> None:
+    async def fail(
+        self,
+        job_id: str,
+        message: str,
+        summary: JobSummary | None = None,
+        *,
+        exc: BaseException | None = None,
+        stage: str | None = None,
+    ) -> None:
+        """`exc` is what actually failed. Passing it lets the operator be told a
+        cause instead of a string — see services/errors.py."""
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "failed"
             state.error = message
+            if exc is not None:
+                state.cause = classify(exc, provider=None, stage=stage).to_dict()
             if summary is None:
                 summary = state.summary
             _finalize_summary(summary)

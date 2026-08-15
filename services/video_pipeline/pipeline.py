@@ -184,7 +184,7 @@ async def run_video_job(
         )
     except Exception as exc:
         logger.exception("Video job %s failed", job_id)
-        await jobs_store.fail(job_id, str(exc))
+        await jobs_store.fail(job_id, str(exc), exc=exc)
 
 
 async def _finalize_video(
@@ -278,5 +278,5 @@ async def recover_video_job(
         logger.info("Recovered video job %s", job_id)
     except Exception as exc:
         logger.exception("Recovery of video job %s failed", job_id)
-        await jobs_store.fail(job_id, str(exc))
+        await jobs_store.fail(job_id, str(exc), exc=exc)
         raise

@@ -51,6 +51,9 @@ class JobState(BaseModel):
     status: str = Field(pattern="^(queued|running|completed|failed|cancelled)$")
     summary: JobSummary = Field(default_factory=JobSummary)
     error: str | None = None
+    # The same failure, classified for a human — see services/errors.py. `error`
+    # stays as the raw string so nothing that already reads it breaks.
+    cause: dict | None = None
 
 
 class CreateJobResponse(BaseModel):
