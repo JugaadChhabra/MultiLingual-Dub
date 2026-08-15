@@ -42,7 +42,10 @@
       b.type = "button"; b.className = "token"; b.dataset.code = code;
       b.setAttribute("aria-pressed", String(SEL.has(code)));
       b.setAttribute("aria-label", `${english} (${code})`);
-      b.innerHTML = `<span class="nat">${U.esc(native)}</span>`;
+      // English until it is picked, then it morphs into the native script —
+      // the two share one grid cell so the pill never changes width
+      b.innerHTML = `<span class="morph"><span class="en">${U.esc(english)}</span>` +
+        `<span class="nat">${U.esc(native)}</span></span>`;
       b.addEventListener("click", () => {
         SEL.has(code) ? SEL.delete(code) : SEL.add(code);
         b.setAttribute("aria-pressed", String(SEL.has(code)));
