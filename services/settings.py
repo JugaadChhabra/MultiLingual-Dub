@@ -24,6 +24,7 @@ from services.qc import QCSettings
 from services.runtime_config import RuntimeConfig, read_setting
 from services.s3 import S3Config
 from services.sarvam import SarvamSettings
+from services.script_writer import ScriptWriterSettings
 from services.video_pipeline.heygen_client import HeyGenSettings
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -61,6 +62,7 @@ _SETTINGS_CLASSES = (
     ElevenLabsSettings,
     HeyGenSettings,
     QCSettings,
+    ScriptWriterSettings,
     SarvamSettings,
     NasConfig,
     EmailSettings,

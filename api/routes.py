@@ -36,7 +36,20 @@ from services.video_pipeline import (
 )
 from services.email import EmailSettings
 from services.nas import NasConfig, NasService
-from services.video_pipeline.batch_excel import BatchExcelError, read_heygen_batch_rows
+from services.script_history import ScriptHistoryStore
+from services.script_writer import (
+    ZODIAC_SIGNS,
+    DraftScript,
+    SetItem,
+    ScriptWriterError,
+    ScriptWriterSettings,
+    write_daily_scripts,
+)
+from services.video_pipeline.batch_excel import (
+    BatchExcelError,
+    read_heygen_batch_rows,
+    read_heygen_batch_rows_json,
+)
 from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.heygen_client import HeyGenSettings, list_talking_photos
@@ -93,6 +106,10 @@ session_config_store = SessionConfigStore()
 
 VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
 VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Generated scripts, kept so the writer can be shown what it already said. Not a
+# job store: nothing here is in flight, and every read comes off disk.
+script_history = ScriptHistoryStore(OUTPUT_DIR / "heygen" / "_scripts")
 
 
 async def _session_config_for_request(request: Request) -> RuntimeConfig | None:
@@ -343,19 +360,108 @@ async def recover_all_failed_heygen_jobs(request: Request):
     return {"status": "recovering", "job_ids": ids, "count": len(ids)}
 
 
+@app.post("/video/scripts/generate")
+async def generate_video_scripts(
+    request: Request,
+    brief: str = Form(...),
+    language: str = Form(default="hi-IN"),
+    publish_date: str = Form(...),
+    category: str = Form(default="default"),
+    item_set: str = Form(default="zodiac"),
+    title: str | None = Form(default=None),
+):
+    """Write the day's scripts and hand them back as drafts.
+
+    Nothing is rendered here and no job is created: the response is text for an
+    operator to read and edit. A render costs money at submission, so the two
+    steps stay separate — see services/script_writer.py.
+
+    Synchronous rather than a background job. One Gemini call for the whole set
+    takes seconds, and a draft the operator is waiting to read has nothing to
+    gain from a polling endpoint.
+    """
+    session = await _session_config_for_request(request)
+
+    if item_set not in ("zodiac", "single"):
+        raise HTTPException(status_code=400, detail="item_set must be 'zodiac' or 'single'")
+    if not brief.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="This category has no script brief. Add one in the category editor.",
+        )
+
+    if item_set == "zodiac":
+        items = ZODIAC_SIGNS
+    else:
+        # A one-off video is its own set of one: the operator's file name is both
+        # the key the model answers under and the name the render is filed as.
+        name = safe_stem(title or "") or "Script"
+        items = (SetItem(key=name, title=name),)
+
+    try:
+        settings = ScriptWriterSettings.resolve(session)
+    except MissingSettingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def _write() -> list[DraftScript]:
+        # History read and write share this thread with the generation itself:
+        # all three are blocking, and the recent-days read is only meaningful
+        # immediately before the call that consumes it.
+        recent = script_history.recent(
+            category=category, language=language, before=publish_date
+        )
+        drafts = write_daily_scripts(
+            brief=brief,
+            language=language,
+            publish_date=publish_date,
+            items=items,
+            recent=recent,
+            settings=settings,
+        )
+        script_history.record(
+            publish_date=publish_date, category=category, language=language, drafts=drafts
+        )
+        return drafts
+
+    try:
+        drafts = await asyncio.to_thread(_write)
+    except ScriptWriterError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {
+        "language": language,
+        "publish_date": publish_date,
+        "items": [{"video_title": d.title, "script": d.script} for d in drafts],
+    }
+
+
 @app.post("/video/heygen/batch", status_code=202)
 async def create_heygen_batch_job(
     request: Request,
     image: UploadFile = File(...),
-    excel: UploadFile = File(...),
+    excel: UploadFile | None = File(default=None),
+    rows: str | None = Form(default=None),
     character: str = Form(default="indian"),
     video_prompt: str | None = Form(default=None),
     motion_prompt: str | None = Form(default=None),
     publish_date: str | None = Form(default=None),
+    # Only sent when the rows were written by the script writer. They identify
+    # which history these rows belong to, so what is submitted can replace what
+    # was generated — see the recording step below.
+    category: str | None = Form(default=None),
+    language: str | None = Form(default=None),
 ):
     session = await _session_config_for_request(request)
 
-    ensure_file_extension(excel.filename, ".xlsx", "Only .xlsx files are allowed")
+    # Two ways in, one batch: a spreadsheet the operator authored, or rows of
+    # generated scripts they reviewed in the browser. Both become the same row
+    # list before anything else happens, so nothing downstream knows which.
+    has_excel = bool(excel and excel.filename)
+    has_rows = bool(rows and rows.strip())
+    if has_excel == has_rows:
+        raise HTTPException(
+            status_code=400, detail="provide either an excel file or rows JSON, not both"
+        )
     if not (image and image.filename):
         raise HTTPException(status_code=400, detail="image file is required")
 
@@ -363,20 +469,44 @@ async def create_heygen_batch_job(
     if not image_bytes:
         raise HTTPException(status_code=400, detail="image upload was empty")
 
-    excel_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    excel_path = Path(excel_tmp.name)
-    excel_tmp.close()
-    await save_upload_file(excel, excel_path)
+    if has_excel:
+        ensure_file_extension(excel.filename, ".xlsx", "Only .xlsx files are allowed")
+        excel_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        excel_path = Path(excel_tmp.name)
+        excel_tmp.close()
+        await save_upload_file(excel, excel_path)
+        try:
+            batch_rows_parsed = await asyncio.to_thread(read_heygen_batch_rows, excel_path)
+        except BatchExcelError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            excel_path.unlink(missing_ok=True)
+        empty_detail = "Excel has no non-empty script rows"
+    else:
+        try:
+            batch_rows_parsed = read_heygen_batch_rows_json(rows or "")
+        except BatchExcelError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        empty_detail = "No non-empty scripts were submitted"
 
-    try:
-        rows = await asyncio.to_thread(read_heygen_batch_rows, excel_path)
-    except BatchExcelError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        excel_path.unlink(missing_ok=True)
+    if not batch_rows_parsed:
+        raise HTTPException(status_code=400, detail=empty_detail)
 
-    if not rows:
-        raise HTTPException(status_code=400, detail="Excel has no non-empty script rows")
+    # Record what is actually being rendered, replacing the drafts recorded when
+    # they were written. The operator's edits are the version viewers see, so
+    # they are the version later days must avoid repeating. Only for generated
+    # rows: a spreadsheet carries no category or language to file it under, and
+    # its scripts were not written by the model that would be told to avoid them.
+    if has_rows and category and language and publish_date:
+        await asyncio.to_thread(
+            script_history.record,
+            publish_date=publish_date,
+            category=category,
+            language=language,
+            drafts=[
+                DraftScript(title=r.video_title, script=r.script) for r in batch_rows_parsed
+            ],
+        )
 
     try:
         deps = _build_video_deps(session)
@@ -386,14 +516,14 @@ async def create_heygen_batch_job(
     batch_id = uuid.uuid4().hex
     batch_rows = [
         BatchRowState(row_index=r.row_index, script=r.script, video_title=r.video_title)
-        for r in rows
+        for r in batch_rows_parsed
     ]
     await video_batch_jobs_store.create(batch_id, batch_rows)
 
     spawn(
         run_video_batch_job(
             batch_id=batch_id,
-            rows=rows,
+            rows=batch_rows_parsed,
             image_bytes=image_bytes,
             image_filename=image.filename,
             character=character or "indian",
@@ -414,7 +544,7 @@ async def create_heygen_batch_job(
         name=f"video-batch:{batch_id}",
     )
 
-    return {"batch_id": batch_id, "status": "queued", "total": len(rows)}
+    return {"batch_id": batch_id, "status": "queued", "total": len(batch_rows_parsed)}
 
 
 @app.get("/video/heygen/batch/{batch_id}")

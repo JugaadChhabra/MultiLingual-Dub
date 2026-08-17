@@ -15,8 +15,9 @@ voiced MP3s out, zipped per language and pushed to S3. Terms: *row*, *activity*,
 *language task*.
 
 **Video pipeline** (`services/video_pipeline/`) — a script and a photo in, a
-lip-synced video out, pushed to the NAS. Terms: *video job*, *render*, *talking
-photo*, *batch*.
+lip-synced video out, pushed to the NAS. The script is now usually written for
+the operator rather than by them, so on most days the photo is the only input.
+Terms: *video job*, *render*, *talking photo*, *batch*, *draft*, *script brief*.
 
 ## Video pipeline
 
@@ -59,6 +60,32 @@ idempotent: without this, a retry creates a second paid render. Called
 
 **Character** — which persona a video is voiced and filed as (`indian`, `us`).
 Selects the voice and, for `us`, a separate NAS root.
+
+**Draft** — a written script the operator has not committed to yet: title plus
+text, held in the browser, belonging to no job. Becomes a batch row on Run and
+nothing before that. The word marks the gap that exists because a render is paid
+for at submission — twelve drafts are read and edited for free, twelve renders
+are not.
+
+**Script brief** — what a category's videos are *about*, as opposed to
+`video_prompt` and `motion_prompt`, which are how they look and move. The input
+to the script writer. A category without one cannot generate.
+
+**Script writer** — Gemini authoring a day's scripts from a brief, a date and an
+item list. The author, not a translator or an extractor: nothing is fetched and
+no source text exists. Twelve signs come back from one call so they can be varied
+against each other.
+
+**Script history** — every set the writer has produced, on disk, quoted back to
+it as what not to repeat. The only defence against a model converging on its own
+favourite phrasings across days. Keyed by day, category and language, so
+regenerating a day replaces it rather than adding to the record.
+
+Written twice for a day that gets rendered: once when the scripts are written,
+and again from the rows actually submitted, which replace them. The second write
+is the one that matters — the operator's edits are what a viewer hears, so they
+are what tomorrow has to avoid sounding like. The first is kept for the case
+where a day is generated and never run, because the model still said it.
 
 ## Persistence
 

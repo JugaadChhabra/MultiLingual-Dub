@@ -5,12 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="favicon.png" />
 <title>AutoDub</title>
-<link rel="stylesheet" href="/static/app.css?v=6" />
+<link rel="stylesheet" href="/static/app.css?v=11" />
 </head>
 <body>
 <div class="app">
 
   <div class="tb">
+    <button type="button" class="sbtoggle" id="sbToggle" aria-controls="sidebar" aria-expanded="true"
+      aria-label="Toggle sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>
+      </svg>
+    </button>
     <span class="title">AutoDub</span>
     <div class="right">
       <span id="tbRun" hidden><span class="dot a pulse"></span> <span id="tbRunText"></span></span>
@@ -20,20 +27,20 @@
   </div>
 
   <div class="main">
-    <nav class="sb" aria-label="Pipelines">
+    <nav class="sb" id="sidebar" aria-label="Pipelines">
       <div class="sbh">Pipelines</div>
       <button class="sbi" data-section="audio" aria-current="page">
-        <span class="g" aria-hidden="true">♪</span> Audio dubbing
+        <span class="g" aria-hidden="true">♪</span> <span class="lbl">Audio dubbing</span>
         <span class="live" id="audioLive" hidden></span>
       </button>
       <button class="sbi" data-section="video">
-        <span class="g p" aria-hidden="true">▶</span> Video generation
+        <span class="g p" aria-hidden="true">▶</span> <span class="lbl">Video generation</span>
         <span class="live" id="videoLive" hidden></span>
       </button>
       <div id="recoverWrap" hidden>
         <div class="sbh">Needs attention</div>
         <button class="sbi" id="recoverBtn">
-          <span class="g r" aria-hidden="true">!</span> Stranded renders
+          <span class="g r" aria-hidden="true">!</span> <span class="lbl">Stranded renders</span>
           <span class="meta" id="recoverN">0</span>
         </button>
       </div>
@@ -118,7 +125,7 @@
 
         <div id="videoBanners"></div>
 
-        <div class="vstage">
+        <div class="vctl">
         <div class="monitor" id="vMonitor">
           <span class="mtag" id="vTag">No input</span>
           <div class="mbody" id="vBody">
@@ -158,15 +165,14 @@
             </div>
           </div>
         </div>
-        </div>
 
-        <div class="vrail">
         <div class="gh">Setup</div>
         <div class="grp">
           <div class="row">
             <span class="tx"><span class="t">Mode</span></span>
             <span class="rt"><span class="seg" id="vMode">
-              <button type="button" data-mode="single" aria-pressed="true">Single</button>
+              <button type="button" data-mode="auto" aria-pressed="true">Auto</button>
+              <button type="button" data-mode="single" aria-pressed="false">Single</button>
               <button type="button" data-mode="batch" aria-pressed="false">Batch</button>
             </span></span>
           </div>
@@ -189,7 +195,56 @@
           <div class="row"><div class="tokens" id="vCats" role="group" aria-label="Prompt category"></div></div>
         </div>
 
-        <div id="vSingle">
+        <div id="vAuto" hidden>
+          <div class="gh">Scripts</div>
+          <div class="grp">
+            <div class="row">
+              <span class="tx"><span class="t">Language</span>
+                <span class="s">What the scripts are written in</span></span>
+              <span class="rt"><select class="fld" id="vLang" style="width:152px">
+                <option value="bn-IN">Bengali</option>
+                <option value="en-IN">English</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="gu-IN">Gujarati</option>
+                <option value="hi-IN" selected>Hindi</option>
+                <option value="kn-IN">Kannada</option>
+                <option value="ml-IN">Malayalam</option>
+                <option value="mr-IN">Marathi</option>
+                <option value="od-IN">Odia</option>
+                <option value="pt">Portuguese</option>
+                <option value="pa-IN">Punjabi</option>
+                <option value="ru">Russian</option>
+                <option value="es">Spanish</option>
+                <option value="ta-IN">Tamil</option>
+                <option value="te-IN">Telugu</option>
+              </select></span>
+            </div>
+            <div class="row">
+              <span class="tx"><span class="t">Set</span>
+                <span class="s">How many videos this writes</span></span>
+              <span class="rt"><span class="seg" id="vSet">
+                <button type="button" data-set="zodiac" aria-pressed="true">12 signs</button>
+                <button type="button" data-set="single" aria-pressed="false">One video</button>
+              </span></span>
+            </div>
+            <div class="row" id="vAutoTitleRow" hidden>
+              <span class="tx"><span class="t">File name</span>
+                <span class="s">Becomes the NAS filename</span></span>
+              <span class="rt"><span class="fldwrap" style="width:212px">
+                <input type="text" class="fld" id="vAutoTitle" maxlength="80" placeholder="e.g. diwali_promo" />
+                <span class="suffix">.mp4</span>
+              </span></span>
+            </div>
+            <div class="row">
+              <span class="tx"><span class="t">Write today's scripts</span>
+                <span class="s" id="vGenSub">Twelve signs, from this category's brief</span></span>
+              <span class="rt"><button type="button" class="btn" id="vGen">Write scripts</button></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="vSingle" hidden>
           <div class="gh">Script</div>
           <div class="grp">
             <div class="row" style="display:block;">
@@ -222,12 +277,6 @@
               <input type="file" id="vXls" accept=".xlsx" hidden />
             </div>
           </div>
-          <div class="gh">Queue</div>
-          <div class="grp" id="vQueue">
-            <div class="empty"><div class="g" aria-hidden="true">▶</div>
-              <div class="t">Nothing queued</div>
-              <div class="s">Rows appear here once the batch starts</div></div>
-          </div>
         </div>
 
         <div class="runbar">
@@ -235,6 +284,29 @@
           <button class="btn" id="vCancel" hidden>Cancel</button>
           <span class="msg grow" id="vMsg" role="status" aria-live="polite"></span>
         </div>
+        </div>
+
+        <div class="vwork" id="vWork" hidden>
+          <div id="vDraftsWrap">
+            <div class="wh">
+              <span class="t">Drafts <span class="n" id="vDraftsN"></span></span>
+              <span class="s">Read them before you run — each is filed as its name, plus <code>.mp4</code></span>
+            </div>
+            <div id="vDrafts">
+              <div class="empty"><div class="g" aria-hidden="true">✎</div>
+                <div class="t">No drafts yet</div>
+                <div class="s">Written scripts appear here to read and edit before anything renders</div></div>
+            </div>
+          </div>
+          <div id="vQueueWrap" hidden>
+            <div class="wh"><span class="t">Queue</span>
+              <span class="s">One row per video, as it renders and reaches the NAS</span></div>
+            <div class="grp" id="vQueue">
+              <div class="empty"><div class="g" aria-hidden="true">▶</div>
+                <div class="t">Nothing queued</div>
+                <div class="s">Rows appear here once the batch starts</div></div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -257,6 +329,11 @@
     <div class="flrow"><label class="flbl" for="catVideo">Video prompt <span class="hint">how it should look and feel</span></label>
       <span class="counter" id="catVideoN"></span></div>
     <textarea class="area" id="catVideo" placeholder="Calm tone, soft cinematic lighting, natural head movement…"></textarea>
+  </div>
+  <div class="fld-block grow">
+    <div class="flrow"><label class="flbl" for="catBrief">Script brief <span class="hint">what Auto mode writes about</span></label>
+      <span class="counter" id="catBriefN"></span></div>
+    <textarea class="area" id="catBrief" placeholder="A calm daily horoscope for an Indian audience — one sign per video…"></textarea>
   </div>
   <div class="fld-block grow">
     <div class="flrow"><label class="flbl" for="catMotion">Motion prompt <span class="hint">optional</span></label>
@@ -297,7 +374,7 @@
 
 <script src="/static/ui.js?v=1"></script>
 <script src="/static/pane-audio.js?v=3"></script>
-<script src="/static/pane-video.js?v=3"></script>
-<script src="/static/shell.js?v=2"></script>
+<script src="/static/pane-video.js?v=6"></script>
+<script src="/static/shell.js?v=4"></script>
 </body>
 </html>

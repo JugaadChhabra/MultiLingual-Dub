@@ -69,7 +69,29 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .tb .right{margin-left:auto;display:flex;align-items:center;gap:var(--s3);
   font-size:var(--t-caption2);color:var(--label2);}
 .tb .right .sep{color:var(--label4);}
-.main{flex:1;min-height:0;display:grid;grid-template-columns:224px 1fr;}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:224px 1fr;
+  transition:grid-template-columns var(--dur) var(--ease);}
+
+/* Collapsed to an icon rail rather than to nothing: at zero width the only way
+   back to the other pipeline is the toggle, and switching sections is the one
+   thing this sidebar is for. Tooltips carry the labels the rail drops. */
+.sbtoggle{display:grid;place-items:center;width:26px;height:26px;flex:none;margin-left:-4px;
+  border:none;border-radius:var(--r-sm);background:none;color:var(--label2);cursor:pointer;
+  transition:background var(--dur) var(--ease),color var(--dur) var(--ease);}
+.sbtoggle:hover{background:var(--fill);color:var(--label);}
+.sbtoggle svg{width:16px;height:16px;}
+.app[data-sidebar="rail"] .main{grid-template-columns:44px 1fr;}
+.app[data-sidebar="rail"] .sb{padding:var(--s2) 6px;}
+.app[data-sidebar="rail"] .sbh{
+  /* The group headings have no icon to shrink to, so they go — but they still
+     have to occupy their space, or the rail's icons stop lining up with the
+     expanded sidebar's and the collapse reads as a jump rather than a shrink. */
+  visibility:hidden;overflow:hidden;white-space:nowrap;}
+.app[data-sidebar="rail"] .sbi{justify-content:center;padding:5px 0;position:relative;}
+.app[data-sidebar="rail"] .sbi .lbl,
+.app[data-sidebar="rail"] .sbi .meta{display:none;}
+.app[data-sidebar="rail"] .sbi .live{position:absolute;top:3px;right:4px;margin-left:0;}
+@media (prefers-reduced-motion:reduce){.main,.monitor{transition:none}}
 
 .sb{background:var(--material);backdrop-filter:saturate(180%) blur(20px);
   border-right:.5px solid var(--sep);padding:var(--s2);overflow-y:auto;}
@@ -98,14 +120,61 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 /* They run this fullscreen, so at width the video pane puts the monitor beside
    the setup — the reference stays visible while the script is written, instead
    of the form pushing it off-screen. */
-#pane-video .pane-inner{max-width:1220px;}
+#pane-video .pane-inner{max-width:1560px;}
 @media (min-width:1160px){
-  #pane-video .pane-inner{display:grid;grid-template-columns:minmax(0,1fr) 420px;
+  /* Two regions, not two halves: the controls — avatar, progress, settings, Run —
+     and the work, which is twelve written scripts or a batch queue. The controls
+     are as wide as they need to be and no wider; everything left over is the
+     work's, which is what stops a 460px panel from sitting in a 1000px hole. */
+  #pane-video .pane-inner{display:grid;grid-template-columns:384px minmax(0,1fr);
     gap:0 var(--s6);align-items:start;}
+  /* Single mode has no work column — one typed script lives in the controls — so
+     the grid collapses instead of leaving the void this layout exists to remove.
+     The controls widen, because a script being typed wants the room. */
+  #pane-video .pane-inner[data-work="off"]{grid-template-columns:minmax(0,620px);}
+  #pane-video .pane-inner[data-work="off"] .vctl{position:static;max-height:none;overflow:visible;}
   #pane-video h1,#pane-video .sub,#pane-video #videoBanners{grid-column:1/-1;}
-  #pane-video .vstage{position:sticky;top:0;}
-  #pane-video .monitor{max-height:none;aspect-ratio:4/3;}
+  /* Sticky as one piece, so Run is reachable from anywhere in a long review
+     instead of sitting under twelve cards. Scrolls internally if it ever
+     outgrows the viewport. */
+  #pane-video .vctl{position:sticky;top:0;max-height:calc(100vh - 94px);
+    overflow-y:auto;overflow-x:hidden;padding-bottom:var(--s2);}
+  #pane-video .vctl .runbar{margin-top:var(--s5);}
+  #pane-video .monitor{height:min(56vh,520px);}
 }
+/* Empty, this is a drop target — so it stops dressing as a video frame. A 9:16
+   slab of black holding nothing was the largest object on the screen and said
+   less than a one-line prompt does. It becomes the black portrait frame at the
+   moment it has an avatar or a render to show. */
+.monitor[data-empty="1"],
+#pane-video .monitor[data-empty="1"]{aspect-ratio:auto;height:auto;min-height:184px;
+  width:100%;background:none;box-shadow:none;color:var(--label2);
+  /* The same dashed empty state the spreadsheet dropzones use — an empty target
+     that accepts a drop should look like the other empty targets that do. */
+  border:1.5px dashed var(--label4);}
+.monitor[data-empty="1"].over{border-color:var(--accent);background:var(--accent-soft);}
+/* "No input" said twice, once as a tag and once as the heading below it. */
+.monitor[data-empty="1"] .mtag{display:none;}
+.monitor[data-empty="1"] .ph .t{color:var(--label);}
+.monitor[data-empty="1"] .ph .s{color:var(--label2);}
+
+/* ─── the work column ───────────────────────────────────────────────────── */
+/* Its heading is not a peer of "Setup" — this is the content of the screen, so
+   it gets the promotion: bigger, full-colour, and carrying the count. */
+.wh{display:flex;flex-direction:column;gap:1px;padding:0 var(--s1) var(--s3);}
+.wh .t{font-size:var(--t-title3);font-weight:640;letter-spacing:-.01em;}
+.wh .t .n{color:var(--label3);font-weight:510;font-variant-numeric:tabular-nums;}
+.wh .s{font-size:var(--t-caption);color:var(--label2);}
+.wh code{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label2);}
+
+/* Gapped cards, not a divided table: a short script should not have to match the
+   height of the tallest one in its row, and twelve hairline-split cells read as
+   one dense slab. */
+#vDrafts{display:grid;gap:var(--s3);align-items:start;}
+@media (min-width:1240px){#vDrafts{grid-template-columns:repeat(2,minmax(0,1fr));}}
+/* Three across — the twelve signs as three columns and four rows. */
+@media (min-width:1560px){#vDrafts{grid-template-columns:repeat(3,minmax(0,1fr));}}
+
 .pane h1{font-size:var(--t-title2);font-weight:640;letter-spacing:-.02em;margin-bottom:var(--s1);}
 .pane .sub{font-size:var(--t-caption);color:var(--label2);margin-bottom:var(--s5);}
 
@@ -325,6 +394,31 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .qrow .path{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);
   max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
+/* ─── drafts ────────────────────────────────────────────────────────────── */
+/* A written script, before it is a render — and it should read as writing, not as
+   a form. One surface per draft: the name is a heading, the script is text on the
+   card, and neither is boxed. The affordances arrive when they are relevant —
+   the name shows its field on hover, the script its ring on focus, the counter
+   only once the length is close enough to matter. */
+.draft{background:var(--card);border-radius:var(--r-lg);box-shadow:var(--shadow-1);
+  padding:var(--s3) var(--s4) var(--s4);}
+.draft .hd{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:5px;}
+.draft .hd .fld{flex:1;min-width:0;background:none;box-shadow:none;padding:2px 5px;
+  margin-left:-5px;font-size:var(--t-headline);font-weight:590;
+  transition:box-shadow var(--dur) var(--ease);}
+.draft .hd .fld:hover{box-shadow:inset 0 0 0 .5px var(--hair);}
+.draft .hd .fld:focus{box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3.5px var(--accent-soft);}
+.draft .hd .counter{flex:none;margin-top:0;opacity:0;transition:opacity var(--dur) var(--ease);}
+/* Shown only when the length is worth reading: near the cap, or empty. */
+.draft[data-flag="near"] .hd .counter{opacity:1;color:var(--orange-ink);}
+.draft[data-flag="bad"] .hd .counter{opacity:1;color:var(--red-ink);}
+.draft .area{background:none;box-shadow:none;padding:0;min-height:0;resize:none;}
+.draft .area:focus{box-shadow:0 0 0 3.5px var(--accent-soft);}
+/* Devanagari and the other Indic scripts at body size are unreadably tight in
+   the UI font — the same reason the audio pane has a native face. */
+.draft .area.nat{font-family:var(--native);line-height:1.7;}
+.draft[data-flag="bad"]{box-shadow:var(--shadow-1),inset 0 0 0 1px var(--red);}
+
 /* ─── empty state ───────────────────────────────────────────────────────── */
 .empty{text-align:center;padding:var(--s8) var(--s4);color:var(--label2);}
 .empty .g{width:38px;height:38px;border-radius:var(--r-lg);background:var(--fill);display:grid;
@@ -369,8 +463,13 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .flrow .flbl{flex:1;}
 
 /* ─── video ─────────────────────────────────────────────────────────────── */
+/* 9:16, because that is what these renders are — a portrait frame shows the
+   avatar at the shape it will be published in, and a landscape one wasted most
+   of its width on black. Sized from its HEIGHT so the aspect ratio decides the
+   width: at 100% width a 9:16 box would be taller than the screen. */
 .monitor{position:relative;border-radius:var(--r-md);background:#000;display:grid;place-items:center;
-  width:100%;aspect-ratio:4/3;max-height:52vh;overflow:hidden;
+  aspect-ratio:9/16;height:min(54vh,560px);width:auto;max-width:100%;margin:0 auto;overflow:hidden;
+  transition:height var(--dur) var(--ease);
   box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16);color:rgba(255,255,255,.5);
   font-size:var(--t-caption);cursor:pointer;}
 .monitor.over{box-shadow:inset 0 0 0 2px var(--accent);}
@@ -407,4 +506,6 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 @media (max-width:900px){
   .main{grid-template-columns:1fr;}
   .sb{display:none;}
+  /* Nothing to collapse, so the control would toggle an invisible element. */
+  .sbtoggle{display:none;}
 }

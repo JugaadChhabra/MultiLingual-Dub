@@ -18,10 +18,55 @@
     $("#pane-audio").hidden = section !== "audio";
     $("#pane-video").hidden = section !== "video";
     document.title = section === "video" ? "AutoDub — Video" : "AutoDub — Audio";
+    // The draft boxes size themselves to their text, which they cannot measure
+    // while the pane is hidden. This is the moment it stops being hidden.
+    if (section === "video" && window.PaneVideo && window.PaneVideo.fitDrafts) {
+      window.PaneVideo.fitDrafts();
+    }
     if (push) history.replaceState({}, "", section === "video" ? "/videogen" : "/");
   }
   document.querySelectorAll(".sbi[data-section]").forEach((b) =>
     b.addEventListener("click", () => show(b.dataset.section)));
+
+  // ── sidebar ──────────────────────────────────────────────────────────────
+  // Collapses to an icon rail, not to nothing, so the other pipeline is still
+  // one click away. Remembered per browser: an editor who works with it closed
+  // should not have to close it every morning.
+  const SB_KEY = "autodub_sidebar";
+  const app = document.querySelector(".app"), sbToggle = $("#sbToggle");
+  let railed = false;
+
+  function applySidebar(rail, persist) {
+    railed = Boolean(rail);
+    app.dataset.sidebar = railed ? "rail" : "full";
+    sbToggle.setAttribute("aria-expanded", String(!railed));
+    // Modifier is written the way the platform writes it, since this is the
+    // tooltip an operator reads to learn the shortcut.
+    const key = navigator.platform.toLowerCase().includes("mac") ? "⌘B" : "Ctrl+B";
+    sbToggle.title = `${railed ? "Show" : "Hide"} sidebar (${key})`;
+    // Labels only become tooltips once the rail has taken them away; leaving
+    // them on would put a tooltip over text that is already on screen.
+    document.querySelectorAll(".sbi .lbl").forEach((lbl) => {
+      const btn = lbl.closest(".sbi");
+      if (!railed) { btn.removeAttribute("title"); return; }
+      // The count sits in .meta, which the rail also hides, so it joins the
+      // label — otherwise collapsing silently drops how many are stranded.
+      const meta = btn.querySelector(".meta");
+      const count = meta && meta.textContent.trim();
+      btn.title = lbl.textContent.trim() + (count ? ` (${count})` : "");
+    });
+    if (persist) { try { localStorage.setItem(SB_KEY, railed ? "rail" : "full"); } catch (_) {} }
+  }
+  sbToggle.addEventListener("click", () => applySidebar(!railed, true));
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "b" && e.key !== "B") return;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+    // Never steal the keystroke from someone writing a script.
+    const el = document.activeElement, tag = el ? el.tagName : "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el && el.isContentEditable)) return;
+    e.preventDefault();
+    applySidebar(!railed, true);
+  });
 
   // ── config status ────────────────────────────────────────────────────────
   // One function owns dot and label, so they cannot disagree — the old UI left
@@ -89,6 +134,9 @@
       const n = (await r.json()).count || 0;
       recoverWrap.hidden = n === 0;
       recoverN.textContent = n;
+      // The rail shows this count only in a tooltip, so it has to be rewritten
+      // when the count changes.
+      if (railed) applySidebar(true, false);
     } catch (_) { recoverWrap.hidden = true; }
   }
   $("#recoverBtn").addEventListener("click", () => {
@@ -120,6 +168,9 @@
     setRunning, showCause, refreshRecoverable, show,
   };
 
+  let savedSidebar = null;
+  try { savedSidebar = localStorage.getItem(SB_KEY); } catch (_) {}
+  applySidebar(savedSidebar === "rail", false);
   show(location.pathname.startsWith("/videogen") ? "video" : "audio", false);
   refreshEnv();
   setInterval(refreshEnv, 20000);

@@ -291,6 +291,7 @@ def test_only_settings_resolvers_read_raw_keys() -> None:
         Path("services/elevenlabs.py"),
         Path("services/qc.py"),
         Path("services/sarvam.py"),
+        Path("services/script_writer.py"),
         Path("services/email.py"),
         Path("services/video_pipeline/heygen_client.py"),
     }
