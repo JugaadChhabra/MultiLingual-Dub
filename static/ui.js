@@ -49,6 +49,90 @@
     host.querySelectorAll(kind ? `.banner.${kind}` : ".banner").forEach((b) => b.remove());
   };
 
+  // ── toasts: events, which are over ──────────────────────────────────────
+  // A banner sits in the flow and stays until something clears it, which is
+  // right for a condition the operator is still in. It is wrong for a thing
+  // that merely happened: those accumulate above the work and push it down the
+  // page. Anything carrying actions or a server response stays a banner — a
+  // notice you might need to click must not time out from under you.
+  const TOAST_MS = 4500, TOAST_MS_DETAIL = 7000, TOAST_MAX = 4;
+  // CSS.escape is not in older WebKit; the fallback only has to survive being
+  // put inside an attribute selector.
+  const cssEscape = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/["\\]/g, "\\$&"));
+  let toastHost = null;
+  function toasts() {
+    if (!toastHost || !toastHost.isConnected) {
+      toastHost = document.querySelector(".toasts");
+      if (!toastHost) {
+        toastHost = document.createElement("div");
+        toastHost.className = "toasts";
+        // polite, not assertive: a finished render should not interrupt a
+        // screen reader mid-sentence.
+        toastHost.setAttribute("role", "status");
+        toastHost.setAttribute("aria-live", "polite");
+        document.body.appendChild(toastHost);
+      }
+    }
+    return toastHost;
+  }
+  function toast(title, { detail, kind = "info", ms, id } = {}) {
+    const host = toasts();
+    const life = ms ?? (detail ? TOAST_MS_DETAIL : TOAST_MS);
+
+    // A repeat refreshes the toast that is already there rather than swapping in
+    // a new node. Replacing it destroyed whatever the operator was pointing at
+    // or had focused — the click landed on the queue row underneath, and a
+    // keyboard user lost their tab position to document.body.
+    if (id) {
+      const live = host.querySelector(`.toast[data-id="${cssEscape(id)}"]:not([data-going])`);
+      if (live) { live.querySelector(".h").textContent = title;
+        const d = live.querySelector(".d"); if (d && detail) d.innerHTML = detail;
+        live.restart(life); return live; }
+    }
+
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "toast " + kind;
+    if (id) el.dataset.id = id;
+    // Spans, not divs: a <button> takes phrasing content, and .h/.d are
+    // display:block in the stylesheet.
+    el.innerHTML =
+      `<span class="ic" aria-hidden="true">${ICONS[kind] || "i"}</span>` +
+      `<span class="tx"><span class="h">${esc(title)}</span>` +
+      (detail ? `<span class="d">${detail}</span>` : "") + `</span>`;
+    host.appendChild(el);
+    // Two frames: adding the class in the same frame as the insert can skip
+    // the transition entirely, since no style recalc separates them.
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("in")));
+
+    // Oldest first, so a burst does not build a column taller than the window.
+    // Departing toasts linger in the DOM for a frame or two and must not count,
+    // or a burst drops a live one while only three are visible.
+    [...host.querySelectorAll(".toast:not([data-going])")]
+      .slice(0, -TOAST_MAX).forEach((o) => dismiss(o));
+
+    let timer = setTimeout(() => dismiss(el), life);
+    el.restart = (next) => { clearTimeout(timer); timer = setTimeout(() => dismiss(el), next); };
+    // Reading it should not race the clock.
+    const hold = () => clearTimeout(timer);
+    const resume = () => { timer = setTimeout(() => dismiss(el), TOAST_MS); };
+    el.addEventListener("mouseenter", hold);
+    el.addEventListener("focus", hold);
+    el.addEventListener("mouseleave", resume);
+    el.addEventListener("blur", resume);
+    el.addEventListener("click", () => { clearTimeout(timer); dismiss(el); });
+    return el;
+  }
+  function dismiss(el, now) {
+    if (!el || el.dataset.going) return;
+    el.dataset.going = "1";
+    if (now) { el.remove(); return; }
+    el.classList.add("out");
+    el.addEventListener("transitionend", () => el.remove(), { once: true });
+    // transitionend does not fire if the element is already hidden.
+    setTimeout(() => el.remove(), 400);
+  }
+
   // ── overlays: inert when closed, focus trapped when open ────────────────
   function focusables(panel) {
     return [...panel.querySelectorAll('button,input,textarea,select,a[href],[tabindex]:not([tabindex="-1"])')]
@@ -200,6 +284,6 @@
     btn.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onFile(f); });
   }
 
-  window.UI = { $, esc, fetchT, banner, clearBanners, overlay, confirm, setBar, eta, clock,
+  window.UI = { $, esc, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
                 notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone };
 })();

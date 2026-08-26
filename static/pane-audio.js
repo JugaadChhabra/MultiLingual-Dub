@@ -251,11 +251,11 @@
     if (cause) window.Shell.showCause(els.banners, cause);
 
     if (status === "completed" && !failed) {
-      U.banner(els.banners, { kind: "ok", title: `All ${uploaded} clips uploaded`,
+      U.toast(`All ${uploaded} clips uploaded`, { kind: "ok",
         detail: `Finished ${U.clock(new Date().toISOString())}.` });
       U.notify("Audio dubbing finished", `${uploaded} clips uploaded to S3`, false);
     } else if (status === "cancelled") {
-      U.banner(els.banners, { kind: "info", title: "Run cancelled",
+      U.toast("Run cancelled", { kind: "info",
         detail: `${uploaded} clips finished and stayed uploaded.` });
       U.notify("Audio dubbing cancelled", `${uploaded} clips were uploaded before stopping`, true);
     } else {
@@ -280,7 +280,7 @@
       if (["completed", "failed", "cancelled"].includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.jobId = id; state.targets = [...SEL];
       els.live.hidden = false; refreshRun();
-      U.banner(els.banners, { kind: "info", title: "Reattached to a run already in progress",
+      U.toast("Reattached to a run already in progress", { kind: "info",
         detail: "Nothing was lost when the page reloaded." });
       poll(id);
     } catch (_) {}

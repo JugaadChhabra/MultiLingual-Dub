@@ -151,7 +151,7 @@
           const r = await U.fetchT("/video/heygen/recover-failed", { method: "POST" }, 20000);
           if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
           const d = await r.json();
-          U.banner($("#videoBanners"), { kind: "info", title: `Recovering ${d.count} render${d.count === 1 ? "" : "s"}`,
+          U.toast(`Recovering ${d.count} render${d.count === 1 ? "" : "s"}`, { kind: "info",
             detail: "They are being re-downloaded and filed to the NAS." });
         } catch (e) {
           U.banner($("#videoBanners"), { kind: "error", title: "Could not start recovery",

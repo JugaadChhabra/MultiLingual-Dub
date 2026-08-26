@@ -155,14 +155,27 @@
     $("#vBrowse").addEventListener("click", (e) => { e.stopPropagation(); if (!state.running) els.img.click(); });
     $("#vReuse").addEventListener("click", (e) => { e.stopPropagation(); if (!state.running) openAvatars(); });
     els.tag.textContent = "No input"; els.file.hidden = true;
+    delete els.body.dataset.src;
   }
   function showStill(tag) {
     els.monitor.dataset.empty = state.stillURL ? "0" : "1";
     els.body.innerHTML = state.stillURL ? `<img src="${state.stillURL}" alt="Selected reference avatar" />` : "";
     els.tag.textContent = tag || "Reference";
     els.file.hidden = !(state.image || state.photoId);
+    delete els.body.dataset.src;
   }
+  // Clips this machine has already failed to read. The dataset guard below only
+  // holds while the clip is mounted, and giving up unmounts it — so without
+  // this, a genuinely broken file is retried on every poll tick forever: mount,
+  // fail, fall back to the still, remount four seconds later.
+  const unplayable = new Set();
   function showVideo(url) {
+    // The batch poller reports every completed row every four seconds, so this
+    // is called repeatedly with a clip that is already on screen. Rebuilding
+    // the element each time restarted playback under the operator and armed a
+    // fresh unplayable-clip timer, which is what was stacking notices.
+    if (unplayable.has(url) || els.body.dataset.src === url) return;
+    els.body.dataset.src = url;
     els.monitor.dataset.empty = "0";
     els.body.innerHTML = `<video src="${url}" controls autoplay playsinline></video>`;
     els.tag.textContent = "Playback"; els.file.hidden = true;
@@ -172,9 +185,10 @@
     // networkState=LOADING forever — so give up on a metadata timeout too.
     let settled = false;
     const giveUp = (why) => { if (settled) return; settled = true; clearTimeout(t);
+      unplayable.add(url);
       showStill("Clip unavailable");
-      U.banner(els.banners, { kind: "warn", title: "The clip could not be played",
-        detail: `It rendered, but this machine could not read the file (${why}).` }); };
+      U.toast("The clip could not be played", { kind: "warn", id: "clip:" + url,
+        detail: `It rendered, but this machine could not read the file (${U.esc(why)}).` }); };
     const t = setTimeout(() => giveUp("no metadata after 12s"), 12000);
     v.addEventListener("loadedmetadata", () => { settled = true; clearTimeout(t); }, { once: true });
     v.addEventListener("error", () => giveUp("media error"), { once: true });
@@ -659,6 +673,7 @@
   function renderQueue(rows) {
     if (!rows.length) return;
     els.queue.innerHTML = "";
+    let latest = null;
     rows.forEach((row) => {
       const s = row.status || "pending";
       const badge = s === "completed" ? "g" : s === "failed" ? "r" : s === "rendering" ? "a" : "";
@@ -670,8 +685,12 @@
         `<span class="badge ${badge}">${U.esc(s[0].toUpperCase() + s.slice(1))}</span>` +
         (row.video_local_url ? `<a class="btn q" href="${row.video_local_url}" download>Open</a>` : `<span></span>`);
       els.queue.appendChild(el);
-      if (s === "completed" && row.video_local_url) showVideo(row.video_local_url);
+      if (s === "completed" && row.video_local_url) latest = row.video_local_url;
     });
+    // Once, after the loop, rather than once per completed row: calling it
+    // inside meant the monitor was rebuilt twelve times a tick and settled on
+    // whichever row happened to be last.
+    if (latest) showVideo(latest);
   }
 
   function finish(status, p) {
@@ -689,7 +708,7 @@
       const url = p && (p.video_local_url || (p.summary && p.summary.video_url));
       if (url) showVideo(url); else showStill("Complete");
       const nas = p && p.summary && p.summary.nas_path;
-      U.banner(els.banners, { kind: "ok", title: "Render finished",
+      U.toast("Render finished", { kind: "ok",
         detail: nas ? `Filed to <code>${U.esc(nas)}</code>` : "Finished." });
       U.notify("Video render finished", nas ? `Filed to ${nas}` : "Finished", false);
     } else if (status === "partial") {
@@ -813,7 +832,7 @@
       state.running = true; state.kind = saved.kind; state.jobId = saved.id;
       state.startedAt = state.startedAt || new Date().toISOString();
       els.live.hidden = false; els.progress.hidden = false; refreshRun();
-      U.banner(els.banners, { kind: "info", title: "Reattached to a render already in progress",
+      U.toast("Reattached to a render already in progress", { kind: "info",
         detail: "Nothing was lost when the page reloaded." });
       poll(url);
     } catch (_) {}
