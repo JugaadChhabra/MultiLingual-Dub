@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   autodub:
     image: ghcr.io/jugaadchhabra/autodub:latest
@@ -9,11 +7,12 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # Mount directories for uploads and outputs
+      # What the container writes and must keep across a restart. Each of these
+      # is a path the code actually uses: uploads is api.routes.UPLOAD_DIR,
+      # output holds renders and the script history, data holds QC artefacts.
       - ./uploads:/app/uploads
       - ./output:/app/output
       - ./data:/app/data
-      - ./logs:/app/logs
     environment:
       ISHWARI_VOICE_ID: ${ISHWARI_VOICE_ID}
       HEYGEN_ISHWARI: ${HEYGEN_ISHWARI}
@@ -57,15 +56,13 @@ services:
       API_RETRY_BASE_DELAY_S: ${API_RETRY_BASE_DELAY_S:-1.0}
       API_RETRY_MAX_DELAY_S: ${API_RETRY_MAX_DELAY_S:-60.0}
 
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+
+    # No healthcheck here on purpose. The image defines its own (see Dockerfile),
+    # which probes /health with httpx — a dependency it actually installs. The
+    # override that used to live here called curl, which is not in python:slim
+    # and is not installed by the Dockerfile, so it could never pass and the
+    # container reported unhealthy for its whole life.
 
 # Usage:
 # 1. Create/edit .env and fill all required keys
@@ -74,3 +71,9 @@ services:
 #
 # To update later: just run `docker compose up -d` again. `pull_policy: always`
 # fetches the newest image automatically before (re)starting.
+#
+# Note for Windows: `pull_policy: always` contacts the registry on every `up`,
+# which invokes Docker Desktop's credential helper. That helper needs an
+# interactive logon session, so `up` fails over SSH with "A specified logon
+# session does not exist". Run it from the desktop session, or use
+# `docker compose up -d --pull never` to start the image already on disk.
