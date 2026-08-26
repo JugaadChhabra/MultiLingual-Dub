@@ -20,22 +20,42 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from services.script_parse import parse_script
+from services.script_validate import HISTORY_DAYS, PROSE_DAYS, HistoryFacts
 from services.script_writer import DraftScript
 from services.state_mirror import JsonStateMirror
 
 logger = logging.getLogger(__name__)
 
-# Seven days of scripts is enough to catch the sameness a viewer would notice,
-# and each is quoted as an excerpt rather than in full: an opening and its first
-# turn are what repeat, and the whole set at full length would dominate the
-# prompt.
-DEFAULT_HISTORY_DAYS = 7
+# Ten days for the facts — colours, numbers, area combinations — because those
+# are the rules stated over ten days, and a fact costs a few dozen characters.
+DEFAULT_HISTORY_DAYS = HISTORY_DAYS
+
+# Three days for the prose, quoted as excerpts rather than in full. Excerpts are
+# what dominate a prompt, and phrasing drifts fast enough that the last three
+# days carry nearly all the signal. This window is why the facts above are
+# stored separately: an excerpt truncates before the colour and number line,
+# which sits at the end of a script, so prose alone told the model to avoid
+# colours it could not see.
+DEFAULT_PROSE_DAYS = PROSE_DAYS
 EXCERPT_CHARS = 300
 
 
 class DraftScriptState(BaseModel):
+    """One stored script, and the facts pulled out of it.
+
+    The parsed fields all default, so records written before they existed load
+    unchanged and simply contribute nothing — the window heals as new days are
+    written, and no migration is needed.
+    """
+
     title: str
     script: str
+    item_key: str = ""
+    areas: list[str] = Field(default_factory=list)
+    colour: str | None = None
+    number: int | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class DayScriptsState(BaseModel):
@@ -45,6 +65,19 @@ class DayScriptsState(BaseModel):
     language: str
     items: list[DraftScriptState] = Field(default_factory=list)
     written_at: datetime | None = None
+
+
+def _to_state(draft: DraftScript) -> DraftScriptState:
+    facts = parse_script(draft.script)
+    return DraftScriptState(
+        title=draft.title,
+        script=draft.script,
+        item_key=draft.key,
+        areas=list(facts.areas),
+        colour=facts.colour,
+        number=facts.number,
+        tags=list(facts.tags),
+    )
 
 
 def _key(*, publish_date: str, category: str, language: str) -> str:
@@ -66,27 +99,28 @@ class ScriptHistoryStore:
     def record(
         self, *, publish_date: str, category: str, language: str, drafts: list[DraftScript]
     ) -> None:
+        """Store a day's drafts, with their facts parsed out.
+
+        Parsing happens here rather than at read time so a change to the
+        skeleton cannot retroactively reinterpret what was already written, and
+        so the read path stays cheap. It is best-effort: a script that does not
+        match the skeleton stores empty facts rather than failing the write.
+        """
         self._mirror.write(
             DayScriptsState(
                 key=_key(publish_date=publish_date, category=category, language=language),
                 publish_date=publish_date,
                 category=category,
                 language=language,
-                items=[DraftScriptState(title=d.title, script=d.script) for d in drafts],
+                items=[_to_state(draft) for draft in drafts],
                 written_at=datetime.now(timezone.utc),
             )
         )
 
-    def recent(
-        self,
-        *,
-        category: str,
-        language: str,
-        before: str | None = None,
-        days: int = DEFAULT_HISTORY_DAYS,
-        excerpt_chars: int = EXCERPT_CHARS,
-    ) -> list[DraftScript]:
-        """The last ``days`` days of drafts for this category and language.
+    def _window(
+        self, *, category: str, language: str, before: str | None, days: int
+    ) -> list[DayScriptsState]:
+        """The most recent ``days`` days for this category and language.
 
         ``before`` excludes the day being generated, so regenerating a day is not
         told to avoid the draft it is replacing — which would push each attempt
@@ -98,12 +132,85 @@ class ScriptHistoryStore:
             and (before is None or state.publish_date < before)
         ]
         records.sort(key=lambda s: s.publish_date, reverse=True)
+        return records[:days]
 
+    def recent(
+        self,
+        *,
+        category: str,
+        language: str,
+        before: str | None = None,
+        days: int = DEFAULT_PROSE_DAYS,
+        excerpt_chars: int = EXCERPT_CHARS,
+    ) -> list[DraftScript]:
+        """The last ``days`` days of drafts as prose excerpts, for phrasing.
+
+        Deliberately a short window. The colour and number rules are enforced
+        from :meth:`facts` instead, which is not truncated and reaches back
+        further; this is only what stops the openings sounding the same.
+        """
         out: list[DraftScript] = []
-        for state in records[:days]:
+        for state in self._window(
+            category=category, language=language, before=before, days=days
+        ):
             for item in state.items:
                 script = item.script.strip()
                 if len(script) > excerpt_chars:
                     script = script[:excerpt_chars].rstrip() + "…"
-                out.append(DraftScript(title=f"{state.publish_date} {item.title}", script=script))
+                out.append(DraftScript(
+                    title=f"{state.publish_date} {item.title}",
+                    script=script,
+                    key=item.item_key,
+                ))
         return out
+
+    def facts(
+        self,
+        *,
+        category: str,
+        language: str,
+        before: str | None = None,
+        days: int = DEFAULT_HISTORY_DAYS,
+    ) -> dict[str, HistoryFacts]:
+        """What each item has already used, over the last ``days`` days.
+
+        Grouped by item key, because the rules that matter are per sign: a
+        colour repeating for मेष is what a viewer of मेष notices, and the same
+        colour on कन्या the same week is fine.
+
+        Records written before facts were stored have no ``item_key`` and are
+        skipped rather than guessed at — a wrong grouping would forbid colours
+        the wrong sign never used.
+        """
+        colours: dict[str, list[str]] = {}
+        numbers: dict[str, list[int]] = {}
+        combinations: dict[str, list[frozenset[str]]] = {}
+        previous: dict[str, tuple[str, ...]] = {}
+
+        # Newest first, so the first tag list seen for an item is the one from
+        # its most recent day — which is the only one the repeat rule cares about.
+        for state in self._window(
+            category=category, language=language, before=before, days=days
+        ):
+            for item in state.items:
+                if not item.item_key:
+                    continue
+                if item.colour:
+                    colours.setdefault(item.item_key, []).append(item.colour)
+                if item.number is not None:
+                    numbers.setdefault(item.item_key, []).append(item.number)
+                if item.areas:
+                    combinations.setdefault(item.item_key, []).append(frozenset(item.areas))
+                if item.tags and item.item_key not in previous:
+                    previous[item.item_key] = tuple(item.tags)
+
+        keys = set(colours) | set(numbers) | set(combinations) | set(previous)
+        return {
+            key: HistoryFacts(
+                colours=tuple(colours.get(key, ())),
+                numbers=tuple(numbers.get(key, ())),
+                combinations=tuple(combinations.get(key, ())),
+                previous_tags=previous.get(key, ()),
+            )
+            for key in keys
+        }

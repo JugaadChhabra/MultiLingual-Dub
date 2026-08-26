@@ -360,6 +360,25 @@ async def recover_all_failed_heygen_jobs(request: Request):
     return {"status": "recovering", "job_ids": ids, "count": len(ids)}
 
 
+_TITLE_TO_ITEM_KEY = {item.title: item.key for item in ZODIAC_SIGNS}
+
+
+def _item_key_for(video_title: str) -> str:
+    """The item key a rendered row was generated under.
+
+    A batch row carries only the title, because that is what names the file.
+    History is grouped by item key, so the title has to be mapped back: for a
+    horoscope the title is the Devanagari sign name and the key is its Latin
+    one, and for a one-off the two are the same string by construction.
+
+    Getting this wrong is silent. The re-record below overwrites the record
+    written at generation time, and a record whose items have no key
+    contributes nothing to :meth:`ScriptHistoryStore.facts` — so the day would
+    vanish from the uniqueness window with nothing to show for it.
+    """
+    return _TITLE_TO_ITEM_KEY.get(video_title, video_title)
+
+
 @app.post("/video/scripts/generate")
 async def generate_video_scripts(
     request: Request,
@@ -410,12 +429,16 @@ async def generate_video_scripts(
         recent = script_history.recent(
             category=category, language=language, before=publish_date
         )
+        history = script_history.facts(
+            category=category, language=language, before=publish_date
+        )
         drafts = write_daily_scripts(
             brief=brief,
             language=language,
             publish_date=publish_date,
             items=items,
             recent=recent,
+            history=history,
             settings=settings,
         )
         script_history.record(
@@ -504,7 +527,12 @@ async def create_heygen_batch_job(
             category=category,
             language=language,
             drafts=[
-                DraftScript(title=r.video_title, script=r.script) for r in batch_rows_parsed
+                DraftScript(
+                    title=r.video_title,
+                    script=r.script,
+                    key=_item_key_for(r.video_title),
+                )
+                for r in batch_rows_parsed
             ],
         )
 

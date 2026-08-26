@@ -53,13 +53,16 @@ def client(tmp_path, monkeypatch) -> TestClient:
 
 
 def _stub_writer(monkeypatch, captured: dict | None = None):
-    def fake(*, brief, language, publish_date, items, recent, settings):
+    def fake(*, brief, language, publish_date, items, recent, history, settings):
         if captured is not None:
             captured.update(
                 brief=brief, language=language, publish_date=publish_date,
-                items=items, recent=recent,
+                items=items, recent=recent, history=history,
             )
-        return [DraftScript(title=item.title, script=f"{item.key} script") for item in items]
+        return [
+            DraftScript(title=item.title, script=f"{item.key} script", key=item.key)
+            for item in items
+        ]
 
     monkeypatch.setattr(api, "write_daily_scripts", fake)
 
@@ -274,3 +277,46 @@ def test_batch_rejects_rows_with_no_scripts_left_in_them(client) -> None:
         data={"rows": json.dumps([{"script": "   ", "video_title": "Aries"}])},
     )
     assert resp.status_code == 400
+
+
+def test_the_rows_submitted_keep_their_item_key_so_facts_survive(client, monkeypatch) -> None:
+    """The re-record overwrites the day written at generation time.
+
+    A batch row carries only the title, so the key has to be mapped back from
+    it. Dropped, the rewritten record has no item key, `facts()` skips it, and
+    the day vanishes from the uniqueness window — silently, because the prose
+    window does not need a key and goes on looking healthy.
+    """
+    _stub_writer(monkeypatch)
+
+    async def fake_batch(**_kwargs):
+        pass
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    script = (
+        "[warm] मेष राशि के जातकों... आज नई शुरुआत, ऊर्जा और नेतृत्व!\n\n"
+        "[reassuring] एक अवसर मिलेगा। "
+        "[calm] स्वास्थ्य उत्तम रहेगा और मानसिक प्रसन्नता बनी रहेगी। "
+        "[bright] शुभ रंग: लाल | जादुई अंक: सत्रह (१७)।\n\n"
+        "[uplifting] आज का दिन शुभ है।"
+    )
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": script, "video_title": "मेष"}]),
+              "publish_date": "2026-08-17", "category": "sunsign", "language": "hi-IN"},
+    )
+    assert resp.status_code == 202, resp.text
+
+    facts = api.script_history.facts(category="sunsign", language="hi-IN")
+    assert "Aries" in facts, "the Devanagari title must map back to the item key"
+    assert facts["Aries"].colours == ("लाल",)
+    assert facts["Aries"].numbers == (17,)
+
+
+def test_a_one_off_title_is_its_own_item_key(client, monkeypatch) -> None:
+    """For a single video the key and the title are the same string, so the
+    lookup must fall through rather than dropping the key."""
+    assert api._item_key_for("diwali_promo") == "diwali_promo"
+    assert api._item_key_for("मेष") == "Aries"
