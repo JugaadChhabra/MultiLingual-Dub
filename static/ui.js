@@ -90,16 +90,18 @@
         live.restart(life); return live; }
     }
 
-    const el = document.createElement("button");
-    el.type = "button";
+    // A div, not a button: the close button nests inside, and a button inside a
+    // button is invalid and does not receive its own clicks. The body stays
+    // click-to-dismiss for the mouse; the close button is the affordance that
+    // is focusable and reachable by keyboard.
+    const el = document.createElement("div");
     el.className = "toast " + kind;
     if (id) el.dataset.id = id;
-    // Spans, not divs: a <button> takes phrasing content, and .h/.d are
-    // display:block in the stylesheet.
     el.innerHTML =
       `<span class="ic" aria-hidden="true">${ICONS[kind] || "i"}</span>` +
       `<span class="tx"><span class="h">${esc(title)}</span>` +
-      (detail ? `<span class="d">${detail}</span>` : "") + `</span>`;
+      (detail ? `<span class="d">${detail}</span>` : "") + `</span>` +
+      `<button type="button" class="iconbtn x" aria-label="Dismiss">✕</button>`;
     host.appendChild(el);
     // Two frames: adding the class in the same frame as the insert can skip
     // the transition entirely, since no style recalc separates them.
@@ -117,12 +119,28 @@
     const hold = () => clearTimeout(timer);
     const resume = () => { timer = setTimeout(() => dismiss(el), TOAST_MS); };
     el.addEventListener("mouseenter", hold);
-    el.addEventListener("focus", hold);
     el.addEventListener("mouseleave", resume);
-    el.addEventListener("blur", resume);
+    // focus/blur do not bubble; focusin/focusout do, and the focusable child is
+    // the close button, so the toast has to listen for the bubbling pair or a
+    // keyboard user would watch it vanish mid-read.
+    el.addEventListener("focusin", hold);
+    el.addEventListener("focusout", resume);
     el.addEventListener("click", () => { clearTimeout(timer); dismiss(el); });
     return el;
   }
+
+  // Escape clears the toasts — but only when nothing else owns the key. An open
+  // alert or drawer traps Escape for its own close, and stealing it there would
+  // dismiss notices the operator cannot even see behind the scrim.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || e.defaultPrevented) return;
+    if (document.querySelector(".alert.open,.drawer.open")) return;
+    const host = document.querySelector(".toasts");
+    const live = host ? [...host.querySelectorAll(".toast:not([data-going])")] : [];
+    if (!live.length) return;
+    e.preventDefault();
+    live.forEach((el) => dismiss(el));
+  });
   function dismiss(el, now) {
     if (!el || el.dataset.going) return;
     el.dataset.going = "1";

@@ -397,8 +397,7 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .toast{width:100%;display:flex;gap:var(--s3);align-items:flex-start;
   background:var(--material);backdrop-filter:saturate(180%) blur(30px);
   border-radius:var(--r-xl);box-shadow:var(--shadow-3);
-  padding:12px 14px;cursor:pointer;pointer-events:auto;text-align:left;
-  border:none;font:inherit;color:inherit;
+  padding:12px 14px;cursor:pointer;pointer-events:auto;
   /* Never from nothing: a small rise and fade, origin at the corner it lives in. */
   opacity:0;transform:translateY(8px);
   transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);}
@@ -407,7 +406,13 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .toast.out{opacity:0;transform:translateY(4px);}
 .toast:hover{box-shadow:var(--shadow-3),0 0 0 1px var(--hair);}
 .toast:active{transform:translateY(0) scale(.98);}
-.toast:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.toast .x{margin-left:auto;align-self:flex-start;position:relative;color:var(--label3);}
+.toast:hover .x{color:var(--label2);}
+.toast .x:hover{background:var(--fill);color:var(--label);}
+.toast .x:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+/* The glyph is 26px; the hit area is not. Extended to 44px without moving it. */
+.toast .x::after{content:"";position:absolute;top:50%;left:50%;width:44px;height:44px;
+  transform:translate(-50%,-50%);}
 .toast .ic{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;
   font-size:11px;font-weight:700;color:#fff;flex:none;margin-top:1px;background:var(--accent);}
 .toast.ok .ic{background:var(--green)}
