@@ -9,6 +9,7 @@ from pathlib import Path
 from services.elevenlabs import ElevenLabsTTSConfig
 from services.nas import NasConfig, NasService
 from services.video_pipeline.image_geometry import clamp_for_render, dimensions
+from services.video_pipeline.overlay import burn_cards
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import SpeechSynth
@@ -215,6 +216,17 @@ async def _finalize_video(
     await jobs_store.set_status(job_id, "downloading", "Downloading rendered video")
     await renderer.download(video_url=video_url, dest_path=video_path)
 
+    from datetime import date as _date
+    publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
+
+    # 5b. Burn the branded cards + music bed onto the render before upload. The
+    # sign is spec.video_title (already Devanagari); the date drives the top card.
+    await jobs_store.set_status(job_id, "nas_upload", "Adding overlay cards & music")
+    carded_path = job_dir / "video_carded.mp4"
+    await asyncio.to_thread(
+        burn_cards, video_path, carded_path, spec.video_title, publish_date
+    )
+
     # 6. Upload to NAS
     await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
     # US-character content lands in its own NAS folder, when configured;
@@ -223,11 +235,9 @@ async def _finalize_video(
     if target is not nas_config:
         logger.info("Job %s: US character → NAS root '%s'", job_id, target.root_path)
     nas = NasService(target)
-    from datetime import date as _date
-    publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
     async with _nas_upload_lock:
         nas_path = await asyncio.to_thread(
-            nas.upload_video, publish_date, spec.video_title, str(video_path)
+            nas.upload_video, publish_date, spec.video_title, str(carded_path)
         )
     await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
