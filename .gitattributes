@@ -1,0 +1,12 @@
+# Launcher scripts are read by the shell of the machine they run on, and each
+# one is strict about line endings in a different direction. Pinned here so a
+# checkout on another platform cannot silently normalise them: cmd.exe tracks
+# byte offsets when it follows `goto`, and bash treats a trailing CR as part of
+# the command and fails on it.
+#
+# Deliberately scoped to these extensions rather than a repo-wide `text=auto`,
+# which would renormalise every file in the project on the next checkout.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.command   text eol=lf
+*.sh        text eol=lf
