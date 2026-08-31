@@ -301,10 +301,14 @@
   els.title.addEventListener("input", refreshRun);
   // the title becomes the NAS filename, so it has to be filesystem-safe
   const safeTitle = () => els.title.value.trim().replace(/[\\/:*?"<>|]+/g, "_").replace(/\.mp4$/i, "");
-  try {
-    const d = new Date();
-    els.date.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  } catch (_) {}
+  // The date is no longer defaulted: it prints on the video card and files the
+  // render, so it must be chosen deliberately rather than silently assumed today.
+  const dateSet = () => {
+    if (els.date.value) return true;
+    U.toast("Set a publish date first", { kind: "error", id: "no-date",
+      detail: "The date appears on the video card and names the NAS folder, so it can't default to today anymore." });
+    return false;
+  };
 
   U.dropzone(els.drop, els.xls, onExcel);
   async function onExcel(file) {
@@ -433,6 +437,7 @@
     const c = activeCat();
     if (!c || !(c.script_brief || "").trim() || state.writing || state.running) return;
     if (state.set === "single" && !els.autoTitle.value.trim()) return;
+    if (!dateSet()) return;   // scripts are filed by date; no silent default
     if (state.drafts.length) {
       const edited = state.drafts.some((d) => d.edited);
       if (edited) {
@@ -452,8 +457,8 @@
     fd.append("item_set", state.set);
     if (state.set === "single") fd.append("title", els.autoTitle.value.trim());
     // The date the run is filed under is also the date the scripts are FOR, and
-    // the day whose history is skipped when rewriting.
-    fd.append("publish_date", els.date.value || new Date().toISOString().slice(0, 10));
+    // the day whose history is skipped when rewriting. Guaranteed set above.
+    fd.append("publish_date", els.date.value);
 
     try {
       // A dozen scripts in one Gemini call; slower than a normal request, so the
@@ -577,6 +582,7 @@
   async function submit() {
     const why = blocker();
     if (why) { say(why, true); return; }
+    if (!dateSet()) return;   // the date prints on the card and files the render
     say(""); U.clearBanners(els.banners);
     U.askNotify();   // not awaited — see pane-audio.js
 
@@ -591,11 +597,9 @@
     if (state.image) fd.append("image", state.image);
     else fd.append("talking_photo_id", state.photoId);
     fd.append("character", state.character);
-    // In Auto the date is also the history key, and generation defaults it to
-    // today when the field is empty — so the run must default it the same way,
-    // or a cleared date would file the run under a day the drafts are not in.
-    if (els.date.value) fd.append("publish_date", els.date.value);
-    else if (state.mode === "auto") fd.append("publish_date", new Date().toISOString().slice(0, 10));
+    // The date names the NAS folder, prints on the card, and in Auto is the
+    // history key. Required at submit (dateSet), so no fallback here.
+    fd.append("publish_date", els.date.value);
     if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
     if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
 
