@@ -110,6 +110,37 @@ def test_without_a_correlation_id_a_lost_submit_fails_rather_than_risking_a_dupl
         )
 
 
+# --- avatar iv character payload -------------------------------------------
+
+
+def test_motion_prompt_reaches_the_character_payload(transport) -> None:
+    """motion_prompt must land inside the character object, not be silently
+    dropped on the way to /v2/video/generate."""
+    import json
+
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v2/video/generate":
+            seen.update(json.loads(request.content))
+            return httpx.Response(200, json={"data": {"video_id": "v-1"}})
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    transport(handler)
+
+    heygen_client.create_avatar_iv_video(
+        api_key="k",
+        talking_photo_id="photo-1",
+        audio_asset_id="asset-1",
+        motion_prompt="hold still and nod gently",
+        video_title="T",
+        callback_id=None,
+    )
+
+    character = seen["video_inputs"][0]["character"]
+    assert character["motion_prompt"] == "hold still and nod gently"
+
+
 # --- resumable download ----------------------------------------------------
 
 
