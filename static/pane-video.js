@@ -14,7 +14,6 @@
   // this, so editing here ships new copy immediately unless they edited it too.
   const SEED = [{
     id: "sunsign", label: "Horoscope",
-    video_prompt: "The character is speaking directly to the camera in a calm, soothing, and divine tone, delivering an astrological and spiritual message as if guided by a higher power. Visuals: Soft cinematic lighting with a warm, divine glow on the face. Movements: Natural, graceful human-like head movements, including gentle nods of affirmation and subtle lateral head tilts. Expressions: A serene, compassionate, and divine smile with micro-expressions of wisdom. Eyes: Soft, warm, and prolonged eye contact with the camera, natural blinking, and occasional soft gaze shifts to avoid a dead stare. Lip-Sync & Jaw: Extremely accurate Hindi lip-sync with realistic mouth shape, jaw tension, and natural teeth visibility matching the phonemes. Body Language: Add a rhythmic, visible breathing pattern for a natural life-like presence, and incorporate slow, subtle, open-palm hand gestures to convey peace and avoid stiffness.",
     // Written off the hand-authored reference sheet, so a generated day is
     // indistinguishable in shape from the days the editor wrote themselves.
     // The fortune line's FORMAT is fixed there too; its values are not, and
@@ -32,7 +31,7 @@
   // A retired id is no longer in SEED_IDS, so without this the stored `user`
   // array would resurrect it as an operator-created category.
   const RETIRED = new Set(["birthday"]);
-  const FIELDS = ["label", "video_prompt", "motion_prompt", "script_brief"];
+  const FIELDS = ["label", "motion_prompt", "script_brief"];
   const STORE = "autodub_video_cat_store_v1", ACTIVE = "autodub_video_active_cat";
   const CHAR = "autodub_video_character", JOB_KEY = "autodub_video_job";
   const MODE = "autodub_video_mode", LANG = "autodub_video_script_lang";
@@ -600,7 +599,6 @@
     // The date names the NAS folder, prints on the card, and in Auto is the
     // history key. Required at submit (dateSet), so no fallback here.
     fd.append("publish_date", els.date.value);
-    if (c.video_prompt) fd.append("video_prompt", c.video_prompt);
     if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
 
     try {
@@ -729,11 +727,11 @@
 
   // ── category editor ──────────────────────────────────────────────────────
   const drawer = $("#catDrawer");
-  const name = $("#catName"), vprompt = $("#catVideo"), mprompt = $("#catMotion");
+  const name = $("#catName"), mprompt = $("#catMotion");
   const brief = $("#catBrief");
   const errEl = $("#catErr"), dirtyEl = $("#catDirty");
   let editingId = null, snapshot = null;
-  const fields = () => ({ label: name.value.trim(), video_prompt: vprompt.value.trim(),
+  const fields = () => ({ label: name.value.trim(),
                           motion_prompt: mprompt.value.trim(), script_brief: brief.value.trim() });
   const dirty = () => snapshot !== null && JSON.stringify(fields()) !== JSON.stringify(snapshot);
 
@@ -750,22 +748,20 @@
   });
   function refreshEditor() {
     dirtyEl.hidden = !dirty();
-    $("#catVideoN").textContent = vprompt.value.length || "";
     $("#catMotionN").textContent = mprompt.value.length || "";
     $("#catBriefN").textContent = brief.value.length || "";
     const seed = editingId ? seedById(editingId) : null;
     const cur = editingId ? cats.find((c) => c.id === editingId) : null;
     $("#catReset").hidden = !(seed && cur && FIELDS.some((k) => cur[k] !== seed[k]));
   }
-  [name, vprompt, mprompt, brief].forEach((el) => el.addEventListener("input", refreshEditor));
+  [name, mprompt, brief].forEach((el) => el.addEventListener("input", refreshEditor));
 
   function openEditor(id, from) {
     editingId = id;
     const c = id ? cats.find((x) => x.id === id) : from || null;
     $("#catTitle").textContent = id ? "Edit category" : "New category";
-    $("#catSub").textContent = id ? c.label : from ? `Copy of ${from.label}` : "Video and motion prompt preset";
+    $("#catSub").textContent = id ? c.label : from ? `Copy of ${from.label}` : "Motion prompt preset";
     name.value = c ? (id ? c.label : `${c.label} copy`) : "";
-    vprompt.value = c ? c.video_prompt || "" : "";
     mprompt.value = c ? c.motion_prompt || "" : "";
     brief.value = c ? c.script_brief || "" : "";
     $("#catDelete").hidden = !id; $("#catDuplicate").hidden = !id;
@@ -803,7 +799,7 @@
       message: `“${seed.label}” goes back to the prompts this build ships with. Your edits to it are lost.`,
       confirmLabel: "Reset",
       onOk: () => {
-        name.value = seed.label; vprompt.value = seed.video_prompt;
+        name.value = seed.label;
         mprompt.value = seed.motion_prompt; brief.value = seed.script_brief || "";
         Object.assign(cats.find((x) => x.id === editingId), { ...seed });
         persist(); renderCats(); snapshot = fields(); refreshEditor();

@@ -159,7 +159,7 @@ async def run_video_job(
         video_id = await renderer.submit(
             photo_id=talking_photo_id,
             audio_asset_id=audio_asset.asset_id,
-            motion_prompt=spec.motion_prompt or spec.video_prompt,
+            motion_prompt=spec.motion_prompt,
             width=out_w,
             height=out_h,
             video_title=spec.video_title,

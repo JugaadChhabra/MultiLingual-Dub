@@ -14,7 +14,6 @@ class VideoJobSpec(BaseModel):
     style: float = 0.0
     use_speaker_boost: bool = True
 
-    video_prompt: str | None = None
     motion_prompt: str | None = None
     talking_photo_id: str | None = None
     width: int | None = None

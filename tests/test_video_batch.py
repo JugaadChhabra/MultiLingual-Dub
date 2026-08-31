@@ -70,7 +70,6 @@ async def _run_batch(
         image_bytes=b"\xff\xd8fake-jpeg",
         image_filename="photo.jpg",
         character="indian",
-        video_prompt=None,
         motion_prompt=None,
         publish_date="12-08-2026",
         output_dir=tmp_path / "out" / "heygen",
