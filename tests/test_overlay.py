@@ -22,6 +22,12 @@ def test_card_line_formats_sign_day_and_hindi_month() -> None:
     assert card_line("मीन", "09-12-2025") == "मीन राशिफल | ९ दिसंबर"
 
 
+def test_card_line_accepts_iso_date_from_html_input() -> None:
+    # HTML <input type=date> yields YYYY-MM-DD; day/month must not swap with year.
+    assert card_line("कन्या", "2025-08-26") == "कन्या राशिफल | २६ अगस्त"
+    assert card_line("मेष", "2026-01-01") == "मेष राशिफल | १ जनवरी"
+
+
 def _assets_present() -> bool:
     return all(Path(p).exists() for p in (FONT, CARD_BG, CARD_NAME, BGM))
 

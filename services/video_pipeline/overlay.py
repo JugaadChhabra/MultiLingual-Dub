@@ -56,8 +56,17 @@ _MONTHS_HI = ["", "जनवरी", "फरवरी", "मार्च", "अ�
 
 
 def _format_date(publish_date: str) -> str:
-    """'DD-MM-YYYY' -> 'DD महीना' in Devanagari, e.g. '26-08-2025' -> '२६ अगस्त'."""
-    day, month, _year = publish_date.split("-")
+    """Date -> 'DD महीना' in Devanagari, e.g. '२६ अगस्त'.
+
+    Accepts both the HTML date-input form 'YYYY-MM-DD' and 'DD-MM-YYYY' (the
+    same two shapes the NAS folder logic accepts), so the day and month land
+    correctly regardless of which the job carries.
+    """
+    parts = publish_date.strip().split("-")
+    if len(parts) == 3 and len(parts[0]) == 4:
+        _year, month, day = parts                     # ISO YYYY-MM-DD
+    else:
+        day, month, _year = (parts + ["", "", ""])[:3]  # DD-MM-YYYY
     return f"{str(int(day)).translate(_DEV)} {_MONTHS_HI[int(month)]}"
 
 
