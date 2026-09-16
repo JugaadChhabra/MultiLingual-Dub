@@ -47,9 +47,11 @@ ALL_TAGS: frozenset[str] = frozenset(tag for tags in TAG_BANK.values() for tag i
 # One per beat, with room for a transition or two. Fewer reads as untagged
 # prose; more is a tag per sentence, which flattens the delivery it is meant to
 # shape. These are the counts for a script at the horoscope's length, which is
-# what the prompt asks for.
+# what the prompt asks for. The ceiling sits at nine because the model reliably
+# places a tag on every beat of a full horoscope — nine on a ~380-char script —
+# and rejecting that made the harness, not the copy, the reason a run stalled.
 MIN_TAGS = 5
-MAX_TAGS = 7
+MAX_TAGS = 9
 
 # Tags belong to beats, and a shorter script has fewer beats. A one-off promo is
 # not a horoscope: demanding five tags of a two-sentence script would fail every
@@ -60,7 +62,7 @@ MAX_TAGS = 7
 # The prompt still asks for MIN_TAGS-MAX_TAGS, because that is right for the
 # length it also asks for. The check is looser on purpose: its job is to reject
 # what is broken, not what is merely less tagged than ideal.
-CHARS_PER_TAG = 75
+CHARS_PER_TAG = 50
 FLOOR_TAGS = 2
 
 # Double digits only. A single digit reads as an afterthought and a triple digit

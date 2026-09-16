@@ -515,6 +515,11 @@ def _write_with_model(
             "Script writer: repairing %d of %d script(s) — %s",
             len(failing), len(scripts), ", ".join(failing),
         )
+        # The reasons, not just the keys: a repair round that never resolves is
+        # otherwise a count with no cause, and the cause is what the operator
+        # needs to see. Only the surviving-budget failure logged these before.
+        for violation in blocking:
+            logger.warning("Script writer: hard violation — %s", violation)
         subset = tuple(item for item in items if item.key in failing)
         rewritten = generate(
             prompt + "\n\n" + _repair_block(blocking, subset, in_use=facts), subset
