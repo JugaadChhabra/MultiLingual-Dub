@@ -212,4 +212,7 @@ __marimo__/
 graphify-out/*
 .claude/*
 data/qc/*
-output/*.DS_Store
+
+# Generated runtime state: persisted heygen/batch jobs, scripts, renders.
+# Local-only; never belongs in the repo.
+output/
