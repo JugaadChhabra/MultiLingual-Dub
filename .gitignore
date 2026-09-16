@@ -216,3 +216,6 @@ data/qc/*
 # Generated runtime state: persisted heygen/batch jobs, scripts, renders.
 # Local-only; never belongs in the repo.
 output/
+
+# macOS folder metadata, anywhere in the tree
+.DS_Store
