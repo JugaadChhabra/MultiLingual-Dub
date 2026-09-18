@@ -142,6 +142,96 @@ def test_supplied_photo_id_uploads_nothing(tmp_path: Path, nas_root: Path) -> No
     assert state.summary.image_key == "shared-photo"
 
 
+def _spy_burn_cards(monkeypatch) -> list:
+    """Record burn_cards calls (with the overlay/music flags) while still copying
+    the render through, so tests can assert what the finalize step asked for
+    without a real encoder."""
+    import shutil
+
+    import services.video_pipeline.pipeline as pipeline
+
+    calls: list = []
+
+    def spy(src, dest, sign, publish_date, *, overlay=True, music=True):
+        calls.append({"overlay": overlay, "music": music})
+        shutil.copyfile(src, dest)
+        return Path(dest)
+
+    monkeypatch.setattr(pipeline, "burn_cards", spy)
+    return calls
+
+
+def test_overlay_and_music_are_burned_by_default(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    calls = _spy_burn_cards(monkeypatch)
+    renderer, speech = FakeRenderer(), FakeSpeech()
+
+    _, state = asyncio.run(
+        _run(output_dir=tmp_path / "out", spec=_spec(), renderer=renderer, speech=speech, nas_config=_nas(nas_root))
+    )
+
+    assert state.status == "completed"
+    assert calls == [{"overlay": True, "music": True}]
+
+
+def test_overlay_off_still_burns_music(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    """Music without cards: burn_cards still runs, but overlay is suppressed."""
+    calls = _spy_burn_cards(monkeypatch)
+    renderer, speech = FakeRenderer(), FakeSpeech()
+
+    _, state = asyncio.run(
+        _run(
+            output_dir=tmp_path / "out",
+            spec=_spec(include_overlay=False),
+            renderer=renderer,
+            speech=speech,
+            nas_config=_nas(nas_root),
+        )
+    )
+
+    assert state.status == "completed"
+    assert calls == [{"overlay": False, "music": True}]
+
+
+def test_music_off_still_burns_overlay(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    """Cards without music: burn_cards still runs, but the BGM is suppressed."""
+    calls = _spy_burn_cards(monkeypatch)
+    renderer, speech = FakeRenderer(), FakeSpeech()
+
+    _, state = asyncio.run(
+        _run(
+            output_dir=tmp_path / "out",
+            spec=_spec(include_music=False),
+            renderer=renderer,
+            speech=speech,
+            nas_config=_nas(nas_root),
+        )
+    )
+
+    assert state.status == "completed"
+    assert calls == [{"overlay": True, "music": False}]
+
+
+def test_both_off_skips_the_burn(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    """Neither overlay nor music: skip ffmpeg entirely, upload the raw render."""
+    calls = _spy_burn_cards(monkeypatch)
+    renderer, speech = FakeRenderer(), FakeSpeech()
+
+    _, state = asyncio.run(
+        _run(
+            output_dir=tmp_path / "out",
+            spec=_spec(include_overlay=False, include_music=False),
+            renderer=renderer,
+            speech=speech,
+            nas_config=_nas(nas_root),
+        )
+    )
+
+    assert state.status == "completed"
+    assert calls == []
+    landed = nas_root / "12-08-2026" / "My Video.mp4"
+    assert landed.read_bytes() == renderer.video_bytes
+
+
 def test_a_clear_failure_does_not_stop_the_upload(tmp_path: Path, nas_root: Path) -> None:
     class ClearFails(FakeRenderer):
         async def clear_photos(self) -> int:

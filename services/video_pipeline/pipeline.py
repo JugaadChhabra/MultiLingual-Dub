@@ -219,13 +219,21 @@ async def _finalize_video(
     from datetime import date as _date
     publish_date = spec.publish_date or _date.today().strftime("%d-%m-%Y")
 
-    # 5b. Burn the branded cards + music bed onto the render before upload. The
-    # sign is spec.video_title (already Devanagari); the date drives the top card.
-    await jobs_store.set_status(job_id, "nas_upload", "Adding overlay cards & music")
-    carded_path = job_dir / "video_carded.mp4"
-    await asyncio.to_thread(
-        burn_cards, video_path, carded_path, spec.video_title, publish_date
-    )
+    # 5b. Burn the branded cards and/or music bed onto the render before upload.
+    # The sign is spec.video_title (already Devanagari); the date drives the top
+    # card. A single job may opt out of either; with both off the raw render is
+    # uploaded untouched. Batch and recovery keep the defaults (both on).
+    if spec.include_overlay or spec.include_music:
+        bits = [b for b, on in (("overlay cards", spec.include_overlay),
+                                ("music", spec.include_music)) if on]
+        await jobs_store.set_status(job_id, "nas_upload", "Adding " + " & ".join(bits))
+        final_path = job_dir / "video_carded.mp4"
+        await asyncio.to_thread(
+            burn_cards, video_path, final_path, spec.video_title, publish_date,
+            overlay=spec.include_overlay, music=spec.include_music,
+        )
+    else:
+        final_path = video_path
 
     # 6. Upload to NAS
     await jobs_store.set_status(job_id, "nas_upload", "Uploading to NAS")
@@ -237,7 +245,7 @@ async def _finalize_video(
     nas = NasService(target)
     async with _nas_upload_lock:
         nas_path = await asyncio.to_thread(
-            nas.upload_video, publish_date, spec.video_title, str(carded_path)
+            nas.upload_video, publish_date, spec.video_title, str(final_path)
         )
     await jobs_store.patch_summary(job_id, nas_path=nas_path)
 

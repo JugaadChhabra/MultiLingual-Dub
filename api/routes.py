@@ -223,6 +223,11 @@ async def create_heygen_video_job(
     similarity_boost: float = Form(default=0.75),
     style: float = Form(default=0.0),
     use_speaker_boost: bool = Form(default=True),
+    # Single-job opt-outs for the branded overlay cards and the music bed
+    # (independent). Batch and recovery have no equivalent knobs and always keep
+    # both (spec defaults).
+    include_overlay: bool = Form(default=True),
+    include_music: bool = Form(default=True),
 ):
     session = await _session_config_for_request(request)
 
@@ -254,6 +259,8 @@ async def create_heygen_video_job(
         style=style,
         use_speaker_boost=use_speaker_boost,
         talking_photo_id=talking_photo_id or None,
+        include_overlay=include_overlay,
+        include_music=include_music,
     )
 
     try:

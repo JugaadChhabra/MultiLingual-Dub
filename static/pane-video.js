@@ -98,7 +98,7 @@
     inner: document.querySelector("#pane-video .pane-inner"),
     work: $("#vWork"), draftsWrap: $("#vDraftsWrap"), queueWrap: $("#vQueueWrap"),
     draftsN: $("#vDraftsN"),
-    title: $("#vTitle"), drop: $("#vDrop"), xls: $("#vXls"),
+    title: $("#vTitle"), overlay: $("#vOverlay"), music: $("#vMusic"), drop: $("#vDrop"), xls: $("#vXls"),
     dropTitle: $("#vDropTitle"), dropSub: $("#vDropSub"), queue: $("#vQueue"),
     progress: $("#videoProgress"), pCount: $("#vpCount"), pDetail: $("#vpDetail"),
     up: $("#vpUp"), done: $("#vpDone"), bad: $("#vpBad"),
@@ -272,6 +272,8 @@
   }
 
   // ── mode, voice, script, title ───────────────────────────────────────────
+  U.bindSwitch(els.overlay);
+  U.bindSwitch(els.music);
   U.bindSeg(els.mode, ({ mode }) => applyMode(mode));
   function applyMode(mode) {
     state.mode = mode;
@@ -627,6 +629,8 @@
       } else {
         fd.append("script", els.script.value.trim());
         fd.append("video_title", safeTitle());
+        fd.append("include_overlay", U.isOn(els.overlay) ? "true" : "false");
+        fd.append("include_music", U.isOn(els.music) ? "true" : "false");
         const r = await fetch("/video/heygen", { method: "POST", body: fd });
         if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
         id = (await r.json()).job_id; url = `/video/heygen/${id}`;

@@ -96,8 +96,18 @@ def build_overlay(sign: str, publish_date: str) -> Image.Image:
     return canvas
 
 
-def burn_cards(src: Path, dest: Path, sign: str, publish_date: str) -> Path:
-    """Write `src` to `dest` with both cards burned in and the BGM mixed under.
+def burn_cards(
+    src: Path,
+    dest: Path,
+    sign: str,
+    publish_date: str,
+    *,
+    overlay: bool = True,
+    music: bool = True,
+) -> Path:
+    """Write `src` to `dest`, optionally burning in the branded cards and/or the
+    BGM bed. `overlay` and `music` are independent; with both False this is a
+    plain re-encode (callers should skip it in that case).
 
     The overlay is composed at the reference size and scaled to the video with
     ``scale2ref`` (no probing needed). The music bed is ducked to ``BGM_VOLUME``
@@ -105,21 +115,42 @@ def burn_cards(src: Path, dest: Path, sign: str, publish_date: str) -> Path:
     Assumes the render carries an audio stream (HeyGen avatar videos always do).
     """
     src, dest = Path(src), Path(dest)
-    layer = dest.parent / "overlay_layer.png"
-    build_overlay(sign, publish_date).save(layer)
-
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    filtergraph = (
-        "[1:v][0:v]scale2ref[ov][base];"
-        "[base][ov]overlay=0:0:format=auto[v];"
-        f"[2:a]volume={BGM_VOLUME}[bg];"
-        "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]"
-    )
-    cmd = [
-        ffmpeg, "-y",
-        "-i", str(src), "-i", str(layer), "-i", BGM,
-        "-filter_complex", filtergraph,
-        "-map", "[v]", "-map", "[a]",
+
+    # src is input 0; each optional extra input takes the next index in order.
+    inputs = ["-i", str(src)]
+    filters: list[str] = []
+    next_idx = 1
+
+    if overlay:
+        layer = dest.parent / "overlay_layer.png"
+        build_overlay(sign, publish_date).save(layer)
+        inputs += ["-i", str(layer)]
+        filters.append(
+            f"[{next_idx}:v][0:v]scale2ref[ov][base];"
+            "[base][ov]overlay=0:0:format=auto[v]"
+        )
+        v_map = "[v]"
+        next_idx += 1
+    else:
+        v_map = "0:v"
+
+    if music:
+        inputs += ["-i", BGM]
+        filters.append(
+            f"[{next_idx}:a]volume={BGM_VOLUME}[bg];"
+            "[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]"
+        )
+        a_map = "[a]"
+        next_idx += 1
+    else:
+        a_map = "0:a"
+
+    cmd = [ffmpeg, "-y", *inputs]
+    if filters:
+        cmd += ["-filter_complex", ";".join(filters)]
+    cmd += [
+        "-map", v_map, "-map", a_map,
         "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-shortest",
         str(dest),

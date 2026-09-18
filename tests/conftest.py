@@ -18,7 +18,7 @@ def _stub_burn_cards(monkeypatch):
     keeps "the uploaded file is the finalized render" assertions meaningful
     without a video encoder. The real burn_cards is covered by test_overlay.py.
     """
-    def fake_burn_cards(src, dest, sign, publish_date):
+    def fake_burn_cards(src, dest, sign, publish_date, *, overlay=True, music=True):
         shutil.copyfile(src, dest)
         return Path(dest)
 
