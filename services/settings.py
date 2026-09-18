@@ -6,12 +6,13 @@ configuration: a handler builds the settings its work needs, and passes them
 down. A missing key therefore fails the request that asked for the work,
 instead of a batch job forty rows in.
 
-Two knobs deliberately stay outside this model and read the process
-environment directly — ``API_RETRY_*`` in services/retry.py and
-``AUDIO_COMPRESS_*`` in services/audio_compress.py. They describe the machine
-the container runs on, not whose account is being used, and the modules that
-read them are leaf utilities called from everywhere; threading settings into
-them would recreate the parameter-threading this module exists to remove.
+A few knobs deliberately stay outside this model and read the process
+environment directly — ``API_RETRY_*`` and ``FREE_TRANSLATE_*`` in
+services/retry.py and ``AUDIO_COMPRESS_*`` in services/audio_compress.py. They
+describe the machine the container runs on, not whose account is being used,
+and the modules that read them are leaf utilities called from everywhere;
+threading settings into them would recreate the parameter-threading this
+module exists to remove.
 """
 from __future__ import annotations
 
