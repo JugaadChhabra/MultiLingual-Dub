@@ -33,7 +33,7 @@ def test_translate_text_free_uses_google_translator_with_normalized_target(monke
     monkeypatch.setattr(
         free_translate,
         "retry_call",
-        lambda func, operation=None: func(),
+        lambda func, operation=None, max_attempts=None: func(),
     )
 
     translated = free_translate.translate_text_free(
@@ -57,7 +57,7 @@ def test_translate_text_free_returns_input_for_same_source_target_language(monke
         def translate(self, text: str) -> str:
             return text
 
-    def fake_retry_call(func, operation=None):
+    def fake_retry_call(func, operation=None, max_attempts=None):
         calls["count"] += 1
         return func()
 
@@ -86,7 +86,7 @@ def test_translate_text_free_raises_for_empty_translation(monkeypatch) -> None:
     monkeypatch.setattr(
         free_translate,
         "retry_call",
-        lambda func, operation=None: func(),
+        lambda func, operation=None, max_attempts=None: func(),
     )
 
     with pytest.raises(RuntimeError, match="returned empty translation"):
