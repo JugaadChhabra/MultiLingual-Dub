@@ -7,6 +7,7 @@ from batch.service import run_excel_batch_job
 from batch.store import JobsStore
 from services.elevenlabs import ElevenLabsSettings
 from services.email import EmailSettings
+from services.google_translate import GoogleTranslateSettings
 from services.nas import NasConfig
 from services.qc import QCSettings
 from services.s3 import S3Config
@@ -25,6 +26,7 @@ def _settings(*, upload_to_s3: bool = True, english_voice: str = "english-voice"
         ),
         qc=QCSettings(api_key="gemini-key", models=["model-a"], enabled=True),
         sarvam=SarvamSettings(api_key="sarvam-key"),
+        google_translate=GoogleTranslateSettings(api_key="google-key"),
         nas=NasConfig(
             mode="local", root_path="./nas_data", server="", share="",
             username="", password="", domain="", port=445,
@@ -59,7 +61,7 @@ def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
         ExcelRow(row_index=3, text="row2", emotion="", activity_name="", audio_type="b"),
     ]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -116,7 +118,7 @@ def test_run_excel_batch_job_uses_voiceover_title_and_emotion(monkeypatch) -> No
 
     captured_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     def fake_tts(text: str, language: str, settings=None) -> bytes:
@@ -171,7 +173,7 @@ def test_run_excel_batch_job_deletes_excel_file(monkeypatch, tmp_path) -> None:
     excel_path = tmp_path / "input.xlsx"
     excel_path.write_text("placeholder", encoding="utf-8")
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
@@ -215,7 +217,7 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
     captured_tts_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, None, "429 rate limit"
 
     def fake_tts(text: str, language: str, settings=None) -> bytes:
@@ -268,7 +270,7 @@ def test_run_excel_batch_job_translation_failure_skips_audio(monkeypatch) -> Non
 def test_run_excel_batch_job_tts_failure_skips_audio(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     def failing_tts(_text: str, _language: str, runtime_config=None) -> bytes:
@@ -322,7 +324,7 @@ def test_run_excel_batch_job_qc_failure_skips_tts(monkeypatch) -> None:
     rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
     captured_tts_texts: list[str] = []
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     def fake_tts(text: str, language: str, settings=None) -> bytes:
@@ -387,7 +389,7 @@ def test_run_excel_batch_job_dedupes_duplicate_filenames(monkeypatch) -> None:
         ExcelRow(row_index=3, text="row2", emotion="", activity_name="Act", audio_type="promo"),
     ]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -446,7 +448,7 @@ def test_run_excel_batch_job_uploads_each_activity_separately(monkeypatch) -> No
         ExcelRow(row_index=4, text="row3", emotion="", activity_name="Act 2", audio_type="b1"),
     ]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     class FakeS3Client:
@@ -507,7 +509,7 @@ def test_run_excel_batch_job_retries_failed_cells_before_activity_upload(monkeyp
     ]
     translate_calls = {"gu-IN": 0}
 
-    async def flaky_translate_async(text: str, language: str, _sarvam=None):
+    async def flaky_translate_async(text: str, language: str, _sarvam=None, _google=None):
         if language == "gu-IN":
             translate_calls["gu-IN"] += 1
             if translate_calls["gu-IN"] == 1:
@@ -572,7 +574,7 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_disabled(monkeypatch,
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
     ]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     monkeypatch.setattr("batch.voiceover._translate_language_async", fake_translate_async)
@@ -621,7 +623,7 @@ def test_run_excel_batch_job_writes_local_archives_when_s3_upload_fails(monkeypa
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1"),
     ]
 
-    async def fake_translate_async(text: str, language: str, _sarvam=None):
+    async def fake_translate_async(text: str, language: str, _sarvam=None, _google=None):
         return language, f"translated:{text}:{language}", None
 
     class FailingS3Client:
@@ -686,7 +688,7 @@ def test_retry_batches_qc_per_row_not_per_task(monkeypatch) -> None:
     attempts: dict[str, int] = {}
     qc_batches: list[list[str]] = []
 
-    async def flaky_translate(text: str, language: str, _sarvam=None):
+    async def flaky_translate(text: str, language: str, _sarvam=None, _google=None):
         key = f"{text}:{language}"
         attempts[key] = attempts.get(key, 0) + 1
         if attempts[key] == 1:
@@ -751,7 +753,7 @@ def test_collisions_accumulate_across_multiple_activities(monkeypatch) -> None:
         ExcelRow(row_index=5, text="r4", emotion="", activity_name="Act 2", audio_type="dup"),
     ]
 
-    async def fake_translate(text: str, language: str, _sarvam=None):
+    async def fake_translate(text: str, language: str, _sarvam=None, _google=None):
         return language, f"t:{text}", None
 
     class FakeS3Client:

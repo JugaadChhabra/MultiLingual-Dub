@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import pytest
 
+from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
 from services.translation import translate_with_fallback
 
 SARVAM = SarvamSettings(api_key='test-key')
+GOOGLE = GoogleTranslateSettings(api_key='google-key')
 
 
 def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch) -> None:
-    monkeypatch.setattr("services.translation.fallback.should_use_free_translate", lambda _lang: False)
+    monkeypatch.setattr("services.translation.fallback.should_use_google_translate", lambda _lang: False)
 
     def fake_translate_text(
         text: str,
@@ -28,6 +30,7 @@ def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch)
     translated = translate_with_fallback(
         "hello",
         settings=SARVAM,
+        google_translate=GOOGLE,
         target_language_code="hi-IN",
         source_language_code="en-IN",
     )
@@ -35,27 +38,37 @@ def test_translate_with_fallback_uses_sarvam_for_existing_languages(monkeypatch)
     assert translated == "namaste"
 
 
-def test_translate_with_fallback_uses_free_translate_for_new_languages(monkeypatch) -> None:
-    monkeypatch.setattr("services.translation.fallback.should_use_free_translate", lambda _lang: True)
+def test_translate_with_fallback_uses_google_for_new_languages(monkeypatch) -> None:
+    monkeypatch.setattr("services.translation.fallback.should_use_google_translate", lambda _lang: True)
 
     def fail_if_called(*args, **kwargs):
-        raise AssertionError("Sarvam translate_text should not be called for free-translate languages")
+        raise AssertionError("Sarvam translate_text should not be called for Google-translate languages")
+
+    captured: dict[str, object] = {}
+
+    def fake_official(text, *, target_language_code, settings, source_language_code):
+        captured["settings"] = settings
+        captured["target"] = target_language_code
+        return "bonjour"
 
     monkeypatch.setattr("services.translation.fallback.translate_text", fail_if_called)
-    monkeypatch.setattr("services.translation.fallback.translate_text_free", lambda *args, **kwargs: "bonjour")
+    monkeypatch.setattr("services.translation.fallback.translate_text_official", fake_official)
 
     translated = translate_with_fallback(
         "hello",
         settings=SARVAM,
+        google_translate=GOOGLE,
         target_language_code="fr",
         source_language_code="en-IN",
     )
 
     assert translated == "bonjour"
+    assert captured["settings"] is GOOGLE
+    assert captured["target"] == "fr"
 
 
 def test_translate_with_fallback_returns_input_when_source_target_same(monkeypatch) -> None:
-    monkeypatch.setattr("services.translation.fallback.should_use_free_translate", lambda _lang: False)
+    monkeypatch.setattr("services.translation.fallback.should_use_google_translate", lambda _lang: False)
 
     def raise_same_language_error(*args, **kwargs):
         raise RuntimeError("Source and target languages must be different")
@@ -65,6 +78,7 @@ def test_translate_with_fallback_returns_input_when_source_target_same(monkeypat
     translated = translate_with_fallback(
         "already translated",
         settings=SARVAM,
+        google_translate=GOOGLE,
         target_language_code="hi-IN",
         source_language_code="hi-IN",
     )
@@ -73,7 +87,7 @@ def test_translate_with_fallback_returns_input_when_source_target_same(monkeypat
 
 
 def test_translate_with_fallback_propagates_non_same_language_errors(monkeypatch) -> None:
-    monkeypatch.setattr("services.translation.fallback.should_use_free_translate", lambda _lang: False)
+    monkeypatch.setattr("services.translation.fallback.should_use_google_translate", lambda _lang: False)
 
     def raise_other_error(*args, **kwargs):
         raise RuntimeError("unexpected translation failure")
@@ -84,6 +98,7 @@ def test_translate_with_fallback_propagates_non_same_language_errors(monkeypatch
         translate_with_fallback(
             "hello",
             settings=SARVAM,
+            google_translate=GOOGLE,
             target_language_code="hi-IN",
             source_language_code="en-IN",
         )

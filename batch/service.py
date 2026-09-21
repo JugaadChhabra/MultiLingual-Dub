@@ -208,6 +208,7 @@ async def _run_batch_job_impl(
 
     deps = VoiceoverDeps(
         sarvam=settings.sarvam,
+        google_translate=settings.google_translate,
         qc=settings.qc,
         eleven=settings.eleven,
         teaching_mode=teaching_mode,

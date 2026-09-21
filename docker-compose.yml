@@ -24,6 +24,12 @@ services:
 
       SARVAM_API: ${SARVAM_API}
 
+      # Official Google Cloud Translation API key (v2). Used for the languages
+      # Sarvam doesn't cover (fr/de/es/ru/pt). Unlike the old free web endpoint,
+      # its usage is visible in the GCP Console under Cloud Translation API.
+      # Optional: only needed if a job targets one of those languages.
+      GOOGLE_TRANSLATE_API_KEY: ${GOOGLE_TRANSLATE_API_KEY:-}
+
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       # Model lists are optional — each falls back to a default in code. They are
       # passed through so a model can be changed or rolled back from .env alone,

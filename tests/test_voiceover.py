@@ -13,6 +13,7 @@ import pytest
 from batch.models import ExcelRow
 from batch.voiceover import RowOutcome, VoiceoverDeps, voice_row
 from services.elevenlabs import ElevenLabsSettings
+from services.google_translate import GoogleTranslateSettings
 from services.qc import QCError, QCSettings
 from services.sarvam import SarvamSettings
 
@@ -26,6 +27,7 @@ def _row(*, emotion: str = "", text: str = "hello") -> ExcelRow:
 def _deps(*, parallelism: int = 2, teaching_mode: bool = False) -> VoiceoverDeps:
     return VoiceoverDeps(
         sarvam=SarvamSettings(api_key="sarvam"),
+        google_translate=GoogleTranslateSettings(api_key="google"),
         qc=QCSettings(api_key="gemini", models=["model-a"], enabled=True),
         eleven=ElevenLabsSettings(api_key="key", desi_voice_id="desi", english_voice_id="english"),
         teaching_mode=teaching_mode,
@@ -38,7 +40,7 @@ def happy(monkeypatch):
     """Every provider works. Records what each was asked for."""
     calls: dict[str, list] = {"translate": [], "qc": [], "tts": []}
 
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         calls["translate"].append((text, language))
         return language, f"t:{text}:{language}", None
 
@@ -128,7 +130,7 @@ def test_no_languages_does_no_work(happy) -> None:
 
 
 def test_a_failed_translation_is_reported_with_its_stage(monkeypatch, happy) -> None:
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         if language == "ta-IN":
             return language, None, "429 rate limit"
         return language, f"t:{text}:{language}", None
@@ -145,7 +147,7 @@ def test_a_failed_translation_is_reported_with_its_stage(monkeypatch, happy) -> 
 
 
 def test_an_empty_translation_counts_as_a_failure(monkeypatch, happy) -> None:
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         return language, "   ", None
 
     monkeypatch.setattr("batch.voiceover._translate_language_async", translate)
@@ -157,7 +159,7 @@ def test_an_empty_translation_counts_as_a_failure(monkeypatch, happy) -> None:
 
 
 def test_a_crashing_translation_task_does_not_sink_the_row(monkeypatch, happy) -> None:
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         if language == "ta-IN":
             raise RuntimeError("task exploded")
         return language, f"t:{text}:{language}", None
@@ -172,7 +174,7 @@ def test_a_crashing_translation_task_does_not_sink_the_row(monkeypatch, happy) -
 
 
 def test_a_language_that_failed_translation_is_not_sent_to_qc(monkeypatch, happy) -> None:
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         if language == "ta-IN":
             return language, None, "nope"
         return language, f"t:{text}:{language}", None
@@ -185,7 +187,7 @@ def test_a_language_that_failed_translation_is_not_sent_to_qc(monkeypatch, happy
 
 
 def test_qc_is_skipped_entirely_when_every_translation_fails(monkeypatch, happy) -> None:
-    async def translate(text, language, _sarvam=None):
+    async def translate(text, language, _sarvam=None, _google=None):
         return language, None, "nope"
 
     monkeypatch.setattr("batch.voiceover._translate_language_async", translate)

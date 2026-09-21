@@ -57,6 +57,7 @@ from services.video_pipeline.heygen_renderer import HeyGenRenderer
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import ElevenLabsSpeech, SpeechSynth
+from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
 from services.settings import Settings, missing_keys, required_keys
 from services.stt import transcribe_audio
@@ -656,6 +657,7 @@ async def translate_pipeline(payload: TranslateRequest, request: Request):
         sarvam = SarvamSettings.resolve(session)
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    google_translate = GoogleTranslateSettings.resolve(session)
 
     transcript = payload.text
     translations = {}
@@ -664,6 +666,7 @@ async def translate_pipeline(payload: TranslateRequest, request: Request):
             translated = translate_with_fallback(
                 transcript,
                 settings=sarvam,
+                google_translate=google_translate,
                 target_language_code=lang,
                 source_language_code="auto",
             )
@@ -785,6 +788,7 @@ async def stt_pipeline(
         sarvam = SarvamSettings.resolve(session)
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    google_translate = GoogleTranslateSettings.resolve(session)
     filename = ensure_file_extension(audio.filename, ".mp3", "Only .mp3 files are allowed")
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -806,6 +810,7 @@ async def stt_pipeline(
     translated = translate_with_fallback(
         transcript,
         settings=sarvam,
+        google_translate=google_translate,
         target_language_code=target_language,
         source_language_code="auto",
     )

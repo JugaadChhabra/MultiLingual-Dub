@@ -25,6 +25,7 @@ from services.elevenlabs import (
     synthesize_speech_bytes,
 )
 from services.qc import QCError, QCSettings, qc_translations_batch
+from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
 from services.translation import translate_with_fallback
 
@@ -62,6 +63,7 @@ class VoiceoverDeps:
     flag, and how wide to fan translations out."""
 
     sarvam: SarvamSettings
+    google_translate: GoogleTranslateSettings
     qc: QCSettings
     eleven: ElevenLabsSettings
     teaching_mode: bool = False
@@ -81,7 +83,10 @@ def _generate_elevenlabs_audio_bytes(
 
 
 async def _translate_language_async(
-    text: str, language: str, sarvam: SarvamSettings
+    text: str,
+    language: str,
+    sarvam: SarvamSettings,
+    google_translate: GoogleTranslateSettings,
 ) -> tuple[str, str | None, str | None]:
     """Returns (language, translated_text, error). Exactly one of the last two will be None."""
     try:
@@ -89,6 +94,7 @@ async def _translate_language_async(
             translate_with_fallback,
             text,
             settings=sarvam,
+            google_translate=google_translate,
             target_language_code=language,
             source_language_code="auto",
         )
@@ -103,6 +109,7 @@ async def _translate_row_languages(
     target_languages: list[str],
     max_parallelism: int,
     sarvam: SarvamSettings,
+    google_translate: GoogleTranslateSettings,
 ) -> dict[str, tuple[str | None, str | None]]:
     """Translate one text into many languages concurrently.
 
@@ -113,7 +120,7 @@ async def _translate_row_languages(
 
     async def _translate(language: str) -> tuple[str, str | None, str | None]:
         async with semaphore:
-            return await _translate_language_async(text, language, sarvam)
+            return await _translate_language_async(text, language, sarvam, google_translate)
 
     tasks = [asyncio.create_task(_translate(language)) for language in target_languages]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
@@ -159,6 +166,7 @@ async def voice_row(
         target_languages=languages,
         max_parallelism=deps.translation_parallelism,
         sarvam=deps.sarvam,
+        google_translate=deps.google_translate,
     )
 
     translated_by_language: dict[str, str] = {}

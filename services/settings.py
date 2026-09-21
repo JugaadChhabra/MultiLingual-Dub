@@ -7,8 +7,8 @@ down. A missing key therefore fails the request that asked for the work,
 instead of a batch job forty rows in.
 
 A few knobs deliberately stay outside this model and read the process
-environment directly — ``API_RETRY_*`` and ``FREE_TRANSLATE_*`` in
-services/retry.py and ``AUDIO_COMPRESS_*`` in services/audio_compress.py. They
+environment directly — ``API_RETRY_*`` in services/retry.py and
+``AUDIO_COMPRESS_*`` in services/audio_compress.py. They
 describe the machine the container runs on, not whose account is being used,
 and the modules that read them are leaf utilities called from everywhere;
 threading settings into them would recreate the parameter-threading this
@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from services.elevenlabs import ElevenLabsSettings
 from services.email import EmailSettings
+from services.google_translate import GoogleTranslateSettings
 from services.nas import NasConfig
 from services.qc import QCSettings
 from services.runtime_config import RuntimeConfig, read_setting
@@ -97,6 +98,7 @@ class Settings:
     eleven: ElevenLabsSettings
     qc: QCSettings
     sarvam: SarvamSettings
+    google_translate: GoogleTranslateSettings
     nas: NasConfig
     email: EmailSettings
     batch: BatchSettings
@@ -113,6 +115,7 @@ class Settings:
             eleven=ElevenLabsSettings.resolve(session),
             qc=QCSettings.resolve(session),
             sarvam=SarvamSettings.resolve(session),
+            google_translate=GoogleTranslateSettings.resolve(session),
             nas=NasConfig.resolve(session),
             email=EmailSettings.resolve(session),
             batch=BatchSettings.resolve(session),

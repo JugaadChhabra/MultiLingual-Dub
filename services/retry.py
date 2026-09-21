@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import random
-import threading
 import time
 from email.utils import parsedate_to_datetime
 from typing import Callable, TypeVar
@@ -31,46 +30,6 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
-
-
-class RateLimiter:
-    """Process-wide, thread-safe pacer that spaces calls evenly.
-
-    A sibling to retry: retry recovers from a call that failed, this stops us
-    making the call too fast in the first place. Every acquirer reserves the
-    next evenly-spaced slot under the lock and sleeps to it outside the lock,
-    so N concurrent threads never exceed the target rate.
-    """
-
-    def __init__(self, rate_per_sec: float) -> None:
-        self._min_interval = 1.0 / rate_per_sec if rate_per_sec > 0 else 0.0
-        self._lock = threading.Lock()
-        self._next_allowed = 0.0
-
-    def acquire(self) -> None:
-        if self._min_interval <= 0:
-            return
-        with self._lock:
-            now = time.monotonic()
-            scheduled = max(now, self._next_allowed)
-            self._next_allowed = scheduled + self._min_interval
-            wait = scheduled - now
-        if wait > 0:
-            time.sleep(wait)
-
-
-def free_translate_rate_limiter() -> RateLimiter:
-    """Pacer for Google's free translate endpoint, which caps a single IP at
-    ~5 req/sec. Default 4 to stay comfortably under; FREE_TRANSLATE_MAX_RPS
-    overrides. Process tuning, like the API_RETRY_* knobs above."""
-    return RateLimiter(_env_float("FREE_TRANSLATE_MAX_RPS", 4.0))
-
-
-def free_translate_max_attempts() -> int:
-    """Cap free-translate retries low (default 5, FREE_TRANSLATE_MAX_ATTEMPTS),
-    independent of the global API_RETRY_MAX_ATTEMPTS: against a per-IP quota,
-    retrying harder just keeps us pinned at the limit, so fail fast instead."""
-    return _env_int("FREE_TRANSLATE_MAX_ATTEMPTS", 5)
 
 
 def _status_code_from_exc(exc: Exception) -> int | None:
