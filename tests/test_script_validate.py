@@ -109,8 +109,12 @@ def test_no_length_permits_more_tags_than_the_horoscope_needs() -> None:
 # --- the lucky number ---------------------------------------------------
 
 
-def test_a_single_digit_number_is_refused() -> None:
-    assert "number_range" in rules(check({"Aries": script(number="९")}))
+def test_a_single_digit_number_is_now_allowed() -> None:
+    assert "number_range" not in rules(check({"Aries": script(number="९")}))
+
+
+def test_zero_is_refused() -> None:
+    assert "number_range" in rules(check({"Aries": script(number="०")}))
 
 
 def test_a_three_digit_number_is_refused() -> None:

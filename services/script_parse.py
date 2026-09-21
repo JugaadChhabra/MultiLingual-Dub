@@ -88,8 +88,8 @@ def strip_tags(script: str) -> str:
     return re.sub(r"\s+", " ", _TAG.sub(" ", script)).strip()
 
 
-# A lucky number is two digits. Anything past this is not a number that got
-# slightly out of range, it is a parse that went wrong — and int() on a long
+# A lucky number is one or two digits. Anything past this is not a number that
+# got slightly out of range, it is a parse that went wrong — and int() on a long
 # enough run raises outright, since Python caps integer-string conversion at
 # 4300 digits.
 MAX_NUMBER_DIGITS = 6

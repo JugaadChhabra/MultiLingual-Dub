@@ -314,7 +314,7 @@ Rules:
    the subject matter, the imagery and the sentence shapes across items. Only
    lines the brief explicitly asks to be repeated may be repeated.
 5) Any lucky number the brief asks for is a whole number from {MIN_NUMBER} to
-   {MAX_NUMBER}, never a single digit and never three digits.
+   {MAX_NUMBER} — never zero, never negative, never three digits.
 6) Return valid JSON only: an object mapping each item key to its script string.
    No markdown, no code fences, no commentary.
 

@@ -35,11 +35,11 @@ logger = logging.getLogger(__name__)
 # below reads it, so the two cannot drift apart.
 TAG_BANK: dict[str, tuple[str, ...]] = {
     "hook": ("warm", "authoritative", "confident"),
-    "prediction": ("reassuring", "optimistic", "measured", "encouraging", "thoughtful"),
+    "prediction": ("reassuring", "optimistic", "measured", "encouraging", "thoughtful", "hopeful"),
     "transition": ("pause", "slight emphasis", "softly"),
-    "health": ("calm", "steady"),
+    "health": ("calm", "steady", "gentle"),
     "fortune": ("bright", "playful"),
-    "closing": ("uplifting", "warm", "sincere"),
+    "closing": ("uplifting", "warm", "sincere", "joyful"),
 }
 
 ALL_TAGS: frozenset[str] = frozenset(tag for tags in TAG_BANK.values() for tag in tags)
@@ -65,10 +65,11 @@ MAX_TAGS = 9
 CHARS_PER_TAG = 50
 FLOOR_TAGS = 2
 
-# Double digits only. A single digit reads as an afterthought and a triple digit
-# is not a lucky number; the range also gives 90 values to spread twelve signs
-# across without contrivance.
-MIN_NUMBER = 10
+# One or two digits (1-99). Single digits were once excluded as reading like an
+# afterthought, but the brief now asks for them; a triple digit is still not a
+# lucky number, and zero is not one either. The range gives 99 values to spread
+# twelve signs across without contrivance.
+MIN_NUMBER = 1
 MAX_NUMBER = 99
 
 # How far back uniqueness reaches. Defined here, where both the store that reads
