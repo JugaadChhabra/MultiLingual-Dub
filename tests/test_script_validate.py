@@ -330,3 +330,57 @@ def test_two_signs_sharing_a_hook_is_also_a_shared_sentence() -> None:
                    "Taurus": script(colour="हरा", number="२३")})
     details = [v.detail for v in found if v.rule == "shared_sentence"]
     assert any("नई शुरुआत" in d for d in details)
+
+
+# --- near-duplicate detection -------------------------------------------
+
+# Two scripts with genuinely different bodies — for the negative cases, where a
+# similarity flag would be a false positive.
+_DISTINCT_A = (
+    "[warm] मेष के जातकों आज नई राह!\n\n"
+    "[optimistic] सुबह एक पुराना दोस्त फोन करेगा और पुरानी बातें याद आएंगी। "
+    "काम में रुकी हुई एक बात आगे बढ़ेगी और मन हल्का होगा। "
+    "[bright] शुभ रंग: नीला | जादुई अंक: संख्या (१७)।\n\n[uplifting] दिन बढ़िया रहेगा।"
+)
+_DISTINCT_B = (
+    "[warm] वृषभ के जातकों आज सुकून!\n\n"
+    "[optimistic] शाम की रौशनी में घर पर बैठकर गहरा आराम मिलेगा। "
+    "बचत को लेकर एक समझदारी भरा फैसला होगा जो आगे राहत देगा। "
+    "[bright] शुभ रंग: हरा | जादुई अंक: संख्या (२३)।\n\n[uplifting] मन शांत रहेगा।"
+)
+
+
+def test_two_signs_reworded_alike_are_flagged_soft_same_day() -> None:
+    """Same body, only the colour and number apart — what two themes invite."""
+    found = check({"Aries": script(colour="नीला", number="१७"),
+                   "Taurus": script(colour="हरा", number="२३")})
+    assert "similar_same_day" in rules(found)
+    assert hard([v for v in found if v.rule == "similar_same_day"]) == []
+
+
+def test_distinct_scripts_are_not_flagged_same_day() -> None:
+    found = check({"Aries": _DISTINCT_A, "Taurus": _DISTINCT_B})
+    assert "similar_same_day" not in rules(found)
+
+
+def test_a_sign_reworded_from_its_own_recent_day_is_flagged_soft() -> None:
+    today = {"Aries": script(colour="नीला", number="१७")}
+    recent = {"Aries": [script(colour="पीला", number="४२")]}  # same body, old facts
+    found = check(today, recent_by_key=recent)
+    assert "similar_recent_day" in rules(found)
+    assert hard([v for v in found if v.rule == "similar_recent_day"]) == []
+
+
+def test_a_fresh_script_is_not_flagged_against_its_recent_day() -> None:
+    today = {"Aries": _DISTINCT_A}
+    recent = {"Aries": [_DISTINCT_B]}
+    found = check(today, recent_by_key=recent)
+    assert "similar_recent_day" not in rules(found)
+
+
+def test_recent_history_for_other_signs_is_not_compared() -> None:
+    """The across-day check is per sign — मेष is not measured against वृषभ's past."""
+    today = {"Aries": script(colour="नीला", number="१७")}
+    recent = {"Taurus": [script(colour="नीला", number="१७")]}  # identical, wrong sign
+    found = check(today, recent_by_key=recent)
+    assert "similar_recent_day" not in rules(found)

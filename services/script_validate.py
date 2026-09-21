@@ -23,6 +23,7 @@ from services.script_parse import (
     has_devanagari,
     strip_tags,
 )
+from services.text_similarity import similarity
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +226,16 @@ def _check_against_history(
 # clause two signs happen to share is not worth a complaint.
 MIN_SHARED_SENTENCE_CHARS = 25
 
+# Word-shingle overlap at or above this reads as one script reworded into
+# another rather than two scripts that happen to share some vocabulary. Set for
+# the soft flag it feeds: high enough that distinct scripts (which share little
+# at three-word granularity) stay clear, low enough that a reworded copy with a
+# colour and a few words changed still trips it. Both directions of sameness use
+# it — twelve signs written alike on one day, and one sign written like its own
+# recent days — because to a viewer they are the same complaint.
+SIMILARITY_SHINGLE_N = 3
+SIMILARITY_THRESHOLD = 0.5
+
 
 def _sentences(script: str) -> set[str]:
     """The script's sentences, normalised for comparison.
@@ -278,6 +289,64 @@ def _check_shared_sentences(raw: dict[str, str]) -> list[Violation]:
     return out
 
 
+def _check_similar_same_day(raw: dict[str, str]) -> list[Violation]:
+    """Pairs of the day's scripts that reword the same content.
+
+    Verbatim-sentence sharing is already caught by ``_check_shared_sentences``;
+    this catches the case that slips past it — two scripts that say the same
+    thing in almost the same words, a colour or a name apart. With only two
+    themes to write about, twelve signs converge on the same beats far more
+    readily than they did across five, so this is where that shows up.
+
+    Soft, and reported against both scripts in a matching pair: neither is more
+    at fault, and the operator wants to see the whole cluster that reads alike.
+    """
+    out: list[Violation] = []
+    keys = list(raw)
+    spoken = {key: strip_tags(text) for key, text in raw.items()}
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            a, b = keys[i], keys[j]
+            score = similarity(spoken[a], spoken[b], n=SIMILARITY_SHINGLE_N)
+            if score < SIMILARITY_THRESHOLD:
+                continue
+            pct = round(score * 100)
+            for owner, other in ((a, b), (b, a)):
+                out.append(Violation(
+                    owner, "similar_same_day",
+                    f"reads {pct}% the same as {other}'s script today — reword it",
+                    hard=False,
+                ))
+    return out
+
+
+def _check_similar_to_recent(
+    item_key: str, spoken: str, recent_texts: list[str]
+) -> list[Violation]:
+    """Whether a sign's script rewords one of its own recent days.
+
+    The colour and number rules already stop a sign reusing a fact; this stops
+    it reusing the whole script with the fact swapped out. Across-day phrasing
+    was otherwise only ever *asked* not to repeat, in the prose block of the
+    prompt — an instruction nothing checked. Soft: a rewrite is the operator's
+    call, and the recent text is a truncated excerpt, so a near-miss is guidance
+    rather than grounds to fail a paid run.
+    """
+    best = max(
+        (similarity(spoken, strip_tags(text), n=SIMILARITY_SHINGLE_N)
+         for text in recent_texts),
+        default=0.0,
+    )
+    if best < SIMILARITY_THRESHOLD:
+        return []
+    return [Violation(
+        item_key, "similar_recent_day",
+        f"reads {round(best * 100)}% the same as this sign's script from a "
+        "recent day — reword it",
+        hard=False,
+    )]
+
+
 def _check_same_day(parsed: dict[str, ScriptFacts]) -> list[Violation]:
     """Collisions between the twelve signs written for the same date.
 
@@ -320,6 +389,7 @@ def validate_drafts(
     target_low: int,
     target_high: int,
     raw: dict[str, str] | None = None,
+    recent_by_key: dict[str, list[str]] | None = None,
 ) -> list[Violation]:
     """Every violation across a day's set, hard and soft together.
 
@@ -332,6 +402,8 @@ def validate_drafts(
     :param target_high: Upper spoken-length bound, measured tag-stripped.
     :param raw: The script text per item key, for length checks. Facts alone do
         not carry it.
+    :param recent_by_key: Prior days' script text per item key, for the
+        across-day near-duplicate check. Absent means no history to compare to.
     """
     out: list[Violation] = []
 
@@ -376,6 +448,14 @@ def validate_drafts(
     out.extend(_check_same_day(parsed))
     if raw:
         out.extend(_check_shared_sentences(raw))
+        out.extend(_check_similar_same_day(raw))
+        if recent_by_key:
+            for item_key, text in raw.items():
+                recent_texts = recent_by_key.get(item_key)
+                if recent_texts:
+                    out.extend(_check_similar_to_recent(
+                        item_key, strip_tags(text), recent_texts
+                    ))
     return out
 
 

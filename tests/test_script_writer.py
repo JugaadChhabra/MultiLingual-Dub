@@ -48,6 +48,7 @@ def _install(monkeypatch, responses: dict[str, str] | str, captured: dict | None
                 captured["model"] = model
                 captured["contents"] = contents
                 captured["system"] = getattr(config, "system_instruction", "") or ""
+                captured["config"] = config
             body = responses if isinstance(responses, str) else responses[model]
             if isinstance(body, Exception):
                 raise body
@@ -254,6 +255,36 @@ def test_the_tag_bank_in_the_prompt_is_the_one_the_validator_checks(monkeypatch)
 
     for tag in ALL_TAGS:
         assert f"[{tag}]" in captured["system"]
+
+
+def test_the_reply_is_requested_as_structured_json(monkeypatch) -> None:
+    """The response schema names exactly the signs, so a fenced or short reply
+    cannot slip through and cost a model fallthrough."""
+    captured: dict = {}
+    _install(monkeypatch, _zodiac_body(), captured)
+
+    write_daily_scripts(brief="Daily horoscope", language="hi-IN",
+                        publish_date="2026-08-17", settings=_settings())
+
+    config = captured["config"]
+    assert config.response_mime_type == "application/json"
+    keys = list(config.response_schema.properties)
+    assert keys == [sign.key for sign in ZODIAC_SIGNS]
+    assert set(config.response_schema.required) == set(keys)
+
+
+def test_recent_scripts_are_grouped_by_sign_for_the_across_day_check(monkeypatch) -> None:
+    """Prior days' text is keyed per sign; records with no key are dropped."""
+    grouped = script_writer._recent_by_key([
+        DraftScript(title="मेष", script="कल का मेष", key="Aries"),
+        DraftScript(title="मेष", script="परसों का मेष", key="Aries"),
+        DraftScript(title="वृषभ", script="कल का वृषभ", key="Taurus"),
+        DraftScript(title="?", script="बिना key का", key=""),
+    ])
+    assert grouped == {
+        "Aries": ["कल का मेष", "परसों का मेष"],
+        "Taurus": ["कल का वृषभ"],
+    }
 
 
 def test_a_single_item_set_writes_one_script(monkeypatch) -> None:

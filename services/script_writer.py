@@ -173,6 +173,42 @@ def _parse_response_json(response_text: str) -> dict:
     return json.loads(text)
 
 
+def _response_schema(items: tuple[SetItem, ...]) -> types.Schema:
+    """A JSON schema forcing an object with exactly the item keys, each a string.
+
+    Handed to Gemini as the response schema (with response_mime_type set) so the
+    reply comes back as a JSON object of the right shape with every key present,
+    rather than free text that is parsed and then found wanting. This removes a
+    whole class of first-call failures — a stray code fence, a missing sign, a
+    reply that is a list or a preamble — that used to burn a model fallthrough.
+
+    Built per call from the items actually requested: a repair asks for only the
+    offending subset, and a schema demanding the whole set would reject the very
+    reply it asked for.
+    """
+    keys = [item.key for item in items]
+    return types.Schema(
+        type=types.Type.OBJECT,
+        properties={key: types.Schema(type=types.Type.STRING) for key in keys},
+        required=keys,
+        property_ordering=keys,
+    )
+
+
+def _recent_by_key(recent: list[DraftScript]) -> dict[str, list[str]]:
+    """Prior days' script text grouped by item key, for the across-day check.
+
+    Records carry the key the model answered under; ones without it — older
+    history written before keys were stored — are dropped rather than guessed
+    at, the same way the facts window drops them.
+    """
+    out: dict[str, list[str]] = {}
+    for draft in recent:
+        if draft.key:
+            out.setdefault(draft.key, []).append(draft.script)
+    return out
+
+
 def fit_to_limit(script: str, *, limit: int = MAX_SCRIPT_CHARS) -> str:
     """Trim an overlong script at a sentence boundary.
 
@@ -419,10 +455,9 @@ def write_daily_scripts(
         raise ScriptWriterError("no items to write scripts for")
 
     history = history or {}
+    recent_by_key = _recent_by_key(recent or [])
     client = genai.Client(api_key=settings.api_key)
-    config = types.GenerateContentConfig(
-        system_instruction=_system_instruction(brief=brief, language=language, items=items),
-    )
+    system_instruction = _system_instruction(brief=brief, language=language, items=items)
     # The length and shape rules are repeated here, in the last thing the model
     # reads. Stated only in the system instruction, length came back at roughly
     # half what was asked for, every time.
@@ -439,10 +474,11 @@ the tags. Fix any that miss this. Do not pad with repetition."""
             drafts = _write_with_model(
                 client=client,
                 model=model,
-                config=config,
+                system_instruction=system_instruction,
                 prompt=prompt,
                 items=items,
                 history=history,
+                recent_by_key=recent_by_key,
             )
             logger.info("Wrote %d script(s) for %s using %s", len(drafts), publish_date, model)
             return drafts
@@ -463,10 +499,11 @@ def _write_with_model(
     *,
     client: genai.Client,
     model: str,
-    config: types.GenerateContentConfig,
+    system_instruction: str,
     prompt: str,
     items: tuple[SetItem, ...],
     history: dict[str, HistoryFacts],
+    recent_by_key: dict[str, list[str]] | None = None,
 ) -> list[DraftScript]:
     """One model's attempt at the set, including its repair rounds.
 
@@ -475,6 +512,13 @@ def _write_with_model(
     asking a broken response to fix itself.
     """
     def generate(contents: str, wanted: tuple[SetItem, ...]) -> dict[str, str]:
+        # Config is built per call: the response schema names exactly the keys
+        # being asked for, which differs between the first call and a repair.
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=_response_schema(wanted),
+        )
         response = retry_call(
             lambda: client.models.generate_content(
                 model=model, contents=contents, config=config
@@ -495,6 +539,7 @@ def _write_with_model(
             target_low=ACCEPT_CHARS_LOW,
             target_high=ACCEPT_CHARS_HIGH,
             raw=scripts,
+            recent_by_key=recent_by_key,
         )
         blocking = hard(violations)
         for violation in violations:
