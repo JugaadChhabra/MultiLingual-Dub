@@ -315,8 +315,22 @@ def test_the_rows_submitted_keep_their_item_key_so_facts_survive(client, monkeyp
     assert facts["Aries"].numbers == (17,)
 
 
-def test_a_one_off_title_is_its_own_item_key(client, monkeypatch) -> None:
-    """For a single video the key and the title are the same string, so the
-    lookup must fall through rather than dropping the key."""
-    assert api._item_key_for("diwali_promo") == "diwali_promo"
-    assert api._item_key_for("मेष") == "Aries"
+def test_a_one_off_batch_titles_are_their_own_item_keys() -> None:
+    """A batch with no zodiac titles is a one-off set: title is the key, and an
+    unknown title falls through rather than being dropped or refused."""
+    assert api._item_keys_for(["diwali_promo", "holi_promo"]) == ["diwali_promo", "holi_promo"]
+
+
+def test_a_horoscope_batch_maps_every_title_to_its_sign_key() -> None:
+    assert api._item_keys_for(["मेष", "वृषभ"]) == ["Aries", "Taurus"]
+
+
+def test_a_horoscope_batch_with_an_unmapped_title_fails_loud() -> None:
+    """A stray non-sign title in a zodiac batch is refused, not filed under a
+    key nothing matches — the silent history hole the old fallback allowed."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as excinfo:
+        api._item_keys_for(["मेष", "not-a-sign"])
+    assert excinfo.value.status_code == 400
+    assert "not-a-sign" in excinfo.value.detail

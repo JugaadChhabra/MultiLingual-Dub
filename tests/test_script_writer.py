@@ -366,6 +366,23 @@ def test_a_set_that_keeps_repeating_is_refused(monkeypatch) -> None:
                             publish_date="2026-08-17", settings=_settings())
 
 
+def test_an_unfixable_set_carries_its_full_draft_set_on_the_error(monkeypatch) -> None:
+    """Every script is present — only a clash survives — so all twelve ride back
+    on the error for the operator to review, rather than nothing at all."""
+    clashing = json.loads(_zodiac_body())
+    clashing["Taurus"] = valid_script(colour=COLOURS[0], number=10)  # मेष's colour + number
+    _install(monkeypatch, json.dumps(clashing, ensure_ascii=False))
+
+    with pytest.raises(ScriptRepairError) as excinfo:
+        write_daily_scripts(brief="Daily horoscope", language="hi-IN",
+                            publish_date="2026-08-17", settings=_settings())
+
+    err = excinfo.value
+    assert len(err.drafts) == len(ZODIAC_SIGNS)
+    assert {d.key for d in err.drafts} == {sign.key for sign in ZODIAC_SIGNS}
+    assert err.violations, "the unresolved clashes ride along for the review"
+
+
 def test_a_soft_violation_alone_does_not_trigger_a_repair(monkeypatch) -> None:
     """A reused area combination is duller, not wrong — it still ships."""
     calls: list[str] = []

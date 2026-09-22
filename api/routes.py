@@ -41,6 +41,7 @@ from services.script_writer import (
     ZODIAC_SIGNS,
     DraftScript,
     SetItem,
+    ScriptRepairError,
     ScriptWriterError,
     ScriptWriterSettings,
     write_daily_scripts,
@@ -369,20 +370,36 @@ async def recover_all_failed_heygen_jobs(request: Request):
 _TITLE_TO_ITEM_KEY = {item.title: item.key for item in ZODIAC_SIGNS}
 
 
-def _item_key_for(video_title: str) -> str:
-    """The item key a rendered row was generated under.
+def _item_keys_for(titles: list[str]) -> list[str]:
+    """The item keys a batch's rows were generated under, one per title.
 
     A batch row carries only the title, because that is what names the file.
     History is grouped by item key, so the title has to be mapped back: for a
     horoscope the title is the Devanagari sign name and the key is its Latin
     one, and for a one-off the two are the same string by construction.
 
-    Getting this wrong is silent. The re-record below overwrites the record
-    written at generation time, and a record whose items have no key
-    contributes nothing to :meth:`ScriptHistoryStore.facts` — so the day would
-    vanish from the uniqueness window with nothing to show for it.
+    Getting a horoscope title wrong used to be silent — an unknown title fell
+    back to itself, filed the day under a key nothing matches, and the day
+    vanished from the uniqueness window with nothing to show for it. So a batch
+    that looks like a horoscope (any title is a zodiac sign) must have *every*
+    title map; an unmapped one is refused loudly rather than dropped. A batch
+    with no zodiac titles is a one-off set, where the title is the key.
     """
-    return _TITLE_TO_ITEM_KEY.get(video_title, video_title)
+    is_zodiac = any(title in _TITLE_TO_ITEM_KEY for title in titles)
+    if not is_zodiac:
+        return list(titles)
+    unmapped = sorted({t for t in titles if t not in _TITLE_TO_ITEM_KEY})
+    if unmapped:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This looks like a horoscope batch, but these titles are not "
+                f"zodiac sign names: {', '.join(unmapped)}. Their scripts would "
+                "vanish from the uniqueness history. Fix the titles, or submit "
+                "them as a non-horoscope batch."
+            ),
+        )
+    return [_TITLE_TO_ITEM_KEY[title] for title in titles]
 
 
 @app.post("/video/scripts/generate")
@@ -452,8 +469,26 @@ async def generate_video_scripts(
         )
         return drafts
 
+    warnings: list[str] = []
     try:
         drafts = await asyncio.to_thread(_write)
+    except ScriptRepairError as exc:
+        # The set could not be made fully clean, but every script is present.
+        # Rather than leave the operator with nothing, hand back the twelve to
+        # review and record them, with the unresolved clashes as warnings so
+        # the review can point at the one that needs a manual fix. An empty
+        # set (should not happen) still falls through to the error below.
+        if not exc.drafts:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        drafts = exc.drafts
+        warnings = [str(v) for v in exc.violations]
+        await asyncio.to_thread(
+            script_history.record,
+            publish_date=publish_date,
+            category=category,
+            language=language,
+            drafts=drafts,
+        )
     except ScriptWriterError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -461,6 +496,7 @@ async def generate_video_scripts(
         "language": language,
         "publish_date": publish_date,
         "items": [{"video_title": d.title, "script": d.script} for d in drafts],
+        "warnings": warnings,
     }
 
 
@@ -526,19 +562,29 @@ async def create_heygen_batch_job(
     # rows: a spreadsheet carries no category or language to file it under, and
     # its scripts were not written by the model that would be told to avoid them.
     if has_rows and category and language and publish_date:
+        keys = _item_keys_for([r.video_title for r in batch_rows_parsed])
         await asyncio.to_thread(
             script_history.record,
             publish_date=publish_date,
             category=category,
             language=language,
             drafts=[
-                DraftScript(
-                    title=r.video_title,
-                    script=r.script,
-                    key=_item_key_for(r.video_title),
-                )
-                for r in batch_rows_parsed
+                DraftScript(title=r.video_title, script=r.script, key=key)
+                for r, key in zip(batch_rows_parsed, keys)
             ],
+        )
+    elif has_rows:
+        # An edited (non-spreadsheet) batch we cannot file: without category,
+        # language and date there is no key to store it under. Loud rather than
+        # silent, because the cost is real — future days will then be told to
+        # avoid the generated drafts, not the aired versions the operator
+        # actually shipped.
+        logging.warning(
+            "Batch submitted as edited rows but category/language/publish_date "
+            "are incomplete (category=%r language=%r publish_date=%r); the "
+            "operator's edits were NOT recorded to script history, so future "
+            "days will avoid the drafts, not the aired versions.",
+            category, language, publish_date,
         )
 
     try:

@@ -130,7 +130,24 @@ class ScriptRepairError(ScriptWriterError):
     been asked to fix them and failed, and running the whole budget again
     against the fallback would cost another handful of calls to land in the same
     place.
+
+    It carries the best-effort set anyway. The scripts are all present and
+    well-formed — what remains is a collision or a tag the model would not fix —
+    so the caller can hand the operator all twelve to review and fix the one
+    that clashed, which is far better than an error and a full re-run. The
+    unresolved hard violations ride along so the review can point at them.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        drafts: list[DraftScript] | None = None,
+        violations: list[Violation] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.drafts = drafts or []
+        self.violations = violations or []
 
 
 @dataclass(frozen=True)
@@ -549,10 +566,20 @@ def _write_with_model(
         if not blocking:
             break
         if attempt == MAX_REPAIR_ATTEMPTS:
+            # Every script is present and well-formed — what survived is a
+            # collision or a tag the model would not fix. Hand the whole set
+            # back on the error so the operator can review twelve and fix the
+            # one that clashed, rather than getting nothing and re-running.
+            partial = [
+                DraftScript(title=item.title, script=scripts[item.key], key=item.key)
+                for item in items
+            ]
             raise ScriptRepairError(
                 "scripts still repeat or break the tag rules after "
                 f"{MAX_REPAIR_ATTEMPTS} repair attempt(s): "
-                + "; ".join(str(v) for v in blocking)
+                + "; ".join(str(v) for v in blocking),
+                drafts=partial,
+                violations=blocking,
             )
 
         failing = offending_keys(blocking)

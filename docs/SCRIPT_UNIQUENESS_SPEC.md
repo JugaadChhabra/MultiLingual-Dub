@@ -55,11 +55,14 @@ brackets, no comma, no Devanagari:
 | Beat | Permitted tags |
 |---|---|
 | Hook | `warm`, `authoritative`, `confident` |
-| Prediction | `reassuring`, `optimistic`, `measured`, `encouraging`, `thoughtful` |
+| Prediction | `reassuring`, `optimistic`, `measured`, `encouraging`, `thoughtful`, `hopeful` |
 | Transition | `pause`, `slight emphasis`, `softly` |
-| Health line | `calm`, `steady` |
+| Health line | `calm`, `steady`, `gentle` |
 | Colour/number line | `bright`, `playful` |
-| Closing | `uplifting`, `warm`, `sincere` |
+| Closing | `uplifting`, `warm`, `sincere`, `joyful` |
+
+*(`hopeful`, `gentle` and `joyful` were added so the brief's jubilant tone words
+are on-bank rather than hard-rejected — see the addendum at the end.)*
 
 The bank lives in code as `TAG_BANK: dict[str, tuple[str, ...]]` keyed by beat,
 and is rendered into the system instruction from that single source. The
@@ -71,11 +74,12 @@ One tag per beat, applying to the phrase that follows — not one per paragraph
 and not one per sentence. Beats may be left untagged; an untagged beat is
 correct, a placeholder tag is not.
 
-The prompt asks for 5–7, which is right for a script of the horoscope's length.
-The **check** derives its range from spoken length instead (`permitted_tag_count`,
-~1 tag per 75 characters, floor 2, ceiling 7). A fixed 5–7 would have hard-failed
-every one of the operator's short custom categories, which do not share the
-horoscope's length — see §6.
+The prompt asks for `MIN_TAGS`–`MAX_TAGS` (5–9), which is right for a script of
+the horoscope's length. The **check** derives its range from spoken length
+instead (`permitted_tag_count`, ~1 tag per `CHARS_PER_TAG` = 50 characters, floor
+2, ceiling `MAX_TAGS` = 9). A fixed range would have hard-failed every one of the
+operator's short custom categories, which do not share the horoscope's length —
+see §6.
 
 ### 3.3 Length accounting — changed
 
@@ -192,7 +196,7 @@ A new `validate_drafts(drafts, *, history, same_day) -> list[Violation]` in
 |---|---|---|
 | Bracket contains Devanagari, or a comma, or a multi-word compound | **hard** | Regex over every bracket |
 | Bracket content not in `TAG_BANK` | **hard** | Set membership |
-| `जादुई अंक` outside 10–99 | **hard** | Parsed `number` |
+| `जादुई अंक` outside 1–99 (single digits now allowed; zero and 3+ digits not) | **hard** | Parsed `number` |
 | `जादुई अंक` missing **when the rest of the set has one** | **hard** | §6.3 |
 | Colour repeated across the twelve signs **today** | **hard** | Set over same-day drafts |
 | Number repeated across the twelve signs **today** | **hard** | Set over same-day drafts |
@@ -297,8 +301,9 @@ before repair is attempted.
 The category brief in `static/pane-video.js:21` is the seed for new categories
 and needs three edits:
 
-1. **Number format** — currently exemplified as `सात (७)`, single-digit. Must
-   become double-digit, 10–99, e.g. `सत्रह (१७)`.
+1. **Number format** — a whole number 1–99, written in words with the digit in
+   brackets, e.g. `सात (7)` or `सत्रह (१७)`. Single digits are allowed; zero and
+   three-digit numbers are not.
 2. **Area pools** — add the twelve pools, minimum 6 areas each (§6.2).
 3. **Phrasing angles** — add the five rotation angles.
 
@@ -354,3 +359,40 @@ updated — that is the intended signal, not collateral damage.
 | A 5-item pool makes area rotation unsatisfiable | Rule kept soft; 6-minimum documented in the brief |
 | eleven_v3 tag behaviour is not contractually documented | Tag bank is a single dict, cheap to revise once real audio is heard |
 | Structured extraction couples code to the skeleton | Extraction is non-fatal; a skeleton change degrades facts to empty rather than breaking generation |
+
+## 11. Addendum — changes since the original spec
+
+The code has moved on from the numbers written above. This section records the
+deltas so the spec and the code do not silently disagree (which is how the
+brief drifted from the validator in the first place). The code is authoritative;
+where this addendum and an earlier section conflict, the addendum wins.
+
+- **Lucky number range is now 1–99, not 10–99.** Single digits are permitted;
+  zero and three-or-more digits are refused (`MIN_NUMBER = 1`,
+  `MAX_NUMBER = 99` in `script_validate.py`). The brief asked for single digits,
+  so the code was brought to it.
+- **Tag bank gained three tone words:** `hopeful` (prediction), `gentle`
+  (health), `joyful` (closing), so the brief's jubilant vocabulary is on-bank
+  instead of hard-rejected. `TAG_BANK` remains the single source rendered into
+  the prompt and checked by the validator.
+- **Tag-count parameters:** `CHARS_PER_TAG = 50` (was described as ~75) and the
+  ceiling is `MAX_TAGS = 9` (was 7); floor is `FLOOR_TAGS = 2`, prompt ask is
+  `MIN_TAGS`–`MAX_TAGS` = 5–9. Count remains **soft**.
+- **Near-duplicate detection (new, soft).** Beyond verbatim-sentence and fact
+  reuse, the validator now flags reworded sameness via word-shingle Jaccard
+  (`services/text_similarity.py`, `SIMILARITY_THRESHOLD = 0.5`):
+  `similar_same_day` across the day's set, and `similar_recent_day` against each
+  sign's own recent days (prior-day text threaded in from history). Both soft —
+  they inform the operator, they never block a run or cost a repair.
+- **Structured JSON output (new).** The Gemini call sets
+  `response_mime_type = "application/json"` with a per-call `response_schema`
+  naming exactly the requested keys, so a fenced/short/list reply can no longer
+  slip through and burn a model fallthrough.
+- **Repair exhaustion returns a full draft set (changed).** `ScriptRepairError`
+  now carries `.drafts` (all present scripts) and `.violations`; the generate
+  route hands those twelve back to the operator with the unresolved clashes as
+  `warnings`, instead of returning nothing.
+- **Unmapped horoscope titles fail loud (changed).** `_item_keys_for` in
+  `api/routes.py` refuses a zodiac batch whose titles are not all sign names,
+  rather than filing the day under a key nothing matches and dropping it from
+  the uniqueness window.
