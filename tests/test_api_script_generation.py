@@ -385,3 +385,47 @@ def test_a_horoscope_batch_with_an_unmapped_title_is_refused(client, monkeypatch
 
     assert resp.status_code == 400
     assert "not-a-sign" in resp.json()["detail"]
+
+
+def test_a_batch_with_duplicate_titles_is_refused_and_records_nothing(client, monkeypatch) -> None:
+    """Two rows filed under one name would overwrite each other on the NAS."""
+    started: list = []
+
+    async def fake_batch(**kwargs):
+        started.append(kwargs)
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": "एक", "video_title": "मेष"},
+                                  {"script": "दो", "video_title": "मेष.mp4"}]),
+              "publish_date": "2026-08-17", "category": "sunsign", "language": "hi-IN"},
+    )
+
+    assert resp.status_code == 400
+    assert "मेष" in resp.json()["detail"]
+    assert started == []
+    assert api.script_history.recent(category="sunsign", language="hi-IN") == []
+
+
+def test_the_batch_overlay_and_music_settings_reach_every_spec(client, monkeypatch) -> None:
+    started: list = []
+
+    async def fake_batch(**kwargs):
+        started.append(kwargs)
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": "एक", "video_title": "a"},
+                                  {"script": "दो", "video_title": "b"}]),
+              "include_overlay": "false", "include_music": "true"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    (kwargs,) = started
+    assert {(i.spec.include_overlay, i.spec.include_music) for i in kwargs["items"]} == {(False, True)}

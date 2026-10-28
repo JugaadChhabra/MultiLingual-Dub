@@ -1,4 +1,7 @@
-"""Video job intake: a single submission's raw form values in, a validated spec out.
+"""Video job intake: a submission's raw form values in, validated specs out.
+
+A single submission becomes one spec; a batch (rows from Excel or JSON plus the
+settings every row shares) becomes one spec per row, under the same rules.
 
 The Video pane scrubs the title and caps the script before it sends, but the pane
 is only the fast path for feedback. The title becomes the NAS filename and a
@@ -8,9 +11,11 @@ enforces the same rules here rather than trusting whoever sent the request.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 from services.script_writer import MAX_SCRIPT_CHARS
+from services.video_pipeline.batch_excel import HeyGenBatchRow
 from services.video_pipeline.types import VideoJobSpec
 
 # Same character set as safeTitle / scrubTitle in static/pane-video.js: a run of
@@ -87,6 +92,56 @@ def spec_from_single(fields: SingleSubmission) -> VideoJobSpec:
         include_music=_toggle("include_music", fields.include_music),
         video_title=title,
     )
+
+
+@dataclass(frozen=True)
+class BatchSettings:
+    """What every row of a batch shares, as it arrived on the form."""
+
+    character: str | None = None
+    motion_prompt: str | None = None
+    publish_date: str | None = None
+    include_overlay: str | None = None
+    include_music: str | None = None
+
+
+@dataclass(frozen=True)
+class BatchItem:
+    """One row's spec, still tied to the row it came from so the batch store's
+    per-row state can follow it."""
+
+    row_index: int
+    spec: VideoJobSpec
+
+
+def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[BatchItem]:
+    items: list[BatchItem] = []
+    for row in rows:
+        try:
+            spec = spec_from_single(SingleSubmission(
+                script=row.script,
+                video_title=row.video_title,
+                character=shared.character,
+                motion_prompt=shared.motion_prompt,
+                publish_date=shared.publish_date,
+                include_overlay=shared.include_overlay,
+                include_music=shared.include_music,
+            ))
+        except IntakeError as exc:
+            raise IntakeError(f"row {row.row_index}: {exc}") from exc
+        items.append(BatchItem(row_index=row.row_index, spec=spec))
+
+    # Each title is a file in the same NAS folder, so two rows with one title
+    # means one render overwrites the other. Compared after scrubbing, and
+    # without case, as the share and the pane compare them.
+    counts = Counter(i.spec.video_title.casefold() for i in items)
+    dupes = sorted({i.spec.video_title for i in items if counts[i.spec.video_title.casefold()] > 1})
+    if dupes:
+        raise IntakeError(
+            "video titles must be unique, or one render overwrites another: "
+            + ", ".join(dupes)
+        )
+    return items
 
 
 def _scrub_title(raw: str) -> str:

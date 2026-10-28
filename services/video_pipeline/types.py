@@ -21,9 +21,8 @@ class VideoJobSpec(BaseModel):
     video_title: str = "HeyGen Avatar IV Job"
     publish_date: str | None = None
     # Burn the branded cards and/or the music bed onto the render. Independent:
-    # any of the four combinations is valid. Both default on; only the single-job
-    # HTTP path exposes the opt-outs. Batch and recovery leave them at the
-    # defaults, so their output is unchanged.
+    # any of the four combinations is valid. Both default on; single and batch
+    # submissions set them through intake, and recovery reuses the persisted spec.
     include_overlay: bool = True
     include_music: bool = True
 

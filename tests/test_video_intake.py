@@ -11,7 +11,14 @@ from dataclasses import replace
 import pytest
 
 from services.script_writer import MAX_SCRIPT_CHARS
-from services.video_pipeline.intake import IntakeError, SingleSubmission, spec_from_single
+from services.video_pipeline.batch_excel import HeyGenBatchRow
+from services.video_pipeline.intake import (
+    BatchSettings,
+    IntakeError,
+    SingleSubmission,
+    spec_from_single,
+    specs_from_batch,
+)
 from services.video_pipeline.types import VideoJobSpec
 
 BASE = SingleSubmission(script="मेष का राशिफल", video_title="Aries")
@@ -114,3 +121,78 @@ def test_overlay_and_music_are_independent() -> None:
 def test_an_unreadable_toggle_is_rejected_rather_than_guessed() -> None:
     with pytest.raises(IntakeError, match="include_music"):
         _spec(include_music="maybe")
+
+
+# ── batch ─────────────────────────────────────────────────────────────────────
+
+def _rows(*titles: str, script: str = "राशिफल") -> list[HeyGenBatchRow]:
+    return [
+        HeyGenBatchRow(row_index=i, script=script, video_title=t)
+        for i, t in enumerate(titles, start=2)
+    ]
+
+
+def test_a_batch_becomes_one_spec_per_row_with_the_shared_settings() -> None:
+    items = specs_from_batch(
+        _rows("Aries", "Taurus"),
+        BatchSettings(character="us", motion_prompt="slow nod", publish_date="14-08-2026"),
+    )
+
+    assert [i.row_index for i in items] == [2, 3]
+    assert [i.spec.video_title for i in items] == ["Aries", "Taurus"]
+    for item in items:
+        assert item.spec.character == "us"
+        assert item.spec.motion_prompt == "slow nod"
+        assert item.spec.publish_date == "14-08-2026"
+
+
+def test_batch_shared_blanks_take_the_same_defaults_as_a_single() -> None:
+    (item,) = specs_from_batch(_rows("Aries"), BatchSettings(character="", motion_prompt="", publish_date=""))
+    assert (item.spec.character, item.spec.motion_prompt, item.spec.publish_date) == ("indian", None, None)
+
+
+@pytest.mark.parametrize(
+    ("overlay", "music", "expected"),
+    [
+        (None, None, (True, True)),
+        ("false", "true", (False, True)),
+        ("true", "false", (True, False)),
+        ("false", "false", (False, False)),
+    ],
+)
+def test_batch_toggles_are_carried_to_every_row(overlay, music, expected) -> None:
+    items = specs_from_batch(
+        _rows("Aries", "Taurus", "Gemini"),
+        BatchSettings(include_overlay=overlay, include_music=music),
+    )
+    assert {(i.spec.include_overlay, i.spec.include_music) for i in items} == {expected}
+
+
+def test_batch_titles_are_scrubbed_per_row() -> None:
+    items = specs_from_batch(_rows("a/b", "Leo.mp4"), BatchSettings())
+    assert [i.spec.video_title for i in items] == ["a_b", "Leo"]
+
+
+def test_duplicate_titles_are_rejected_by_name() -> None:
+    with pytest.raises(IntakeError, match="Aries") as exc:
+        specs_from_batch(_rows("Aries", "Taurus", "Aries"), BatchSettings())
+    assert "Taurus" not in str(exc.value)
+
+
+def test_titles_that_collide_only_after_scrubbing_are_duplicates() -> None:
+    # Both are filed as a_b.mp4 — and the NAS share does not care about case.
+    with pytest.raises(IntakeError, match="a_b"):
+        specs_from_batch(_rows("a/b", "A:B.mp4"), BatchSettings())
+
+
+def test_a_row_over_the_length_cap_is_rejected_naming_its_row() -> None:
+    rows = _rows("Aries") + [
+        HeyGenBatchRow(row_index=7, script="x" * (MAX_SCRIPT_CHARS + 1), video_title="Taurus")
+    ]
+    with pytest.raises(IntakeError, match=rf"row 7.*{MAX_SCRIPT_CHARS}"):
+        specs_from_batch(rows, BatchSettings())
+
+
+def test_an_unreadable_batch_toggle_is_rejected() -> None:
+    with pytest.raises(IntakeError, match="include_overlay"):
+        specs_from_batch(_rows("Aries"), BatchSettings(include_overlay="maybe"))

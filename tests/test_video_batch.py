@@ -17,6 +17,7 @@ from services.video_pipeline.batch_excel import HeyGenBatchRow
 from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
+from services.video_pipeline.intake import BatchItem, BatchSettings, specs_from_batch
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.store import VideoJobsStore
 from tests.fakes import FakeRenderer, FakeSpeech
@@ -43,17 +44,18 @@ def _heygen() -> HeyGenSettings:
     )
 
 
-def _rows(n: int) -> list[HeyGenBatchRow]:
-    return [
+def _rows(n: int, **shared: str) -> list[BatchItem]:
+    rows = [
         HeyGenBatchRow(row_index=i, script=f"script {i}", video_title=f"Title {i}")
         for i in range(2, 2 + n)
     ]
+    return specs_from_batch(rows, BatchSettings(character="indian", publish_date="12-08-2026", **shared))
 
 
 async def _run_batch(
     *,
     tmp_path: Path,
-    rows: list[HeyGenBatchRow],
+    rows: list[BatchItem],
     renderer: FakeRenderer,
     speech: FakeSpeech | None = None,
     slots: TalkingPhotoSlots | None = None,
@@ -62,16 +64,13 @@ async def _run_batch(
     batch_store = VideoBatchJobsStore()
     await batch_store.create(
         "batch-1",
-        [BatchRowState(row_index=r.row_index, script=r.script, video_title=r.video_title) for r in rows],
+        [BatchRowState(row_index=r.row_index, script=r.spec.script, video_title=r.spec.video_title) for r in rows],
     )
     await run_video_batch_job(
         batch_id="batch-1",
-        rows=rows,
+        items=rows,
         image_bytes=b"\xff\xd8fake-jpeg",
         image_filename="photo.jpg",
-        character="indian",
-        motion_prompt=None,
-        publish_date="12-08-2026",
         output_dir=tmp_path / "out" / "heygen",
         output_base_dir=tmp_path / "out",
         batch_store=batch_store,
@@ -165,3 +164,100 @@ def test_completed_rows_record_where_the_video_landed(tmp_path: Path, nas_root: 
         assert row.status == "completed"
         assert row.nas_path == f"12-08-2026/{row.video_title}.mp4"
         assert (nas_root / "12-08-2026" / f"{row.video_title}.mp4").exists()
+
+
+def _spy_burn_cards(monkeypatch) -> list:
+    """As in test_video_job: record what the finalize step asked burn_cards for,
+    copying the render through instead of encoding."""
+    import shutil
+
+    import services.video_pipeline.pipeline as pipeline
+
+    calls: list = []
+
+    def spy(src, dest, sign, publish_date, *, overlay=True, music=True):
+        calls.append({"overlay": overlay, "music": music})
+        shutil.copyfile(src, dest)
+        return Path(dest)
+
+    monkeypatch.setattr(pipeline, "burn_cards", spy)
+    return calls
+
+
+def test_a_batch_burns_cards_and_music_on_every_row_by_default(
+    tmp_path: Path, nas_root: Path, monkeypatch
+) -> None:
+    calls = _spy_burn_cards(monkeypatch)
+
+    state = asyncio.run(_run_batch(tmp_path=tmp_path, rows=_rows(3), renderer=FakeRenderer(), nas_root=nas_root))
+
+    assert state.done == 3
+    assert calls == [{"overlay": True, "music": True}] * 3
+
+
+def test_a_batch_with_the_overlay_off_burns_no_cards_on_any_row(
+    tmp_path: Path, nas_root: Path, monkeypatch
+) -> None:
+    calls = _spy_burn_cards(monkeypatch)
+
+    state = asyncio.run(_run_batch(
+        tmp_path=tmp_path, rows=_rows(3, include_overlay="false"), renderer=FakeRenderer(), nas_root=nas_root,
+    ))
+
+    assert state.done == 3
+    assert calls == [{"overlay": False, "music": True}] * 3
+
+
+def test_a_batch_with_both_off_never_reaches_the_burn(
+    tmp_path: Path, nas_root: Path, monkeypatch
+) -> None:
+    calls = _spy_burn_cards(monkeypatch)
+
+    state = asyncio.run(_run_batch(
+        tmp_path=tmp_path,
+        rows=_rows(2, include_overlay="false", include_music="false"),
+        renderer=FakeRenderer(),
+        nas_root=nas_root,
+    ))
+
+    assert state.done == 2
+    assert calls == []
+
+
+def test_a_configured_batch_emails_a_summary_naming_failed_rows(
+    tmp_path: Path, nas_root: Path, monkeypatch
+) -> None:
+    import services.video_pipeline.batch_runner as batch_runner
+
+    sent: list[dict] = []
+    monkeypatch.setattr(batch_runner, "send_batch_summary_email", lambda **kw: sent.append(kw))
+
+    class FailsSecondRender(FakeRenderer):
+        async def await_render(self, *, video_id: str):
+            if video_id == "video-2":
+                raise RuntimeError("render failed: fake")
+            return await super().await_render(video_id=video_id)
+
+    async def run():
+        rows = _rows(2)
+        batch_store = VideoBatchJobsStore()
+        await batch_store.create(
+            "batch-1",
+            [BatchRowState(row_index=r.row_index, script=r.spec.script, video_title=r.spec.video_title) for r in rows],
+        )
+        renderer = FailsSecondRender()
+        await run_video_batch_job(
+            batch_id="batch-1", items=rows,
+            image_bytes=b"\xff\xd8fake-jpeg", image_filename="photo.jpg",
+            output_dir=tmp_path / "out" / "heygen", output_base_dir=tmp_path / "out",
+            batch_store=batch_store, video_jobs_store=VideoJobsStore(),
+            renderer=renderer, speech=FakeSpeech(), slots=TalkingPhotoSlots(renderer),
+            heygen=_heygen(), nas_config=_nas(nas_root),
+            email=EmailSettings(api_key="re_key", from_address="a@x", to_addresses=("b@x",)),
+        )
+
+    asyncio.run(run())
+
+    (mail,) = sent
+    assert (mail["total"], mail["succeeded"], mail["failed"]) == (2, 1, 1)
+    assert [r["video_title"] for r in mail["failed_rows"]] == ["Title 3"]

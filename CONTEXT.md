@@ -62,9 +62,13 @@ idempotent: without this, a retry creates a second paid render. Called
 **Character** — which persona a video is voiced and filed as (`indian`, `us`).
 Selects the voice and, for `us`, a separate NAS root.
 
-**Video job intake** (`services/video_pipeline/intake.py`) — a single
-submission's raw form values (`SingleSubmission`) turned into a `VideoJobSpec`,
-or an `IntakeError` the request returns as a 400. Owns the rules that used to
+**Video job intake** (`services/video_pipeline/intake.py`) — a submission's
+raw form values turned into validated specs, or an `IntakeError` the request
+returns as a 400. A single submission (`SingleSubmission`) becomes one
+`VideoJobSpec`; a batch (Excel or JSON rows plus the `BatchSettings` every row
+shares, overlay and music included) becomes one `BatchItem` per row under the
+same rules, and is refused if two rows would be filed under one title. The
+batch runner receives these specs and builds none of its own. Owns the rules that used to
 live only in the Video pane: the title is scrubbed of filename-breaking
 characters and a trailing `.mp4` (it becomes the NAS filename) and refused if
 nothing is left, and the script is capped at the Script writer's
