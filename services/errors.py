@@ -51,6 +51,7 @@ TOP_UP_URLS = {
     "elevenlabs": "https://elevenlabs.io/app/subscription",
     "sarvam": "https://dashboard.sarvam.ai/",
     "heygen": "https://app.heygen.com/settings/subscriptions",
+    "gemini": "https://aistudio.google.com/projects",
 }
 
 # HeyGen's own code for "you are out of what you paid for". Already referenced
@@ -60,7 +61,7 @@ HEYGEN_QUOTA_CODES = {401028, 400112}
 _QUOTA_WORDS = re.compile(
     r"quota[_ ]?exceeded|insufficient[_ ]?(credit|balance|quota|fund)|"
     r"out of (credit|quota)|credit[s]? (exhaust|expired|over)|"
-    r"exceeded your current quota|no (remaining )?credit",
+    r"exceeded your current quota|no (remaining )?credit|credit[s]? (are |is )?depleted",
     re.I,
 )
 _AUTH_WORDS = re.compile(r"invalid[_ ]?api[_ ]?key|unauthorized|invalid token|authentication fail", re.I)
