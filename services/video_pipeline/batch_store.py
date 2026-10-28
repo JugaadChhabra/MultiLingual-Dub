@@ -22,6 +22,8 @@ class BatchRowState(BaseModel):
     video_local_url: str | None = None
     nas_path: str | None = None
     error: str | None = None
+    # The row's video job's classified cause, when it got far enough to have one
+    cause: dict | None = None
 
 
 class VideoBatchJobState(BaseModel):
@@ -33,6 +35,37 @@ class VideoBatchJobState(BaseModel):
     rows: list[BatchRowState] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    cause: dict | None = None   # why a failed/partial batch failed, see batch_cause
+
+
+def batch_cause(state: VideoBatchJobState) -> dict | None:
+    """What the operator is told about a failed or partial batch.
+
+    Built only from what the rows recorded, so it claims nothing they did not:
+    one shared error reuses that row's classified cause; anything else is a
+    count plus the rows' own words. No row error means no cause at all.
+    """
+    failed = [r for r in state.rows if r.status == "failed" and r.error]
+    if not failed:
+        return None
+    errors = {r.error for r in failed}
+    if len(errors) == 1:
+        classified = next((r.cause for r in failed if r.cause), None)
+        if classified:
+            return classified
+    return {
+        "kind": "batch_rows_failed",
+        "severity": "error",
+        "title": f"{len(failed)} of {state.total} rows failed",
+        "detail": failed[0].error,
+        "raw": "\n".join(f"row {r.row_index}: {r.error}" for r in failed),
+        "retryable": False,
+        "provider": None,
+        "stage": None,
+        "action_url": None,
+        "action_label": None,
+        "meta": {},
+    }
 
 
 class VideoBatchJobsStore:
@@ -75,6 +108,7 @@ class VideoBatchJobsStore:
                 row.error = "Interrupted by a restart"
                 state.failed_count += 1
         state.status = "failed" if state.done == 0 else "partial"
+        state.cause = batch_cause(state)
         state.finished_at = datetime.now(timezone.utc)
         logger.warning(
             "VideoBatch %s was in flight at shutdown → marked %s (%d done, %d failed)",
@@ -130,6 +164,7 @@ class VideoBatchJobsStore:
                 state.status = "failed"
             else:
                 state.status = "partial"
+            state.cause = batch_cause(state)
             self._write(state)
             logger.info(
                 "VideoBatch %s → %s (%d succeeded, %d failed)",

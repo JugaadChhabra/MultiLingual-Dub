@@ -477,7 +477,16 @@
         video_title: item.video_title || "", script: item.script || "", edited: false,
       }));
       saveDrafts();
-      say(`${state.drafts.length} scripts written — read them before you run`);
+      const clashes = Array.isArray(body.warnings) ? body.warnings : [];
+      if (clashes.length) {
+        // banner() takes detail as HTML, so each warning is escaped.
+        U.banner(els.banners, { kind: "warn", id: "script-warnings",
+          title: "Some drafts still clash",
+          detail: clashes.map((w) => U.esc(String(w))).join("<br>") });
+        say(`${state.drafts.length} scripts written, some still clash — read them before you run`);
+      } else {
+        say(`${state.drafts.length} scripts written — read them before you run`);
+      }
     } catch (e) {
       U.banner(els.banners, { kind: "error", title: "The scripts were not written",
         detail: "Nothing was rendered and nothing was charged.", raw: String(e && e.message || e) });
@@ -709,7 +718,11 @@
       el.className = "qrow";
       el.innerHTML = `<span class="i">row ${row.row_index}</span>` +
         `<span class="nm">${U.esc(row.video_title || "untitled")}</span>` +
-        `<span class="path">${U.esc(row.nas_path || "—")}</span>` +
+        // A failed row has no NAS path to show, so its error takes that slot:
+        // first line only, the whole message on hover.
+        (s === "failed" && row.error
+          ? `<span class="path err" title="${U.esc(row.error)}">${U.esc(row.error.split("\n")[0])}</span>`
+          : `<span class="path">${U.esc(row.nas_path || "—")}</span>`) +
         `<span class="badge ${badge}">${U.esc(s[0].toUpperCase() + s.slice(1))}</span>` +
         (row.video_local_url ? `<a class="btn q" href="${row.video_local_url}" download>Open</a>` : `<span></span>`);
       els.queue.appendChild(el);
