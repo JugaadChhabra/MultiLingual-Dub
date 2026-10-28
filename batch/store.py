@@ -7,16 +7,9 @@ from pathlib import Path
 
 from services.errors import classify
 from batch.models import JobState, JobSummary
-from services.state_mirror import JsonStateMirror
+from services.state_mirror import JsonStateMirror, finalize_summary
 
 logger = logging.getLogger(__name__)
-
-
-def _finalize_summary(summary: JobSummary) -> None:
-    summary.finished_at = datetime.now(timezone.utc)
-    if summary.started_at:
-        delta = summary.finished_at - summary.started_at
-        summary.duration_ms = int(delta.total_seconds() * 1000)
 
 
 class JobsStore:
@@ -47,17 +40,17 @@ class JobsStore:
     def _load(self) -> None:
         """Reload persisted jobs, settling any the restart interrupted."""
         assert self._mirror is not None
-        self._jobs = self._mirror.load()
-        for state in self._jobs.values():
-            if state.status in self.IN_FLIGHT_STATUSES:
-                state.status = "failed"
-                state.error = "Interrupted by a restart"
-                _finalize_summary(state.summary)
-                self._write(state)
-                logger.warning(
-                    "Job %s was in flight at shutdown → marked failed (%d/%d rows done)",
-                    state.job_id, state.summary.rows_processed, state.summary.total_rows,
-                )
+        self._jobs = self._mirror.load_settled(self.IN_FLIGHT_STATUSES, self._settle)
+
+    @staticmethod
+    def _settle(state: JobState) -> None:
+        state.status = "failed"
+        state.error = "Interrupted by a restart"
+        finalize_summary(state.summary)
+        logger.warning(
+            "Job %s was in flight at shutdown → marked failed (%d/%d rows done)",
+            state.job_id, state.summary.rows_processed, state.summary.total_rows,
+        )
 
     async def create(self, job_id: str) -> JobState:
         async with self._lock:
@@ -93,7 +86,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "completed"
-            _finalize_summary(summary)
+            finalize_summary(summary)
             state.summary = summary
             self._write(state)
             logger.info(
@@ -125,7 +118,7 @@ class JobsStore:
                 state.cause = classify(exc, provider=None, stage=stage).to_dict()
             if summary is None:
                 summary = state.summary
-            _finalize_summary(summary)
+            finalize_summary(summary)
             state.summary = summary
             self._write(state)
             logger.error("Job %s → failed | %s", job_id, message)
@@ -151,7 +144,7 @@ class JobsStore:
             self._cancel_flags.discard(job_id)
             if summary is None:
                 summary = state.summary
-            _finalize_summary(summary)
+            finalize_summary(summary)
             state.summary = summary
             self._write(state)
             logger.info("Job %s → cancelled", job_id)

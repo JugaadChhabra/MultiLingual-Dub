@@ -7,17 +7,10 @@ from services.errors import classify
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.state_mirror import JsonStateMirror
+from services.state_mirror import JsonStateMirror, finalize_summary
 from services.video_pipeline.types import VideoJobSpec, VideoJobState, VideoJobSummary
 
 logger = logging.getLogger(__name__)
-
-
-def _finalize(summary: VideoJobSummary) -> None:
-    summary.finished_at = datetime.now(timezone.utc)
-    if summary.started_at:
-        delta = summary.finished_at - summary.started_at
-        summary.duration_ms = int(delta.total_seconds() * 1000)
 
 
 class VideoJobsStore:
@@ -59,17 +52,17 @@ class VideoJobsStore:
         what makes it recoverable.
         """
         assert self._mirror is not None
-        self._jobs = self._mirror.load()
-        for state in self._jobs.values():
-            if state.status in self.IN_FLIGHT_STATUSES:
-                state.status = "failed"
-                state.error = f"Interrupted by a restart while {state.stage_message or state.status}"
-                _finalize(state.summary)
-                self._write(state)
-                logger.warning(
-                    "VideoJob %s was in flight at shutdown → marked failed (recoverable=%s)",
-                    state.job_id, bool(state.summary.heygen_video_id),
-                )
+        self._jobs = self._mirror.load_settled(self.IN_FLIGHT_STATUSES, self._settle)
+
+    @staticmethod
+    def _settle(state: VideoJobState) -> None:
+        state.status = "failed"
+        state.error = f"Interrupted by a restart while {state.stage_message or state.status}"
+        finalize_summary(state.summary)
+        logger.warning(
+            "VideoJob %s was in flight at shutdown → marked failed (recoverable=%s)",
+            state.job_id, bool(state.summary.heygen_video_id),
+        )
 
     # --- mutations -------------------------------------------------------
     async def create(self, job_id: str) -> VideoJobState:
@@ -112,7 +105,7 @@ class VideoJobsStore:
             state = self._jobs[job_id]
             state.status = "completed"
             state.error = None
-            _finalize(state.summary)
+            finalize_summary(state.summary)
             self._write(state)
             logger.info("VideoJob %s → completed", job_id)
 
@@ -126,7 +119,7 @@ class VideoJobsStore:
                 # state.status is the step it died on — a better stage than any
                 # the call site could pass, since the store tracked it all along
                 state.cause = classify(exc, provider=None, stage=stage or state.status).to_dict()
-            _finalize(state.summary)
+            finalize_summary(state.summary)
             self._write(state)
             logger.error("VideoJob %s → failed | %s", job_id, message)
 
