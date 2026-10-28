@@ -60,6 +60,7 @@ async def _run_batch(
     speech: FakeSpeech | None = None,
     slots: TalkingPhotoSlots | None = None,
     nas_root: Path | None = None,
+    talking_photo_id: str | None = None,
 ):
     batch_store = VideoBatchJobsStore()
     await batch_store.create(
@@ -71,6 +72,7 @@ async def _run_batch(
         items=rows,
         image_bytes=b"\xff\xd8fake-jpeg",
         image_filename="photo.jpg",
+        talking_photo_id=talking_photo_id,
         output_dir=tmp_path / "out" / "heygen",
         output_base_dir=tmp_path / "out",
         batch_store=batch_store,
@@ -97,6 +99,35 @@ def test_a_batch_uploads_exactly_one_photo_for_all_rows(tmp_path: Path, nas_root
     assert renderer.calls.count("submit") == 5
     # Every row rendered against the same shared photo.
     assert {s["photo_id"] for s in renderer.submissions} == {"photo-1"}
+
+
+def test_a_picked_photo_renders_every_row_without_touching_the_slots(
+    tmp_path: Path, nas_root: Path
+) -> None:
+    """A photo picked from the account already exists there. Acquiring frees
+    every slot first, which would delete the very photo that was picked."""
+    renderer = FakeRenderer()
+    rows = _rows(3, talking_photo_id="tp-picked")
+
+    state = asyncio.run(_run_batch(
+        tmp_path=tmp_path, rows=rows, renderer=renderer, nas_root=nas_root,
+        talking_photo_id="tp-picked",
+    ))
+
+    assert state.done == 3
+    assert renderer.uploaded_photos == []
+    assert renderer.clear_count == 0
+    assert [s["photo_id"] for s in renderer.submissions] == ["tp-picked"] * 3
+
+
+def test_a_picked_photo_is_on_every_rows_spec() -> None:
+    items = _rows(3, talking_photo_id="tp-picked")
+    assert {i.spec.talking_photo_id for i in items} == {"tp-picked"}
+
+
+def test_a_blank_picked_photo_counts_as_none() -> None:
+    items = _rows(2, talking_photo_id="   ")
+    assert {i.spec.talking_photo_id for i in items} == {None}
 
 
 def test_each_row_gets_its_own_correlation_id(tmp_path: Path, nas_root: Path) -> None:
