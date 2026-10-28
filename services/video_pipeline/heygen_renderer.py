@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from services.video_pipeline import heygen_client
-from services.video_pipeline.renderer import RenderedVideo, UploadedAudio, VideoRenderer
+from services.video_pipeline.renderer import RenderedVideo, TalkingPhoto, UploadedAudio, VideoRenderer
 
 
 class HeyGenRenderer(VideoRenderer):
@@ -37,6 +37,19 @@ class HeyGenRenderer(VideoRenderer):
             content=content,
             content_type=content_type,
         )
+
+    async def list_photos(self) -> list[TalkingPhoto]:
+        raw = await asyncio.to_thread(
+            heygen_client.list_talking_photos, api_key=self._api_key
+        )
+        return [
+            TalkingPhoto(
+                talking_photo_id=str(item["talking_photo_id"]),
+                name=item.get("name") or "",
+                preview_url=item.get("preview_url"),
+            )
+            for item in raw
+        ]
 
     async def clear_photos(self) -> int:
         return await asyncio.to_thread(

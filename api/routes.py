@@ -53,7 +53,7 @@ from services.video_pipeline.batch_excel import (
 )
 from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
-from services.video_pipeline.heygen_client import HeyGenSettings, list_talking_photos
+from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.heygen_renderer import HeyGenRenderer
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
@@ -133,6 +133,12 @@ class VideoDeps:
     email: EmailSettings
 
 
+def _build_renderer(session: RuntimeConfig | None) -> VideoRenderer:
+    """Just the renderer, for requests that need HeyGen and nothing else — so a
+    missing ElevenLabs or NAS setting can't break them."""
+    return HeyGenRenderer(HeyGenSettings.resolve(session).api_key)
+
+
 def _build_video_deps(session: RuntimeConfig | None) -> VideoDeps:
     """Resolve credentials and settings once, here, and build the seams a video
     job runs against.
@@ -197,8 +203,11 @@ def heygen_page_legacy() -> RedirectResponse:
 async def list_heygen_talking_photos(request: Request):
     session = await _session_config_for_request(request)
     try:
-        heygen = HeyGenSettings.resolve(session)
-        return {"items": await asyncio.to_thread(list_talking_photos, api_key=heygen.api_key)}
+        photos = await _build_renderer(session).list_photos()
+        return {"items": [
+            {"talking_photo_id": p.talking_photo_id, "name": p.name, "preview_url": p.preview_url}
+            for p in photos
+        ]}
     except MissingSettingError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
