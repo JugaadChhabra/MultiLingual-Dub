@@ -96,10 +96,10 @@ def test_xlsx_round_trips_through_the_excel_reader(tmp_path) -> None:
     path = tmp_path / "story.xlsx"
     path.write_bytes(response.content)
     rows = read_excel_rows(path)
-    assert [r.voiceover_text for r in rows] == ["Hi there!", "Moti barked."]
+    assert [r.text for r in rows] == ["Hi there!", "Moti barked."]
     assert [r.emotion for r in rows] == ["Cheerful", "Narrative"]
     assert {r.activity_name for r in rows} == {"moti1story"}
-    assert [r.voiceover_title for r in rows] == ["moti1story1", "moti1story2"]
+    assert [r.audio_type for r in rows] == ["moti1story1", "moti1story2"]
 
 
 def test_xlsx_rejects_bad_input() -> None:
