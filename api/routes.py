@@ -221,6 +221,9 @@ async def list_heygen_talking_photos(request: Request):
         raise HTTPException(status_code=502, detail=f"HeyGen list failed: {exc}") from exc
 
 
+NO_PHOTO_DETAIL = "provide either an image file or a talking_photo_id"
+
+
 @app.post("/video/heygen", status_code=202)
 async def create_heygen_video_job(
     request: Request,
@@ -271,8 +274,9 @@ async def create_heygen_video_job(
     except IntakeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not (talking_photo_id or (image and image.filename)):
-        raise HTTPException(status_code=400, detail="provide either an image file or a talking_photo_id")
+    # Judged on the spec, so a whitespace-only id counts as none.
+    if not (spec.talking_photo_id or (image and image.filename)):
+        raise HTTPException(status_code=400, detail=NO_PHOTO_DETAIL)
 
     image_bytes = b""
     image_filename = "image.jpg"
@@ -441,7 +445,10 @@ async def generate_video_scripts(
 @app.post("/video/heygen/batch", status_code=202)
 async def create_heygen_batch_job(
     request: Request,
-    image: UploadFile = File(...),
+    # Either an uploaded image or a photo picked from the account, as for a
+    # single video.
+    image: UploadFile | None = File(default=None),
+    talking_photo_id: str | None = Form(default=None),
     excel: UploadFile | None = File(default=None),
     rows: str | None = Form(default=None),
     character: str = Form(default="indian"),
@@ -467,13 +474,6 @@ async def create_heygen_batch_job(
         raise HTTPException(
             status_code=400, detail="provide either an excel file or rows JSON, not both"
         )
-    if not (image and image.filename):
-        raise HTTPException(status_code=400, detail="image file is required")
-
-    image_bytes = await image.read()
-    if not image_bytes:
-        raise HTTPException(status_code=400, detail="image upload was empty")
-
     if has_excel:
         ensure_file_extension(excel.filename, ".xlsx", "Only .xlsx files are allowed")
         excel_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
@@ -503,11 +503,25 @@ async def create_heygen_batch_job(
             character=character,
             motion_prompt=motion_prompt,
             publish_date=publish_date,
+            talking_photo_id=talking_photo_id,
             include_overlay=include_overlay,
             include_music=include_music,
         ))
     except IntakeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Intake cleaned the id (blank to None) and put it on every row alike.
+    picked_photo_id = items[0].spec.talking_photo_id
+    if not (picked_photo_id or (image and image.filename)):
+        raise HTTPException(status_code=400, detail=NO_PHOTO_DETAIL)
+
+    image_bytes = b""
+    image_filename = "image.jpg"
+    if not picked_photo_id:
+        image_bytes = await image.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="image upload was empty")
+        image_filename = image.filename
 
     # Record what is actually being rendered, replacing the drafts recorded when
     # they were written — the operator's edits are what tomorrow must avoid.
@@ -543,7 +557,8 @@ async def create_heygen_batch_job(
             batch_id=batch_id,
             items=items,
             image_bytes=image_bytes,
-            image_filename=image.filename,
+            image_filename=image_filename,
+            talking_photo_id=picked_photo_id,
             output_dir=VIDEO_OUTPUT_DIR,
             output_base_dir=OUTPUT_DIR,
             batch_store=video_batch_jobs_store,

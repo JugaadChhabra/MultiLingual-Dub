@@ -42,6 +42,7 @@ async def run_video_batch_job(
     items: list[BatchItem],
     image_bytes: bytes,
     image_filename: str,
+    talking_photo_id: str | None = None,
     output_dir: Path,
     output_base_dir: Path,
     batch_store: VideoBatchJobsStore,
@@ -53,6 +54,12 @@ async def run_video_batch_job(
     nas_config: NasConfig,
     email: EmailSettings,
 ) -> None:
+    """Render every row against one talking photo: ``talking_photo_id`` when the
+    operator picked one, otherwise one acquired from ``image_bytes``.
+
+    A picked photo never goes through ``slots``: acquiring frees every slot
+    first, which would delete the very photo that was picked.
+    """
     await batch_store.start(batch_id)
     failed_rows: list[dict] = []
 
@@ -60,16 +67,17 @@ async def run_video_batch_job(
     # up front and reuse its id for every row. Otherwise each row re-uploads the
     # identical image and, past the provider's photo cap, triggers
     # list→delete→re-upload churn on every video — pure serial overhead.
-    shared_talking_photo_id: str | None = None
-    try:
-        shared_talking_photo_id = await slots.acquire(
-            image_bytes=image_bytes,
-            image_filename=image_filename,
-            label=f"Batch {batch_id}",
-        )
-    except Exception as exc:
-        # Non-fatal: fall back to per-row acquire inside run_video_job.
-        logger.warning("Batch %s | shared talking photo upload failed, rows will upload individually: %s", batch_id, exc)
+    shared_talking_photo_id: str | None = talking_photo_id
+    if shared_talking_photo_id is None:
+        try:
+            shared_talking_photo_id = await slots.acquire(
+                image_bytes=image_bytes,
+                image_filename=image_filename,
+                label=f"Batch {batch_id}",
+            )
+        except Exception as exc:
+            # Non-fatal: fall back to per-row acquire inside run_video_job.
+            logger.warning("Batch %s | shared talking photo upload failed, rows will upload individually: %s", batch_id, exc)
 
     # HeyGen renders are asynchronous: each row submits a render and then spends
     # most of its wall-clock just polling status. Running rows concurrently means

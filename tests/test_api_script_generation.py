@@ -452,3 +452,44 @@ def test_the_batch_overlay_and_music_settings_reach_every_spec(client, monkeypat
     assert resp.status_code == 202, resp.text
     (kwargs,) = started
     assert {(i.spec.include_overlay, i.spec.include_music) for i in kwargs["items"]} == {(False, True)}
+
+
+def test_a_batch_with_a_picked_photo_and_no_image_is_accepted(client, monkeypatch) -> None:
+    started: list = []
+
+    async def fake_batch(**kwargs):
+        started.append(kwargs)
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        data={"rows": json.dumps([{"script": "एक", "video_title": "a"},
+                                  {"script": "दो", "video_title": "b"}]),
+              "talking_photo_id": "tp-picked"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    (kwargs,) = started
+    assert kwargs["talking_photo_id"] == "tp-picked"
+    assert kwargs["image_bytes"] == b""
+    assert {i.spec.talking_photo_id for i in kwargs["items"]} == {"tp-picked"}
+
+
+@pytest.mark.parametrize("photo", [{}, {"talking_photo_id": "   "}])
+def test_a_batch_with_no_photo_is_refused_as_a_single_video_is(client, monkeypatch, photo) -> None:
+    started: list = []
+
+    async def fake_batch(**kwargs):
+        started.append(kwargs)
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        data={"rows": json.dumps([{"script": "एक", "video_title": "a"}]), **photo},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "provide either an image file or a talking_photo_id"
+    assert started == []

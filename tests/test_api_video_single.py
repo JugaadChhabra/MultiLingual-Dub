@@ -78,3 +78,14 @@ def test_a_script_over_the_writers_limit_is_rejected(client, launched) -> None:
     assert resp.status_code == 400
     assert str(MAX_SCRIPT_CHARS) in resp.json()["detail"]
     assert launched == []
+
+
+def test_a_whitespace_talking_photo_id_with_no_image_is_refused(client, launched) -> None:
+    resp = client.post(
+        "/video/heygen",
+        data={"script": "hello", "video_title": "Aries", "talking_photo_id": "   "},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "provide either an image file or a talking_photo_id"
+    assert launched == []

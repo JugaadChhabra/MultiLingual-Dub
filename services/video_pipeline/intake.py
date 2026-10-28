@@ -114,6 +114,8 @@ class BatchSettings:
     character: str | None = None
     motion_prompt: str | None = None
     publish_date: str | None = None
+    # A photo picked from the account rather than uploaded; every row uses it.
+    talking_photo_id: str | None = None
     include_overlay: str | None = None
     include_music: str | None = None
 
@@ -160,6 +162,7 @@ def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[
                 character=shared.character,
                 motion_prompt=shared.motion_prompt,
                 publish_date=shared.publish_date,
+                talking_photo_id=shared.talking_photo_id,
                 include_overlay=toggles["include_overlay"],
                 include_music=toggles["include_music"],
             ))
