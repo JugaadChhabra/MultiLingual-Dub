@@ -684,3 +684,128 @@ def test_a_bad_request_is_refused_before_any_model_call(monkeypatch, tmp_path, o
 
     with pytest.raises(script_writer.ScriptRequestError):
         _day(script_writer.ScriptWriter(ScriptHistoryStore(tmp_path)), "2026-08-17", **overrides)
+
+
+# --- recording the rows an operator submitted ------------------------------
+
+
+def _submit(writer: script_writer.ScriptWriter, rows, **overrides) -> bool:
+    return writer.record_submitted(**{
+        "category": "sunsign",
+        "language": "hi-IN",
+        "publish_date": "2026-08-17",
+        "rows": rows,
+        **overrides,
+    })
+
+
+def test_submitted_rows_replace_the_days_history(monkeypatch, tmp_path) -> None:
+    _install(monkeypatch, _zodiac_body())
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    _day(writer, "2026-08-17")
+
+    assert _submit(writer, [("मेष", "मैंने इसे बदल दिया")]) is True
+
+    recorded = store.recent(category="sunsign", language="hi-IN")
+    assert [(d.title, d.script, d.key) for d in recorded] == [
+        ("2026-08-17 मेष", "मैंने इसे बदल दिया", "Aries")
+    ]
+
+
+def test_a_horoscope_batch_maps_every_title_to_its_sign_key(tmp_path) -> None:
+    store = ScriptHistoryStore(tmp_path)
+
+    _submit(script_writer.ScriptWriter(store), [("मेष", "एक"), ("वृषभ", "दो")])
+
+    recorded = store.recent(category="sunsign", language="hi-IN")
+    assert [d.key for d in recorded] == ["Aries", "Taurus"]
+
+
+def test_a_one_off_batch_titles_are_their_own_item_keys(tmp_path) -> None:
+    """A batch with no zodiac titles is a one-off set: title is the key, the same
+    rule a one-off day is written under, so its history lines up with itself."""
+    store = ScriptHistoryStore(tmp_path)
+
+    _submit(script_writer.ScriptWriter(store),
+            [("diwali_promo", "एक"), ("holi_promo", "दो")])
+
+    recorded = store.recent(category="sunsign", language="hi-IN")
+    assert [d.key for d in recorded] == ["diwali_promo", "holi_promo"]
+
+
+def test_a_one_off_submitted_back_lines_up_with_the_day_it_was_written_as(
+    monkeypatch, tmp_path
+) -> None:
+    _install(monkeypatch, json.dumps({"diwali_promo": valid_script(colour="लाल", number=21)},
+                                     ensure_ascii=False))
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    day = _day(writer, "2026-08-17", item_set="single", title="diwali promo")
+
+    _submit(writer, [(d.title, d.script) for d in day.drafts])
+
+    assert [d.key for d in store.recent(category="sunsign", language="hi-IN")] == [
+        d.key for d in day.drafts
+    ]
+
+
+def test_a_horoscope_batch_with_an_unmapped_title_is_refused(tmp_path) -> None:
+    """A stray non-sign title in a zodiac batch is refused, not filed under a
+    key nothing matches — the silent history hole the old fallback allowed."""
+    store = ScriptHistoryStore(tmp_path)
+
+    with pytest.raises(script_writer.UnknownItemTitle) as excinfo:
+        _submit(script_writer.ScriptWriter(store), [("मेष", "एक"), ("not-a-sign", "दो")])
+
+    assert excinfo.value.titles == ["not-a-sign"]
+    assert "not-a-sign" in str(excinfo.value)
+    assert store.recent(category="sunsign", language="hi-IN") == []
+
+
+@pytest.mark.parametrize("missing", ["category", "language", "publish_date"])
+def test_rows_without_a_full_history_key_are_not_recorded(tmp_path, missing) -> None:
+    """Without category, language and date there is nothing to file the day
+    under. Not an error — the batch still renders — but nothing is recorded,
+    and an unknown title is not refused, since no mapping is attempted."""
+    store = ScriptHistoryStore(tmp_path)
+
+    recorded = _submit(script_writer.ScriptWriter(store),
+                       [("मेष", "एक"), ("not-a-sign", "दो")], **{missing: None})
+
+    assert recorded is False
+    assert store.recent(category="sunsign", language="hi-IN") == []
+
+
+def test_edited_and_submitted_scripts_are_what_the_next_day_avoids(
+    monkeypatch, tmp_path
+) -> None:
+    """The write that matters for tomorrow is the submitted one: the operator's
+    edits are what aired, so they — not the generated draft — reach the prompt."""
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    _install(monkeypatch, _zodiac_body())
+    day = _day(writer, "2026-08-16")
+
+    # The operator swaps मेष's colour and number for ones the model never wrote.
+    edited = valid_script(colour="चांदी", number=77)
+    rows = [(d.title, edited if d.key == "Aries" else d.script) for d in day.drafts]
+    assert _submit(writer, rows, publish_date="2026-08-16") is True
+
+    next_day = json.dumps(
+        {sign.key: valid_script(colour=COLOURS[(i + 1) % 12], number=30 + i)
+         for i, sign in enumerate(ZODIAC_SIGNS)},
+        ensure_ascii=False,
+    )
+    captured: dict = {}
+    _install(monkeypatch, next_day, captured)
+    _day(writer, "2026-08-17")
+
+    aries_line = next(
+        line for line in captured["contents"].splitlines() if line.startswith("- Aries (")
+    )
+    assert "colours used: चांदी" in aries_line
+    assert "numbers used: 77" in aries_line
+    assert COLOURS[0] not in aries_line
+    filed = store.facts(category="sunsign", language="hi-IN", before="2026-08-17")
+    assert filed["Aries"].colours == ("चांदी",)

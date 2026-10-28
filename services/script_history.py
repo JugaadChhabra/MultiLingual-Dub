@@ -39,8 +39,8 @@ class DraftScript:
     only read a draft have no use for it.
 
     Defined here rather than in the writer because history is the lower layer:
-    the writer reads and records drafts through this store, and the batch route
-    records the operator's edited rows as drafts without writing anything.
+    the writer reads and records drafts through this store — its own, and the
+    operator's edited rows when a batch is submitted.
     """
 
     title: str
