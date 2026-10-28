@@ -4,17 +4,6 @@
   "use strict";
   const U = window.UI, $ = U.$;
 
-  // display only; the codes drive the API
-  const INDIAN = [["bn-IN","বাংলা","Bengali"],["en-IN","English","English"],["gu-IN","ગુજરાતી","Gujarati"],
-    ["hi-IN","हिन्दी","Hindi"],["kn-IN","ಕನ್ನಡ","Kannada"],["ml-IN","മലയാളം","Malayalam"],
-    ["mr-IN","मराठी","Marathi"],["od-IN","ଓଡ଼ିଆ","Odia"],["pa-IN","ਪੰਜਾਬੀ","Punjabi"],
-    ["ta-IN","தமிழ்","Tamil"],["te-IN","తెలుగు","Telugu"]];
-  const INTL = [["fr","Français","French"],["de","Deutsch","German"],["es","Español","Spanish"],
-    ["ru","Русский","Russian"],["pt","Português","Portuguese"]];
-  const ALL = [...INDIAN, ...INTL];
-  const GROUPS = { all: ALL, indian: INDIAN, intl: INTL };
-  const SEL = new Set(["hi-IN"]);
-
   // batch/excel.py requires these four; checking at drop time means a wrong
   // sheet is caught before the operator commits the run
   const REQUIRED = ["voiceover_text", "emotion", "activity_name", "voiceover_title"];
@@ -35,42 +24,8 @@
   const JOB_KEY = "autodub_audio_job";
 
   // ── language tokens ──────────────────────────────────────────────────────
-  function renderLangs() {
-    els.langs.innerHTML = "";
-    ALL.forEach(([code, native, english]) => {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "token"; b.dataset.code = code;
-      b.setAttribute("aria-pressed", String(SEL.has(code)));
-      b.setAttribute("aria-label", `${english} (${code})`);
-      // English until it is picked, then it morphs into the native script —
-      // the two share one grid cell so the pill never changes width
-      b.innerHTML = `<span class="morph"><span class="en">${U.esc(english)}</span>` +
-        `<span class="nat">${U.esc(native)}</span></span>`;
-      b.addEventListener("click", () => {
-        SEL.has(code) ? SEL.delete(code) : SEL.add(code);
-        b.setAttribute("aria-pressed", String(SEL.has(code)));
-        syncSel();
-      });
-      els.langs.appendChild(b);
-    });
-  }
-  const groupOn = (list) => list.length > 0 && list.every(([c]) => SEL.has(c));
-  function syncSel() {
-    els.selN.textContent = `· ${SEL.size} of ${ALL.length}`;
-    els.groups.querySelectorAll("button").forEach((b) =>
-      b.setAttribute("aria-pressed", String(groupOn(GROUPS[b.dataset.group] || []))));
-    refreshRun();
-  }
-  // group buttons toggle: turning one off is what a separate "clear" used to do
-  els.groups.addEventListener("click", (e) => {
-    const b = e.target.closest("button"); if (!b) return;
-    const list = GROUPS[b.dataset.group] || [];
-    const off = groupOn(list);
-    list.forEach(([c]) => (off ? SEL.delete(c) : SEL.add(c)));
-    els.langs.querySelectorAll(".token").forEach((t) =>
-      t.setAttribute("aria-pressed", String(SEL.has(t.dataset.code))));
-    syncSel();
-  });
+  const SEL = U.langPicker({ tokens: els.langs, groups: els.groups, count: els.selN,
+                             onChange: () => refreshRun() });
 
   U.bindSwitch(els.teach); U.bindSwitch(els.append);
 
@@ -286,6 +241,6 @@
     } catch (_) {}
   }
 
-  renderLangs(); syncSel(); reattach();
+  refreshRun(); reattach();
   window.PaneAudio = { refreshRun, isRunning: () => state.running };
 })();

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="favicon.png" />
 <title>AutoDub</title>
-<link rel="stylesheet" href="/static/app.css?v=11" />
+<link rel="stylesheet" href="/static/app.css?v=12" />
 </head>
 <body>
 <div class="app">
@@ -36,6 +36,10 @@
       <button class="sbi" data-section="video">
         <span class="g p" aria-hidden="true">▶</span> <span class="lbl">Video generation</span>
         <span class="live" id="videoLive" hidden></span>
+      </button>
+      <button class="sbi" data-section="story">
+        <span class="g o" aria-hidden="true">¶</span> <span class="lbl">Story</span>
+        <span class="live" id="storyLive" hidden></span>
       </button>
       <div id="recoverWrap" hidden>
         <div class="sbh">Needs attention</div>
@@ -114,6 +118,68 @@
           <button class="btn" id="aCancel" hidden>Cancel run</button>
           <span class="msg grow" id="aMsg" role="status" aria-live="polite"></span>
         </div>
+      </div>
+    </main>
+
+    <!-- ══════════════ STORY ══════════════ -->
+    <main class="pane" id="pane-story" aria-label="Story" hidden>
+      <div class="pane-inner">
+        <h1>Story</h1>
+        <div class="sub">A pasted story broken into voiceover lines, each with an emotion.</div>
+
+        <div id="storyBanners"></div>
+
+        <section id="sPaste">
+          <div class="gh">Story</div>
+          <div class="grp">
+            <div class="row">
+              <span class="tx"><span class="t">Title</span></span>
+              <span class="rt"><input type="text" class="fld" id="sTitle" maxlength="120" style="width:320px"
+                placeholder="e.g. The boy who followed the stream" /></span>
+            </div>
+            <div class="row">
+              <span class="tx"><span class="t">Activity name</span>
+                <span class="s">Filled in from the title; each clip is this plus its line number</span></span>
+              <span class="rt"><input type="text" class="fld" id="sActivity" maxlength="120" style="width:320px"
+                spellcheck="false" /></span>
+            </div>
+            <div class="row">
+              <textarea class="area" id="sText" rows="14" aria-label="Story text"
+                placeholder="Paste the story as plain English text"></textarea>
+            </div>
+          </div>
+
+          <div class="gh">Target languages <span id="sSelN"></span></div>
+          <div class="grp">
+            <div class="row" style="flex-wrap:wrap;gap:var(--s2);">
+              <div class="seg" id="sGroups">
+                <button type="button" data-group="all" aria-pressed="false">All</button>
+                <button type="button" data-group="indian" aria-pressed="false">Indian</button>
+                <button type="button" data-group="intl" aria-pressed="false">International</button>
+              </div>
+            </div>
+            <div class="row"><div class="tokens" id="sLangs" role="group" aria-label="Target languages"></div></div>
+          </div>
+
+          <div class="runbar">
+            <button class="btn p big" id="sSplit">Break into lines</button>
+            <span class="msg grow" id="sMsg" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+
+        <section id="sReview" hidden>
+          <div class="wh">
+            <span class="t">Lines <span class="n" id="sLineN"></span></span>
+            <span class="s">Check each line and its emotion before any audio is made. Activity <code id="sReviewActivity"></code></span>
+          </div>
+          <div class="grp" id="sLines"></div>
+
+          <div class="runbar">
+            <button class="btn" id="sBack">Edit the story</button>
+            <!-- Generate audio arrives in ticket #19 -->
+            <span class="msg grow" id="sReviewMsg" role="status" aria-live="polite"></span>
+          </div>
+        </section>
       </div>
     </main>
 
@@ -383,10 +449,11 @@
   </div>
 </div>
 
-<script src="/static/ui.js?v=1"></script>
-<script src="/static/pane-audio.js?v=3"></script>
+<script src="/static/ui.js?v=2"></script>
+<script src="/static/pane-audio.js?v=4"></script>
 <script src="/static/pane-video.js?v=6"></script>
-<script src="/static/shell.js?v=4"></script>
+<script src="/static/pane-story.js?v=1"></script>
+<script src="/static/shell.js?v=5"></script>
   <div class="toasts" role="status" aria-live="polite"></div>
 </body>
 </html>

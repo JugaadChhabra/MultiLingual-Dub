@@ -203,3 +203,14 @@ translating the surrounding explanation, for English-learning content.
 
 **Append mode** — merge newly generated audio into an activity's existing S3
 zips instead of creating fresh ones. Requires the folders to already exist.
+
+**Story** — a pasted plain-text story that becomes one activity, instead of a
+sheet. `services/story.py` owns it. `split_story` has Gemini break it into
+*story lines*, and accepts the split only if joining the lines gives back the
+operator's wording (whitespace and quote style aside), every emotion is in
+`STORY_EMOTIONS`, and no line is over `MAX_LINE_CHARS` with its emotion tag. A
+story over `MAX_STORY_LINES` is refused rather than chunked.
+
+**Story line** — one line of a story: its text and its emotion. Becomes a row
+once the story is generated; until then it lives only in the Story pane, where
+the operator reviews it.

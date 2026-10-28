@@ -441,6 +441,16 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
   max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .qrow .path.err{color:var(--red-ink);max-width:320px;}
 
+/* ─── story lines ───────────────────────────────────────────────────────── */
+/* A queue row that can be edited: the number, the line as text on the card (the
+   draft treatment — ringed only on focus), and its emotion. */
+#sLines .qrow{grid-template-columns:28px minmax(0,1fr) 150px;align-items:start;}
+#sLines .qrow .i{padding-top:3px;text-align:right;}
+#sLines .area{background:none;box-shadow:none;padding:2px 4px;min-height:0;resize:none;}
+#sLines .area:focus{box-shadow:0 0 0 3.5px var(--accent-soft);}
+#sLines .qrow[data-flag="bad"] .area{box-shadow:inset 0 0 0 1px var(--red);}
+#sText{min-height:240px;}
+
 /* ─── drafts ────────────────────────────────────────────────────────────── */
 /* A written script, before it is a render — and it should read as writing, not as
    a form. One surface per draft: the name is a heading, the script is text on the
