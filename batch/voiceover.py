@@ -182,7 +182,7 @@ async def translate_row(
         if error is not None or not clean:
             reason = error or "empty translation result"
             failures.append(TaskFailure(language=language, stage="translation", reason=reason))
-            logger.error("%slang %s: translation failed; skipping TTS (%s)", log_prefix, language, reason)
+            logger.error("%slang %s: translation failed (%s)", log_prefix, language, reason)
             continue
         translated_by_language[language] = clean
 
@@ -207,14 +207,14 @@ async def translate_row(
         failures.extend(
             TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
         )
-        return qc_by_language, failures
+        return {}, failures
     except Exception as exc:
         reason = f"Unexpected QC failure: {exc}"
         logger.error("%s%s", log_prefix, reason)
         failures.extend(
             TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
         )
-        return qc_by_language, failures
+        return {}, failures
 
     for language in translated_by_language:
         qc_text = (qc_results.get(language) or "").strip()

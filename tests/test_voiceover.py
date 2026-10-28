@@ -348,3 +348,26 @@ def test_speak_prefixes_the_emotion_and_fails_only_the_broken_language(monkeypat
     assert outcome.failures[0].stage == "tts"
     assert happy["translate"] == []
     assert happy["qc"] == []
+
+
+def test_voice_row_reports_failures_in_stage_order(monkeypatch, happy) -> None:
+    async def translate(text, language, _sarvam=None, _google=None):
+        if language == "hi-IN":
+            return language, None, "nope"
+        return language, f"t:{text}:{language}", None
+
+    def qc(original, translations, languages, *, settings=None, teaching_mode=False):
+        return {lang: ("" if lang == "ta-IN" else f"qc:{t}") for lang, t in translations.items()}
+
+    def tts(text, language, settings=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("batch.voiceover._translate_language_async", translate)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", qc)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", tts)
+
+    outcome = _run(_row(), ["hi-IN", "ta-IN", "te-IN"])
+
+    assert [(f.language, f.stage) for f in outcome.failures] == [
+        ("hi-IN", "translation"), ("ta-IN", "qc"), ("te-IN", "tts"),
+    ]
