@@ -21,6 +21,7 @@ from services.script_writer import (
     ASK_CHARS_LOW,
     ZODIAC_SIGNS,
     DraftScript,
+    ScriptCreditsError,
     ScriptRepairError,
     ScriptWriterError,
     ScriptWriterSettings,
@@ -146,6 +147,47 @@ def test_falls_through_to_the_next_model(monkeypatch) -> None:
         {"model-a": RuntimeError("429 rate limit"), "model-b": _zodiac_body()},
         captured,
     )
+
+    drafts = write_daily_scripts(
+        brief="Daily horoscope",
+        language="hi-IN",
+        publish_date="2026-08-17",
+        settings=_settings(["model-a", "model-b"]),
+    )
+
+    assert len(drafts) == len(ZODIAC_SIGNS)
+    assert captured["model"] == "model-b"
+
+
+def _gemini_error(code: int, status: str, message: str) -> Exception:
+    from google.genai import errors
+
+    return errors.ClientError(code, {"error": {"code": code, "status": status, "message": message}})
+
+
+def test_spent_credits_stop_at_the_first_model(monkeypatch) -> None:
+    """Every model bills to the same project, so trying the next one only adds
+    a warning per model and hides the one line that says to top up."""
+    captured: dict = {}
+    depleted = _gemini_error(402, "RESOURCE_EXHAUSTED", "Your prepayment credits are depleted.")
+    _install(monkeypatch, {"model-a": depleted, "model-b": _zodiac_body()}, captured)
+
+    with pytest.raises(ScriptCreditsError, match="aistudio.google.com"):
+        write_daily_scripts(
+            brief="Daily horoscope",
+            language="hi-IN",
+            publish_date="2026-08-17",
+            settings=_settings(["model-a", "model-b"]),
+        )
+    assert captured["model"] == "model-a"
+
+
+def test_a_per_model_quota_429_still_falls_through(monkeypatch) -> None:
+    """Free-tier limits are per model and worded as quota — the next model may
+    still have room, so this is not a billing stop."""
+    captured: dict = {}
+    limited = _gemini_error(429, "RESOURCE_EXHAUSTED", "You exceeded your current quota.")
+    _install(monkeypatch, {"model-a": limited, "model-b": _zodiac_body()}, captured)
 
     drafts = write_daily_scripts(
         brief="Daily horoscope",

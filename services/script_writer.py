@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import google.genai as genai
 from google.genai import types
 
+from services.errors import TOP_UP_URLS, classify
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
 from services.runtime_config import RuntimeConfig, read_setting, require
@@ -176,6 +177,30 @@ class ScriptRepairError(ScriptWriterError):
         super().__init__(message)
         self.drafts = drafts or []
         self.violations = violations or []
+
+
+class ScriptCreditsError(ScriptWriterError):
+    """The Gemini project behind the key has no credit left.
+
+    Every configured model bills to the same project, so the fallback would only
+    hit the same wall — and bury the one line that says what to do under a
+    warning per model. The fix is a top-up, not a retry.
+    """
+
+
+def _is_out_of_credit(exc: Exception) -> bool:
+    """A billing failure, as opposed to one model's own rate limit.
+
+    Gemini reports a free-tier per-model limit as 429 "exceeded your current
+    quota", which the classifier files as quota too. That one is worth falling
+    through on — the next model has its own limit — so a 429 is never a stop.
+    """
+    status = getattr(exc, "code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return False
+    return classify(exc, provider="gemini").kind == "quota"
 
 
 @dataclass(frozen=True)
@@ -516,6 +541,13 @@ the tags. Fix any that miss this. Do not pad with repetition."""
             # model gets another full budget to reproduce.
             raise
         except Exception as exc:
+            if _is_out_of_credit(exc):
+                logger.error("Script writer: Gemini credits exhausted (%s): %s", model, exc)
+                raise ScriptCreditsError(
+                    "Gemini credits are used up, so no model can write scripts. "
+                    f"Top up billing for the project behind GEMINI_API_KEY at "
+                    f"{TOP_UP_URLS['gemini']}, then try again."
+                ) from exc
             last_exc = exc
             logger.warning("Script writer: model %s failed: %s", model, exc)
 
