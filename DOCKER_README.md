@@ -1,4 +1,4 @@
-# AutoDub Docker Deployment (GHCR)
+# Content Hub Docker Deployment (GHCR)
 
 ## Pull and Run
 
@@ -35,7 +35,7 @@ App URL: `http://localhost:8080`
 ## Translation Routing
 
 - Sarvam handles existing Indian language targets.
-- In-process translation handles `fr`, `de`, `es`, `ru`, and `pt` inside AutoDub.
+- In-process translation handles `fr`, `de`, `es`, `ru`, and `pt` inside Content Hub.
 - QC and TTS flow stays the same after translation.
 
 ## Runtime Browser Config

@@ -4,21 +4,21 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="favicon.png" />
-<title>AutoDub</title>
+<title>Content Hub</title>
 <link rel="stylesheet" href="/static/app.css?v=15" />
 </head>
 <body>
 <!-- Icons are Remix Icon symbols from /static/icons.svg, always currentColor.
-     In markup: <svg class="ri"><use href="/static/icons.svg?v=1#name"/></svg>;
+     In markup: <svg class="ri"><use href="/static/icons.svg?v=2#name"/></svg>;
      in script: UI.icon("name"). -->
 <div class="app">
 
   <div class="tb">
     <button type="button" class="sbtoggle" id="sbToggle" aria-controls="sidebar" aria-expanded="true"
       aria-label="Toggle sidebar">
-      <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#sidebar"/></svg>
+      <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#sidebar"/></svg>
     </button>
-    <span class="title">AutoDub</span>
+    <span class="title">Content Hub</span>
     <div class="right">
       <span id="tbRun" hidden><span class="dot a pulse"></span> <span id="tbRunText"></span></span>
       <span class="sep" id="tbSep" hidden>·</span>
@@ -30,30 +30,30 @@
     <nav class="sb" id="sidebar" aria-label="Pipelines">
       <div class="sbh">Create</div>
       <button class="sbi" data-section="story">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#story"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#story"/></svg>
         <span class="lbl">Story</span>
         <span class="live" id="storyLive" hidden></span>
       </button>
       <button class="sbi" data-section="audio" aria-current="page">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#audio"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#audio"/></svg>
         <span class="lbl">Audio dubbing</span>
         <span class="live" id="audioLive" hidden></span>
       </button>
       <button class="sbi" data-section="video">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#video"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#video"/></svg>
         <span class="lbl">Video generation</span>
         <span class="live" id="videoLive" hidden></span>
       </button>
       <div class="sbh">Videos</div>
       <button class="sbi" data-section="library">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#library"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#library"/></svg>
         <span class="lbl">Library</span>
         <span class="live" id="libraryLive" hidden></span>
       </button>
       <div id="recoverWrap" hidden>
         <div class="sbh">Needs attention</div>
         <button class="sbi warn" id="recoverBtn">
-          <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#warning"/></svg>
+          <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#warning"/></svg>
           <span class="lbl">Not on the NAS</span>
           <span class="meta" id="recoverN">0</span>
         </button>
@@ -100,7 +100,7 @@
             <div class="grp">
               <div class="row">
                 <button type="button" class="drop empty" id="aDrop" data-state="empty">
-                  <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=1#sheet"/></svg></span>
+                  <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#sheet"/></svg></span>
                   <span class="tx">
                     <span class="t" id="aDropTitle">Drop a .xlsx, or click to browse</span>
                     <span class="s" id="aDropSub">Needs: voiceover_text, emotion, activity_name, voiceover_title</span>
@@ -161,8 +161,8 @@
           <div class="acts">
             <span class="msg" id="sReviewMsg" role="status" aria-live="polite"></span>
             <button class="btn" id="sCancel" hidden>Cancel run</button>
-            <button class="btn" id="sDownload"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#download"/></svg>Excel</button>
-            <button class="btn p" id="sGenerate"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#volume"/></svg>Generate audio</button>
+            <button class="btn" id="sDownload"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#download"/></svg>Excel</button>
+            <button class="btn p" id="sGenerate"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#volume"/></svg>Generate audio</button>
           </div>
         </header>
 
@@ -335,7 +335,7 @@
               <div class="grp">
                 <div class="row">
                   <button type="button" class="drop empty" id="vDrop" data-state="empty">
-                    <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=1#sheet"/></svg></span>
+                    <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#sheet"/></svg></span>
                     <span class="tx">
                       <span class="t" id="vDropTitle">Drop a .xlsx, or click to browse</span>
                       <span class="s" id="vDropSub">Needs: script · video_title optional</span>
@@ -356,7 +356,7 @@
                   <button type="button" class="btn" id="vGen">Write scripts</button>
                 </div>
                 <div id="vDrafts">
-                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=1#edit"/></svg>
+                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=2#edit"/></svg>
                     <div class="t">No drafts yet</div>
                     <div class="s">Written scripts appear here to read and edit before anything renders</div></div>
                 </div>
@@ -365,7 +365,7 @@
                 <div class="wh"><span class="t">Queue</span>
                   <span class="s">One row per video, as it renders and reaches the NAS</span></div>
                 <div class="grp" id="vQueue">
-                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=1#video"/></svg>
+                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=2#video"/></svg>
                     <div class="t">Nothing queued</div>
                     <div class="s">Rows appear here once the batch starts</div></div>
                 </div>
@@ -394,7 +394,7 @@
               <span class="sz" id="vFileSize"></span>
               <span class="acts">
                 <button type="button" class="btn sm" id="vReplace">Replace</button>
-                <button type="button" class="iconbtn" id="vRemove" aria-label="Remove avatar"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#close"/></svg></button>
+                <button type="button" class="iconbtn" id="vRemove" aria-label="Remove avatar"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
               </span>
             </div>
 
@@ -415,7 +415,10 @@
             <div class="vrun">
               <span class="msg" id="vMsg" role="status" aria-live="polite"></span>
               <button class="btn p big" id="vRun">Generate video</button>
-              <button class="btn" id="vCancel" hidden>Cancel</button>
+              <div class="vctl" id="vCtl" hidden>
+                <button class="btn" id="vPause" hidden>Pause</button>
+                <button class="btn" id="vCancel">Cancel</button>
+              </div>
             </div>
           </aside>
         </div>
@@ -444,7 +447,7 @@
             <button type="button" data-state="not_recoverable" aria-pressed="false">Can't recover <span class="n" data-n="not_recoverable"></span></button>
           </div>
           <input class="fld grow" id="libSearch" type="search" placeholder="Search title, date or id" aria-label="Search the library" />
-          <button class="btn" id="libRefresh"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#refresh"/></svg>Refresh</button>
+          <button class="btn" id="libRefresh"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#refresh"/></svg>Refresh</button>
           <button class="btn p" id="libSendAll" hidden>Send all to NAS</button>
         </div>
 
@@ -463,7 +466,7 @@
 <aside class="drawer" id="catDrawer" role="dialog" aria-modal="true" aria-labelledby="catTitle" inert>
   <div class="dh">
     <div class="tx"><h2 id="catTitle">New category</h2><div class="dsub" id="catSub">Motion prompt preset</div></div>
-    <button class="iconbtn" id="catClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#close"/></svg></button>
+    <button class="iconbtn" id="catClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
   </div>
   <div class="fld-block">
     <label class="flbl" for="catName">Name</label>
@@ -495,7 +498,7 @@
 <aside class="drawer" id="avDrawer" role="dialog" aria-modal="true" aria-labelledby="avTitle" inert>
   <div class="dh">
     <div class="tx"><h2 id="avTitle">Reuse an avatar</h2><div class="dsub">Already uploaded — no need to send it again</div></div>
-    <button class="iconbtn" id="avClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=1#close"/></svg></button>
+    <button class="iconbtn" id="avClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
   </div>
   <div class="fld-block grow" style="overflow-y:auto"><div id="avBody"></div></div>
 </aside>
@@ -503,7 +506,7 @@
 <!-- alert -->
 <div class="scrim" id="alertScrim"></div>
 <div class="alert" id="alert" role="alertdialog" aria-modal="true" aria-labelledby="alertTitle" inert>
-  <div class="g" id="alertIcon" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=1#warning-fill"/></svg></div>
+  <div class="g" id="alertIcon" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#warning-fill"/></svg></div>
   <div class="t" id="alertTitle"></div>
   <div class="m" id="alertMsg"></div>
   <div class="acts">

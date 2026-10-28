@@ -39,6 +39,7 @@ LibraryState = Literal["on_nas", "in_progress", "sendable", "needs_details", "re
 RENDER_FAILED = "HeyGen's render failed, so there is no video to recover. Re-run it to make a new one."
 NOTHING_RENDERED = "Failed before anything was sent to HeyGen, so nothing was rendered. Re-run it."
 NOT_ON_HEYGEN = "HeyGen no longer has this render, so it can't be recovered. Re-run it."
+CANCELLED = "Cancelled by the operator, so it was not filed."
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,7 @@ class LibraryEntry:
         return d
 
 
-_TERMINAL = ("completed", "failed")
+_TERMINAL = ("completed", "failed", "cancelled")
 # When several jobs claim one render (a render filed again under new details),
 # the one that says the most about it wins.
 _RANK = {"completed": 0, RECOVERING: 1, "failed": 3}
@@ -85,6 +86,8 @@ def _from_job(state: VideoJobState, render: RenderListing | None) -> LibraryEntr
     )
     if state.status == "completed":
         return LibraryEntry(state="on_nas", **base)
+    if state.status == "cancelled":
+        return LibraryEntry(state="not_recoverable", reason=CANCELLED, **base)
     if state.status != "failed":
         return LibraryEntry(state="in_progress", stage=state.stage_message or state.status, **base)
 
@@ -139,8 +142,8 @@ def build_library(renders: list[RenderListing], jobs: list[VideoJobState]) -> li
     for job in unmatched:
         # A job still before submission is in progress; one that failed there
         # is worth a line saying it can't be recovered. Completed jobs always
-        # have a render id.
-        if job.status != "completed":
+        # have a render id; one cancelled before submission left nothing to show.
+        if job.status not in ("completed", "cancelled"):
             entries.append(_from_job(job, None))
 
     epoch = datetime.min

@@ -105,7 +105,7 @@
     progress: $("#videoProgress"), pCount: $("#vpCount"), pDetail: $("#vpDetail"),
     up: $("#vpUp"), done: $("#vpDone"), bad: $("#vpBad"),
     upN: $("#vpUpN"), doneN: $("#vpDoneN"), badN: $("#vpBadN"), elapsed: $("#vpElapsed"),
-    run: $("#vRun"), cancel: $("#vCancel"), msg: $("#vMsg"), live: $("#videoLive"),
+    run: $("#vRun"), ctl: $("#vCtl"), pause: $("#vPause"), cancel: $("#vCancel"), msg: $("#vMsg"), live: $("#videoLive"),
   };
 
   const state = { image: null, photoId: null, stillURL: null, excel: null, excelProblem: null,
@@ -113,7 +113,8 @@
                   // Written scripts the operator is reviewing. Held here and not
                   // on the server: nothing is committed until Run.
                   drafts: [], writing: false, set: "zodiac",
-                  running: false, jobId: null, kind: null, startedAt: null };
+                  running: false, jobId: null, kind: null, startedAt: null,
+                  paused: false, cancelling: false };
   // Auto and Batch both submit rows, so everything about the run — the endpoint,
   // the progress rendering, the reattach — keys off this, not off the mode.
   const submitsRows = () => state.mode !== "single";
@@ -604,12 +605,65 @@
   }
   function refreshRun() {
     if (state.mode === "auto") { refreshGen(); refreshRunLabel(); }
-    if (state.running) { els.run.disabled = true; els.cancel.hidden = true; return; }
+    els.ctl.hidden = !state.running;
+    if (state.running) { els.run.disabled = true; refreshControls(); return; }
     const why = blocker();
     els.run.disabled = Boolean(why);
     if (!els.msg.classList.contains("err")) els.msg.textContent = why || "";
   }
   const say = (t, bad) => { els.msg.textContent = t || ""; els.msg.classList.toggle("err", !!bad); };
+
+  // ── pause / cancel ───────────────────────────────────────────────────────
+  // Pause is for a batch only: one video has no "next row" to hold back. Both
+  // act at the next step of the pipeline, never inside a render HeyGen already
+  // has — that one is paid for and finishes on their side.
+  const ctlBase = () => state.kind === "batch"
+    ? `/video/heygen/batch/${state.jobId}` : `/video/heygen/${state.jobId}`;
+  function refreshControls() {
+    els.pause.hidden = state.kind !== "batch";
+    els.pause.disabled = !state.jobId || state.cancelling;
+    U.label(els.pause, state.paused ? "Resume" : "Pause", state.paused ? "play" : "pause");
+    els.cancel.disabled = !state.jobId || state.cancelling;
+    U.label(els.cancel, state.cancelling ? "Cancelling…" : "Cancel", state.cancelling ? null : "stop");
+  }
+  els.pause.addEventListener("click", async () => {
+    const want = !state.paused;
+    els.pause.disabled = true;
+    try {
+      const r = await U.fetchT(`${ctlBase()}/${want ? "pause" : "resume"}`, { method: "POST" });
+      if (r.ok) setPaused(want);
+    } catch (_) {}
+    refreshControls();
+  });
+  els.cancel.addEventListener("click", () => {
+    const batch = state.kind === "batch";
+    U.confirm({
+      title: batch ? "Cancel this batch?" : "Cancel this render?",
+      message: batch
+        ? "Videos already on the NAS stay there. Nothing else is filed — renders HeyGen has already started are still billed."
+        : "It will not be filed to the NAS. If HeyGen has already started it, the render is still billed.",
+      confirmLabel: batch ? "Cancel batch" : "Cancel render", cancelLabel: "Keep going",
+      onOk: async () => {
+        state.cancelling = true; refreshControls();
+        try {
+          const r = await U.fetchT(`${ctlBase()}/cancel`, { method: "POST" });
+          if (!r.ok) { state.cancelling = false; refreshControls(); }
+        } catch (_) { state.cancelling = false; refreshControls(); }
+      },
+    });
+  });
+  function setPaused(on) {
+    if (state.paused === on) return;
+    state.paused = on;
+    els.tag.textContent = on ? "Paused" : "Rendering";
+    window.Shell.setRunning("video", true, on ? "Video paused" : "Video rendering");
+  }
+  // The server's word wins: another tab may have paused or cancelled this run.
+  function syncControls(p) {
+    setPaused(Boolean(p.paused));
+    if (p.cancel_requested) state.cancelling = true;
+    refreshControls();
+  }
 
   // ── run ──────────────────────────────────────────────────────────────────
   els.run.addEventListener("click", submit);
@@ -622,6 +676,7 @@
 
     const c = activeCat();
     state.running = true; state.kind = submitsRows() ? "batch" : "single";
+    state.paused = false; state.cancelling = false;
     state.startedAt = new Date().toISOString();
     els.live.hidden = false; refreshRun();
     window.Shell.setRunning("video", true, "Video rendering");
@@ -665,7 +720,7 @@
         if (!r.ok) throw await refusal(r);
         id = (await r.json()).job_id; url = `/video/heygen/${id}`;
       }
-      state.jobId = id;
+      state.jobId = id; refreshControls();
       try { localStorage.setItem(JOB_KEY, JSON.stringify({ kind: state.kind, id })); } catch (_) {}
       poll(url);
     } catch (e) {
@@ -679,6 +734,7 @@
     }
   }
 
+  const ENDED = ["completed", "failed", "partial", "cancelled"];
   async function poll(url) {
     while (state.running) {
       try {
@@ -686,7 +742,8 @@
         if (!r.ok) throw new Error("HTTP " + r.status);
         const p = await r.json();
         if (state.kind === "batch") renderBatch(p); else renderSingle(p);
-        if (["completed", "failed", "partial"].includes(p.status)) { finish(p.status, p); return; }
+        if (ENDED.includes(p.status)) { finish(p.status, p); return; }
+        syncControls(p);
       } catch (_) {}
       await new Promise((res) => setTimeout(res, 4000));
     }
@@ -696,9 +753,11 @@
     const done = p.status === "completed" ? 1 : 0;
     const failed = p.status === "failed" ? 1 : 0;
     els.pCount.innerHTML = `${done} <small>of 1 video</small>`;
-    els.pDetail.textContent = p.stage_message || p.status || "";
-    els.upN.textContent = done; els.doneN.textContent = done ? 0 : 1 - failed; els.badN.textContent = failed;
-    U.setBar(els, { total: 1, uploaded: done, rendered: done || failed ? 0 : 1, failed, live: !done && !failed });
+    const over = done || failed || p.status === "cancelled";
+    els.pDetail.textContent = p.cancel_requested && !over ? "Cancelling at the next step…"
+      : p.stage_message || p.status || "";
+    els.upN.textContent = done; els.doneN.textContent = over ? 0 : 1; els.badN.textContent = failed;
+    U.setBar(els, { total: 1, uploaded: done, rendered: over ? 0 : 1, failed, live: !over });
     els.elapsed.textContent = state.startedAt ? `Started ${U.clock(state.startedAt)}` : "";
   }
   function renderBatch(p) {
@@ -708,9 +767,12 @@
     const failed = rows.filter((r) => r.status === "failed").length;
     els.pCount.innerHTML = `${uploaded + doneNoNas} <small>of ${total} videos</small>`;
     els.upN.textContent = uploaded; els.doneN.textContent = doneNoNas; els.badN.textContent = failed;
-    U.setBar(els, { total, uploaded, rendered: doneNoNas, failed, live: p.status === "running" });
-    const left = U.eta(state.startedAt, uploaded + doneNoNas, total);
-    els.pDetail.textContent = [`${uploaded + doneNoNas} of ${total} rows`, left].filter(Boolean).join(" · ");
+    U.setBar(els, { total, uploaded, rendered: doneNoNas, failed,
+                    live: p.status === "running" && !p.paused && !p.cancel_requested });
+    const left = p.paused || p.cancel_requested ? null : U.eta(state.startedAt, uploaded + doneNoNas, total);
+    const held = p.cancel_requested ? "Cancelling — finishing the step each row is on"
+      : p.paused ? "Paused — renders HeyGen already has will finish" : null;
+    els.pDetail.textContent = [`${uploaded + doneNoNas} of ${total} rows`, held || left].filter(Boolean).join(" · ");
     els.elapsed.textContent = state.startedAt ? `Started ${U.clock(state.startedAt)}` : "";
     renderQueue(rows);
   }
@@ -742,7 +804,7 @@
   }
 
   function finish(status, p) {
-    state.running = false; state.jobId = null;
+    state.running = false; state.jobId = null; state.paused = false; state.cancelling = false;
     try { localStorage.removeItem(JOB_KEY); } catch (_) {}
     els.live.hidden = true;
     window.Shell.setRunning("video", false);
@@ -759,6 +821,13 @@
       U.toast("Render finished", { kind: "ok",
         detail: nas ? `Filed to <code>${U.esc(nas)}</code>` : "Finished." });
       U.notify("Video render finished", nas ? `Filed to ${nas}` : "Finished", false);
+    } else if (status === "cancelled") {
+      const filed = p && state.kind === "batch"
+        ? (p.rows || []).filter((r) => r.status === "completed").length : 0;
+      if (!filed) showStill("Cancelled");
+      U.toast(state.kind === "batch" ? "Batch cancelled" : "Render cancelled", { kind: "info",
+        detail: filed ? `${filed} video${filed === 1 ? " was" : "s were"} filed before it stopped.`
+          : "Nothing was filed to the NAS." });
     } else if (status === "partial") {
       const failed = (p.rows || []).filter((r) => r.status === "failed").length;
       U.notify(`Video batch finished with ${failed} failures`,
@@ -874,8 +943,9 @@
       const r = await U.fetchT(url);
       if (!r.ok) { localStorage.removeItem(JOB_KEY); return; }
       const p = await r.json();
-      if (["completed", "failed", "partial"].includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
+      if (ENDED.includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.kind = saved.kind; state.jobId = saved.id;
+      state.paused = false; state.cancelling = false; syncControls(p);
       state.startedAt = state.startedAt || new Date().toISOString();
       els.live.hidden = false; els.progress.hidden = false; refreshRun();
       U.toast("Reattached to a render already in progress", { kind: "info",

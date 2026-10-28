@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable
 
 from services.elevenlabs import ElevenLabsTTSConfig
 from services.nas import NasConfig, NasService
+from services.video_pipeline.control import JobCancelled, JobControl
 from services.video_pipeline.image_geometry import clamp_for_render, dimensions
 from services.video_pipeline.overlay import burn_cards
 from services.video_pipeline.recovery import NotRecoverable
@@ -60,7 +61,11 @@ async def run_video_job(
     slots: TalkingPhotoSlots,
     nas_config: NasConfig,
     voice_id: str | None = None,
+    control: JobControl | None = None,
 ) -> None:
+    """``control``, when given, can pause the job between steps or cancel it
+    (see control.py). A cancelled job ends 'cancelled', and never reaches the NAS."""
+    control = control or JobControl()
     try:
         # Persist the spec first thing: if this job later fails on the download or
         # NAS step, recovery needs the title/character/publish_date to re-run.
@@ -94,6 +99,7 @@ async def run_video_job(
         )
         cache_path = cache_dir / f"{cache_key}.mp3"
 
+        await control.checkpoint()
         audio_bytes: bytes
         if cache_path.exists() and cache_path.stat().st_size > 0:
             await jobs_store.set_status(job_id, "tts", f"Reusing cached audio ({cache_key[:12]})")
@@ -101,7 +107,7 @@ async def run_video_job(
             logger.info("TTS cache hit for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
         else:
             await jobs_store.set_status(job_id, "tts", "Generating audio")
-            audio_bytes = await speech.synthesize(
+            audio_bytes = await control.race(speech.synthesize(
                 spec.script,
                 config=ElevenLabsTTSConfig(
                     voice_id=resolved_voice_id,
@@ -111,7 +117,7 @@ async def run_video_job(
                     style=spec.style,
                     use_speaker_boost=spec.use_speaker_boost,
                 ),
-            )
+            ))
             cache_path.write_bytes(audio_bytes)
             logger.info("TTS cache write for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
 
@@ -123,6 +129,7 @@ async def run_video_job(
         )
 
         # 2. Upload audio + resolve talking photo
+        await control.checkpoint()
         await jobs_store.set_status(job_id, "uploading", "Uploading audio")
         audio_asset = await renderer.upload_audio(content=audio_bytes, content_type="audio/mpeg")
 
@@ -158,6 +165,8 @@ async def run_video_job(
             else:
                 logger.warning("Could not detect image dimensions for job %s; provider defaults apply", job_id)
 
+        # The last point a pause can hold: past here HeyGen bills the render.
+        await control.checkpoint()
         await jobs_store.set_status(job_id, "generating", "Submitting render")
         video_id = await renderer.submit(
             photo_id=talking_photo_id,
@@ -172,7 +181,13 @@ async def run_video_job(
 
         # 4. Wait for it
         await jobs_store.set_status(job_id, "polling", f"Polling render status (video_id={video_id})")
-        rendered = await _await_render(job_id, video_id, jobs_store=jobs_store, renderer=renderer)
+        rendered = await control.race(
+            _await_render(job_id, video_id, jobs_store=jobs_store, renderer=renderer))
+
+        # Cancelled while it rendered: the render is paid for, but the operator
+        # said they do not want it, so it is not filed.
+        if control.cancelled:
+            raise JobCancelled()
 
         # 5 + 6. Download the render, then upload to NAS. Factored out so the
         # exact same tail can be re-run by recover_video_job for a job that got
@@ -186,6 +201,8 @@ async def run_video_job(
             renderer=renderer,
             nas_config=nas_config,
         )
+    except JobCancelled:
+        await jobs_store.cancel(job_id)
     except Exception as exc:
         logger.exception("Video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)

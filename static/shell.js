@@ -11,8 +11,8 @@
   // /videogen and /story are real, linkable paths for their sections. The old
   // /heygen redirects to /videogen, so existing bookmarks still land right.
   const PATHS = { audio: "/", video: "/videogen", story: "/story", library: "/library" };
-  const TITLES = { audio: "AutoDub — Audio", video: "AutoDub — Video", story: "AutoDub — Story",
-                   library: "AutoDub — Library" };
+  const TITLES = { audio: "Content Hub — Audio", video: "Content Hub — Video", story: "Content Hub — Story",
+                   library: "Content Hub — Library" };
   function show(section, push = true) {
     document.querySelectorAll(".sbi[data-section]").forEach((b) => {
       const on = b.dataset.section === section;

@@ -11,11 +11,11 @@ from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobStat
 
 def test_batch_status_values():
     assert get_args(VideoBatchJobState.model_fields["status"].annotation) == (
-        "queued", "running", "completed", "partial", "failed",
+        "queued", "running", "completed", "partial", "failed", "cancelled",
     )
 
 
 def test_row_status_values():
     assert get_args(BatchRowState.model_fields["status"].annotation) == (
-        "pending", "running", "completed", "failed",
+        "pending", "running", "completed", "failed", "cancelled",
     )

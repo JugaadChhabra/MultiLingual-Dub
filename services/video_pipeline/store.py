@@ -122,6 +122,18 @@ class VideoJobsStore:
             self._write(state)
             logger.info("VideoJob %s → completed", job_id)
 
+    async def cancel(self, job_id: str) -> None:
+        """The operator cancelled. Not 'failed', so Recovery never offers to
+        file a render they said they did not want."""
+        async with self._lock:
+            state = self._jobs[job_id]
+            state.status = "cancelled"
+            state.stage_message = "Cancelled"
+            state.error = None
+            finalize_summary(state.summary)
+            self._write(state)
+            logger.info("VideoJob %s → cancelled", job_id)
+
     async def fail(self, job_id: str, message: str, *,
                    exc: BaseException | None = None, stage: str | None = None) -> None:
         async with self._lock:

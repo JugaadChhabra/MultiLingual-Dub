@@ -8,6 +8,7 @@ from pathlib import Path
 from services.email import EmailSettings, send_batch_summary_email
 from services.nas import NasConfig
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
+from services.video_pipeline.control import JobCancelled, JobControl
 from services.video_pipeline.pipeline import run_video_job
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
@@ -53,13 +54,18 @@ async def run_video_batch_job(
     heygen: HeyGenSettings,
     nas_config: NasConfig,
     email: EmailSettings,
+    control: JobControl | None = None,
 ) -> None:
     """Render every row against one talking photo: ``talking_photo_id`` when the
     operator picked one, otherwise one acquired from ``image_bytes``.
 
     A picked photo never goes through ``slots``: acquiring frees every slot
     first, which would delete the very photo that was picked.
+
+    ``control`` pauses or cancels the whole batch: every row shares it, so a
+    pause holds rows not yet submitted and a cancel stops them (control.py).
     """
+    control = control or JobControl()
     await batch_store.start(batch_id)
     failed_rows: list[dict] = []
 
@@ -90,6 +96,12 @@ async def run_video_batch_job(
 
     async def _run_one_row(item: BatchItem) -> None:
         async with semaphore:
+            # A paused batch starts no new row; a cancelled one starts none at all.
+            try:
+                await control.checkpoint()
+            except JobCancelled:
+                await batch_store.update_row(batch_id, item.row_index, status="cancelled")
+                return
             job_id = uuid.uuid4().hex
             await video_jobs_store.create(job_id)
             await batch_store.update_row(batch_id, item.row_index, job_id=job_id, status="running")
@@ -109,9 +121,14 @@ async def run_video_batch_job(
                     slots=slots,
                     nas_config=nas_config,
                     voice_id=heygen.voice_for_character(spec.character),
+                    control=control,
                 )
 
                 video_state = await video_jobs_store.get(job_id)
+                if video_state and video_state.status == "cancelled":
+                    await batch_store.update_row(batch_id, item.row_index, status="cancelled")
+                    logger.info("Batch %s | row %d cancelled (job %s)", batch_id, item.row_index, job_id)
+                    return
                 if not video_state or video_state.status != "completed":
                     raise RuntimeError(
                         (video_state.error if video_state else None) or "video job did not complete"
@@ -149,7 +166,7 @@ async def run_video_batch_job(
     # _run_one_row already records per-row failures, so this is just a safety net.
     await asyncio.gather(*(_run_one_row(item) for item in items), return_exceptions=True)
 
-    await batch_store.complete(batch_id)
+    await batch_store.complete(batch_id, cancelled=control.cancelled)
 
     if email.configured:
         batch_state = await batch_store.get(batch_id)

@@ -1,12 +1,12 @@
 #!/bin/bash
-# Quick start script for AutoDub GHCR setup
+# Quick start script for Content Hub GHCR setup
 # Usage: ./start.sh
 
 set -e
 
 IMAGE="ghcr.io/jugaadchhabra/autodub:latest"
 
-echo "AutoDub Quick Start"
+echo "Content Hub Quick Start"
 echo "==================="
 
 # Check if Docker is installed
@@ -92,7 +92,7 @@ echo "Pulling image: ${IMAGE}"
 docker pull "${IMAGE}"
 
 echo ""
-echo "Starting AutoDub service..."
+echo "Starting Content Hub service..."
 docker compose up -d
 
 # Wait for service to be ready
@@ -103,7 +103,7 @@ sleep 5
 if curl -s http://localhost:8080/health > /dev/null; then
     echo "Service is healthy."
     echo ""
-    echo "AutoDub is running."
+    echo "Content Hub is running."
     echo ""
     echo "Open your browser: http://localhost:8080"
     echo ""

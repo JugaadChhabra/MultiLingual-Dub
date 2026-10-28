@@ -64,6 +64,7 @@ from services.video_pipeline.batch_excel import (
 )
 from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
+from services.video_pipeline.control import JobControls
 from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.heygen_renderer import HeyGenRenderer
 from services.video_pipeline.intake import (
@@ -141,6 +142,16 @@ jobs_store = JobsStore(persist_dir=OUTPUT_DIR / "batch" / "_jobs")
 video_jobs_store = VideoJobsStore(persist_dir=OUTPUT_DIR / "heygen" / "_jobs")
 video_batch_jobs_store = VideoBatchJobsStore(persist_dir=OUTPUT_DIR / "heygen" / "_batches")
 session_config_store = SessionConfigStore()
+# Pause / cancel for the video jobs and batches running now, by their id.
+video_controls = JobControls()
+
+
+async def _controlled(key: str, coro) -> None:
+    """Run a video job or batch, dropping its control once it is over."""
+    try:
+        await coro
+    finally:
+        video_controls.close(key)
 
 VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
 VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -343,8 +354,9 @@ async def create_heygen_video_job(
     job_id = uuid.uuid4().hex
     await video_jobs_store.create(job_id)
 
+    control = video_controls.open(job_id)
     spawn(
-        run_video_job(
+        _controlled(job_id, run_video_job(
             job_id=job_id,
             spec=spec,
             image_bytes=image_bytes,
@@ -356,7 +368,8 @@ async def create_heygen_video_job(
             slots=deps.slots,
             nas_config=deps.nas,
             voice_id=deps.heygen.voice_for_character(spec.character),
-        ),
+            control=control,
+        )),
         name=f"video-job:{job_id}",
     )
 
@@ -523,7 +536,22 @@ async def get_heygen_video_job(job_id: str):
     if state.summary.video_path:
         rel = to_output_url(state.summary.video_path, OUTPUT_DIR)
         payload["video_local_url"] = rel
+    control = video_controls.get(job_id)
+    payload["cancel_requested"] = bool(control and control.cancelled)
     return payload
+
+
+@app.post("/video/heygen/{job_id}/cancel")
+async def cancel_heygen_video_job(job_id: str):
+    """Stop a single render at its next step. Once HeyGen has it, the render
+    still finishes (and is billed) on their side, but it is not filed."""
+    if not await video_jobs_store.get(job_id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    control = video_controls.get(job_id)
+    if control is None:
+        raise HTTPException(status_code=409, detail="Job is not running, so there is nothing to cancel")
+    control.cancel()
+    return {"job_id": job_id, "status": "cancelling"}
 
 
 @app.get("/video/heygen/jobs/recoverable")
@@ -746,8 +774,9 @@ async def create_heygen_batch_job(
     ]
     await video_batch_jobs_store.create(batch_id, batch_rows)
 
+    control = video_controls.open(batch_id)
     spawn(
-        run_video_batch_job(
+        _controlled(batch_id, run_video_batch_job(
             batch_id=batch_id,
             items=items,
             image_bytes=image_bytes,
@@ -763,7 +792,8 @@ async def create_heygen_batch_job(
             heygen=deps.heygen,
             nas_config=deps.nas,
             email=deps.email,
-        ),
+            control=control,
+        )),
         name=f"video-batch:{batch_id}",
     )
 
@@ -775,7 +805,46 @@ async def get_heygen_batch_job(batch_id: str):
     state = await video_batch_jobs_store.get(batch_id)
     if not state:
         raise HTTPException(status_code=404, detail="Batch job not found")
+    control = video_controls.get(batch_id)
+    if control is not None:
+        state.paused = control.paused
+        state.cancel_requested = control.cancelled
     return state.model_dump(mode="json")
+
+
+async def _batch_control(batch_id: str):
+    if not await video_batch_jobs_store.get(batch_id):
+        raise HTTPException(status_code=404, detail="Batch job not found")
+    control = video_controls.get(batch_id)
+    if control is None:
+        raise HTTPException(status_code=409, detail="Batch is not running")
+    return control
+
+
+@app.post("/video/heygen/batch/{batch_id}/pause")
+async def pause_heygen_batch(batch_id: str):
+    """Start no new row, and hold rows HeyGen does not have yet. Renders already
+    submitted keep going: they are paid for."""
+    control = await _batch_control(batch_id)
+    if control.cancelled:
+        raise HTTPException(status_code=409, detail="Batch is already being cancelled")
+    control.pause()
+    return {"batch_id": batch_id, "paused": True}
+
+
+@app.post("/video/heygen/batch/{batch_id}/resume")
+async def resume_heygen_batch(batch_id: str):
+    control = await _batch_control(batch_id)
+    control.resume()
+    return {"batch_id": batch_id, "paused": False}
+
+
+@app.post("/video/heygen/batch/{batch_id}/cancel")
+async def cancel_heygen_batch(batch_id: str):
+    """Stop every row that has not finished. Rows already on the NAS stay."""
+    control = await _batch_control(batch_id)
+    control.cancel()
+    return {"batch_id": batch_id, "status": "cancelling"}
 
 
 @app.get("/health")

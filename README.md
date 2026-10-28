@@ -1,4 +1,4 @@
-# AutoDub
+# Content Hub
 
 Automated multilingual audio dubbing. Upload text/Excel, translate, run QC, and generate audio files.
 
@@ -37,7 +37,7 @@ Open `http://localhost:8080`.
 ## Translation Providers
 
 - Existing Indian language targets (`bn-IN`, `en-IN`, `gu-IN`, `hi-IN`, `kn-IN`, `ml-IN`, `mr-IN`, `od-IN`, `pa-IN`, `ta-IN`, `te-IN`) continue to use Sarvam.
-- Additional foreign language targets (`fr`, `de`, `es`, `ru`, `pt`) use in-process translation inside the same AutoDub service.
+- Additional foreign language targets (`fr`, `de`, `es`, `ru`, `pt`) use in-process translation inside the same Content Hub service.
 - QC (Gemini), batching, and audio generation flow are unchanged for all targets.
 
 ## Runtime `.env` in Browser

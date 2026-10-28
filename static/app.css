@@ -1,4 +1,4 @@
-/* AutoDub — one stylesheet for both pipelines.
+/* Content Hub — one stylesheet for both pipelines.
    Everything is driven by the tokens below; no component invents a colour, a
    type size or a weight. Set in SF Pro via -apple-system (no webfonts) and
    follows the operator's system appearance, because that is what makes it feel
@@ -608,6 +608,8 @@ select.fld{padding-right:4px;}
 .vrun .msg{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--label2);text-align:center;}
 .vrun .msg.err{color:var(--red-ink);}
 .vrun .btn{width:100%;}
+.vctl{display:flex;gap:var(--s2);}
+.vctl .btn{flex:1;min-width:0;}
 
 /* Twelve scripts as two columns of text: wide enough to read a paragraph of
    Devanagari without hunting for the next line, narrow enough for six rows. */

@@ -18,7 +18,7 @@ class BatchRowState(BaseModel):
     script: str
     video_title: str
     job_id: str = ""
-    status: Literal["pending", "running", "completed", "failed"] = "pending"
+    status: Literal["pending", "running", "completed", "failed", "cancelled"] = "pending"
     video_local_url: str | None = None
     nas_path: str | None = None
     error: str | None = None
@@ -28,7 +28,7 @@ class BatchRowState(BaseModel):
 
 class VideoBatchJobState(BaseModel):
     batch_id: str
-    status: Literal["queued", "running", "completed", "partial", "failed"] = "queued"
+    status: Literal["queued", "running", "completed", "partial", "failed", "cancelled"] = "queued"
     total: int = 0
     done: int = 0
     failed_count: int = 0
@@ -36,6 +36,10 @@ class VideoBatchJobState(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     cause: dict | None = None   # why a failed/partial batch failed, see batch_cause
+    # Live from the batch's JobControl, filled in when the batch is read; a
+    # batch that is not running is neither.
+    paused: bool = False
+    cancel_requested: bool = False
 
 
 def batch_cause(state: VideoBatchJobState) -> dict | None:
@@ -154,11 +158,13 @@ class VideoBatchJobsStore:
             self._jobs[batch_id].failed_count += 1
             self._write(self._jobs[batch_id])
 
-    async def complete(self, batch_id: str) -> None:
+    async def complete(self, batch_id: str, *, cancelled: bool = False) -> None:
         async with self._lock:
             state = self._jobs[batch_id]
             state.finished_at = datetime.now(timezone.utc)
-            if state.failed_count == 0:
+            if cancelled:
+                state.status = "cancelled"
+            elif state.failed_count == 0:
                 state.status = "completed"
             elif state.done == 0:
                 state.status = "failed"

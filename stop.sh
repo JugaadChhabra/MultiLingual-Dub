@@ -1,8 +1,8 @@
 #!/bin/bash
-# Stop AutoDub service
+# Stop Content Hub service
 # Usage: ./stop.sh
 
-echo "Stopping AutoDub service..."
+echo "Stopping Content Hub service..."
 docker compose down
 echo "✅ Service stopped"
 echo ""
