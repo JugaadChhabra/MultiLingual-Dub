@@ -556,8 +556,7 @@
     if (!cats.length) return "Create a prompt category to start";
     if (!activeCat()) return "Pick a category";
     if (state.mode === "auto") {
-      // the batch endpoint takes an image upload only — no talking_photo_id
-      if (!state.image) return "Upload an avatar — a set needs its own image, not a reused one";
+      if (!state.image && !state.photoId) return "Add an avatar to start";
       if (state.writing) return "Waiting for the scripts";
       if (!state.drafts.length) return "Write today's scripts first";
       if (state.drafts.some((d) => !d.script.trim())) return "One of the drafts is empty";
@@ -565,7 +564,7 @@
       const titles = state.drafts.map((d) => d.video_title.trim().toLowerCase());
       if (new Set(titles).size !== titles.length) return "Two drafts share a file name — one would overwrite the other";
     } else if (state.mode === "batch") {
-      if (!state.image) return "Batch needs an uploaded image, not a reused avatar";
+      if (!state.image && !state.photoId) return "Add an avatar to start";
       if (!state.excel) return "Drop a spreadsheet of scripts";
       if (state.excelProblem) return state.excelProblem;
     } else {
