@@ -14,6 +14,7 @@ Fill all required keys in `.env`:
 
 - `SARVAM_API`
 - `GEMINI_API_KEY`
+- `OPENROUTER_API_KEY` (script writer)
 - `AWS_ACCESS_KEY`
 - `AWS_SECRET_KEY`
 - `AWS_BUCKET`

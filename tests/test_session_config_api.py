@@ -9,6 +9,7 @@ def _valid_env_text() -> str:
             "ELEVEN_LABS=test-eleven",
             "SARVAM_API=test-sarvam",
             "GEMINI_API_KEY=test-google",
+            "OPENROUTER_API_KEY=test-openrouter",
             "AWS_ACCESS_KEY=abc",
             "AWS_SECRET_KEY=xyz",
             "AWS_BUCKET=test-bucket",

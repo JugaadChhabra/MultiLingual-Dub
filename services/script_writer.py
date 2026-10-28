@@ -1,8 +1,8 @@
 """Writing a day's scripts, so nobody has to type them into a spreadsheet.
 
 The video pipeline used to take its words from an Excel sheet: one row per
-video, authored by hand every day. This module authors them instead. Gemini is
-the writer — there is no external content source and nothing is fetched. What it
+video, authored by hand every day. This module authors them instead. A model
+reached through OpenRouter is the writer — there is no external content source and nothing is fetched. What it
 is told is the category's brief, the date, the item list (for a horoscope, the
 twelve signs) and what it already said on recent days.
 
@@ -17,11 +17,9 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-import google.genai as genai
-from google.genai import types
-
 from services.errors import TOP_UP_URLS, classify
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
+from services.openrouter import OpenRouterClient
 from services.retry import retry_call
 from services.runtime_config import RuntimeConfig, read_setting, require
 from services.script_history import DraftScript, ScriptHistoryStore
@@ -42,7 +40,9 @@ from services.script_validate import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SCRIPT_MODELS = ["gemini-2.5-pro", "gemini-2.5-flash"]
+# OpenRouter model ids. Flash writes the set for a fraction of a cent; Pro is
+# the fallback for a day Flash cannot get right.
+DEFAULT_SCRIPT_MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-pro"]
 
 @dataclass(frozen=True)
 class SetItem:
@@ -128,7 +128,7 @@ class ScriptRequestError(ScriptWriterError):
     """A request the writer refuses before any model is called.
 
     Separate from a generation failure because the fix is the operator's — add
-    a brief, pick a real item set — not a retry against Gemini.
+    a brief, pick a real item set — not a retry against the model.
     """
 
 
@@ -180,9 +180,9 @@ class ScriptRepairError(ScriptWriterError):
 
 
 class ScriptCreditsError(ScriptWriterError):
-    """The Gemini project behind the key has no credit left.
+    """The OpenRouter account behind the key has no credit left.
 
-    Every configured model bills to the same project, so the fallback would only
+    Every configured model bills to the same balance, so the fallback would only
     hit the same wall — and bury the one line that says what to do under a
     warning per model. The fix is a top-up, not a retry.
     """
@@ -191,16 +191,13 @@ class ScriptCreditsError(ScriptWriterError):
 def _is_out_of_credit(exc: Exception) -> bool:
     """A billing failure, as opposed to one model's own rate limit.
 
-    Gemini reports a free-tier per-model limit as 429 "exceeded your current
-    quota", which the classifier files as quota too. That one is worth falling
-    through on — the next model has its own limit — so a 429 is never a stop.
+    A 429 can be worded as quota too, but it is one model's provider being
+    busy or limited — the next model may well have room — so a 429 is never a
+    stop.
     """
-    status = getattr(exc, "code", None)
-    if status is None:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-    if status == 429:
+    if getattr(exc, "status_code", None) == 429:
         return False
-    return classify(exc, provider="gemini").kind == "quota"
+    return classify(exc, provider="openrouter").kind == "quota"
 
 
 @dataclass(frozen=True)
@@ -208,14 +205,14 @@ class ScriptWriterSettings:
     api_key: str
     models: list[str]
 
-    REQUIRED = ("GEMINI_API_KEY",)
+    REQUIRED = ("OPENROUTER_API_KEY",)
 
     @classmethod
     def resolve(cls, session: RuntimeConfig | None = None) -> ScriptWriterSettings:
         values = require(cls.REQUIRED, session)
-        raw = read_setting("GEMINI_SCRIPT_MODELS", session).strip()
+        raw = read_setting("OPENROUTER_SCRIPT_MODELS", session).strip()
         models = [item.strip() for item in raw.split(",") if item.strip()] or DEFAULT_SCRIPT_MODELS
-        return cls(api_key=values["GEMINI_API_KEY"], models=models)
+        return cls(api_key=values["OPENROUTER_API_KEY"], models=models)
 
 
 def _parse_response_json(response_text: str) -> dict:
@@ -227,10 +224,10 @@ def _parse_response_json(response_text: str) -> dict:
     return json.loads(text)
 
 
-def _response_schema(items: tuple[SetItem, ...]) -> types.Schema:
+def _response_schema(items: tuple[SetItem, ...]) -> dict:
     """A JSON schema forcing an object with exactly the item keys, each a string.
 
-    Handed to Gemini as the response schema (with response_mime_type set) so the
+    Handed to the model as a strict response schema so the
     reply comes back as a JSON object of the right shape with every key present,
     rather than free text that is parsed and then found wanting. This removes a
     whole class of first-call failures — a stray code fence, a missing sign, a
@@ -241,12 +238,12 @@ def _response_schema(items: tuple[SetItem, ...]) -> types.Schema:
     reply it asked for.
     """
     keys = [item.key for item in items]
-    return types.Schema(
-        type=types.Type.OBJECT,
-        properties={key: types.Schema(type=types.Type.STRING) for key in keys},
-        required=keys,
-        property_ordering=keys,
-    )
+    return {
+        "type": "object",
+        "properties": {key: {"type": "string"} for key in keys},
+        "required": keys,
+        "additionalProperties": False,
+    }
 
 
 def _recent_by_key(recent: list[DraftScript]) -> dict[str, list[str]]:
@@ -510,7 +507,7 @@ def write_daily_scripts(
 
     history = history or {}
     recent_by_key = _recent_by_key(recent or [])
-    client = genai.Client(api_key=settings.api_key)
+    client = OpenRouterClient(settings.api_key)
     system_instruction = _system_instruction(brief=brief, language=language, items=items)
     # The length and shape rules are repeated here, in the last thing the model
     # reads. Stated only in the system instruction, length came back at roughly
@@ -542,23 +539,23 @@ the tags. Fix any that miss this. Do not pad with repetition."""
             raise
         except Exception as exc:
             if _is_out_of_credit(exc):
-                logger.error("Script writer: Gemini credits exhausted (%s): %s", model, exc)
+                logger.error("Script writer: OpenRouter credits exhausted (%s): %s", model, exc)
                 raise ScriptCreditsError(
-                    "Gemini credits are used up, so no model can write scripts. "
-                    f"Top up billing for the project behind GEMINI_API_KEY at "
-                    f"{TOP_UP_URLS['gemini']}, then try again."
+                    "OpenRouter credits are used up, so no model can write scripts. "
+                    f"Add credits for the account behind OPENROUTER_API_KEY at "
+                    f"{TOP_UP_URLS['openrouter']}, then try again."
                 ) from exc
             last_exc = exc
             logger.warning("Script writer: model %s failed: %s", model, exc)
 
     raise ScriptWriterError(
-        f"Gemini script writing failed after {len(settings.models)} model(s): {last_exc}"
+        f"Script writing failed after {len(settings.models)} model(s): {last_exc}"
     ) from last_exc
 
 
 def _write_with_model(
     *,
-    client: genai.Client,
+    client: OpenRouterClient,
     model: str,
     system_instruction: str,
     prompt: str,
@@ -575,18 +572,14 @@ def _write_with_model(
     def generate(contents: str, wanted: tuple[SetItem, ...]) -> dict[str, str]:
         # Config is built per call: the response schema names exactly the keys
         # being asked for, which differs between the first call and a repair.
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            response_schema=_response_schema(wanted),
-        )
-        response = retry_call(
-            lambda: client.models.generate_content(
-                model=model, contents=contents, config=config
+        schema = _response_schema(wanted)
+        text = retry_call(
+            lambda: client.complete_json(
+                model=model, system=system_instruction, prompt=contents, schema=schema
             ),
-            operation=f"Gemini script writer ({model})",
+            operation=f"Script writer ({model})",
         )
-        return _collect(_parse_response_json((response.text or "").strip()), wanted)
+        return _collect(_parse_response_json(text.strip()), wanted)
 
     scripts = generate(prompt, items)
     truncated = _truncate_set(scripts)

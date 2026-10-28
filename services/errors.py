@@ -28,6 +28,7 @@ PROVIDER_NAMES = {
     "sarvam": "Sarvam",
     "heygen": "HeyGen",
     "gemini": "Gemini",
+    "openrouter": "OpenRouter",
     "s3": "S3",
     "nas": "the NAS",
 }
@@ -52,6 +53,7 @@ TOP_UP_URLS = {
     "sarvam": "https://dashboard.sarvam.ai/",
     "heygen": "https://app.heygen.com/settings/subscriptions",
     "gemini": "https://aistudio.google.com/projects",
+    "openrouter": "https://openrouter.ai/settings/credits",
 }
 
 # HeyGen's own code for "you are out of what you paid for". Already referenced
@@ -159,7 +161,7 @@ def infer_provider(exc: Any) -> str | None:
     """
     module = getattr(type(exc), "__module__", "") or ""
     text = f"{module} {_text_of(exc)} {_body_of(exc)}".lower()
-    for key in ("elevenlabs", "sarvam", "heygen", "gemini"):
+    for key in ("elevenlabs", "sarvam", "heygen", "openrouter", "gemini"):
         if key in text:
             return key
     if "boto" in text or "s3" in module.lower():

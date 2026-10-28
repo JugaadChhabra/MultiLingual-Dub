@@ -46,6 +46,7 @@ ENV_TEXT = "\n".join(
         "ELEVEN_LABS=test-eleven",
         "SARVAM_API=test-sarvam",
         "GEMINI_API_KEY=test-google",
+        "OPENROUTER_API_KEY=test-openrouter",
         "HEYGEN_ISHWARI=test-heygen",
         "AWS_ACCESS_KEY=abc",
         "AWS_SECRET_KEY=xyz",

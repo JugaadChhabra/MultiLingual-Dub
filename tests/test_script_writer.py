@@ -7,10 +7,12 @@ on earlier days reaches the prompt.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from services import script_writer
+from services.openrouter import OpenRouterError
 from services.script_history import ScriptHistoryStore
 from services.script_validate import ALL_TAGS, HistoryFacts
 from services.script_writer import (
@@ -40,6 +42,25 @@ class FakeResponse:
         self.text = text
 
 
+def _patch_models(monkeypatch, fake_models) -> None:
+    """Stand an OpenRouter client up over a fake with ``generate_content``.
+
+    The fakes predate the move to OpenRouter and read as one model call each;
+    this adapter keeps them that way. ``config`` carries the system prompt and
+    the schema under the names they are asserted on.
+    """
+
+    class FakeClient:
+        def __init__(self, api_key: str) -> None:
+            pass
+
+        def complete_json(self, *, model: str, system: str, prompt: str, schema: dict) -> str:
+            config = SimpleNamespace(system_instruction=system, response_schema=schema)
+            return fake_models.generate_content(model=model, contents=prompt, config=config).text
+
+    monkeypatch.setattr("services.script_writer.OpenRouterClient", FakeClient)
+
+
 def _install(monkeypatch, responses: dict[str, str] | str, captured: dict | None = None):
     """Stub Gemini. ``responses`` is either one body for every model, or a body
     per model name — a value that is an Exception is raised instead."""
@@ -56,11 +77,7 @@ def _install(monkeypatch, responses: dict[str, str] | str, captured: dict | None
                 raise body
             return FakeResponse(body)
 
-    class FakeClient:
-        def __init__(self, api_key: str) -> None:
-            self.models = FakeModels()
-
-    monkeypatch.setattr("services.script_writer.genai.Client", FakeClient)
+    _patch_models(monkeypatch, FakeModels())
 
 
 def _settings(models: list[str] | None = None) -> ScriptWriterSettings:
@@ -159,20 +176,18 @@ def test_falls_through_to_the_next_model(monkeypatch) -> None:
     assert captured["model"] == "model-b"
 
 
-def _gemini_error(code: int, status: str, message: str) -> Exception:
-    from google.genai import errors
-
-    return errors.ClientError(code, {"error": {"code": code, "status": status, "message": message}})
+def _openrouter_error(code: int, message: str) -> Exception:
+    return OpenRouterError(code, message)
 
 
 def test_spent_credits_stop_at_the_first_model(monkeypatch) -> None:
     """Every model bills to the same project, so trying the next one only adds
     a warning per model and hides the one line that says to top up."""
     captured: dict = {}
-    depleted = _gemini_error(402, "RESOURCE_EXHAUSTED", "Your prepayment credits are depleted.")
+    depleted = _openrouter_error(402, "Insufficient credits. Add more using https://openrouter.ai/settings/credits")
     _install(monkeypatch, {"model-a": depleted, "model-b": _zodiac_body()}, captured)
 
-    with pytest.raises(ScriptCreditsError, match="aistudio.google.com"):
+    with pytest.raises(ScriptCreditsError, match="openrouter.ai/settings/credits"):
         write_daily_scripts(
             brief="Daily horoscope",
             language="hi-IN",
@@ -183,10 +198,10 @@ def test_spent_credits_stop_at_the_first_model(monkeypatch) -> None:
 
 
 def test_a_per_model_quota_429_still_falls_through(monkeypatch) -> None:
-    """Free-tier limits are per model and worded as quota — the next model may
+    """A 429 is one model's provider being limited, even worded as quota — the next model may
     still have room, so this is not a billing stop."""
     captured: dict = {}
-    limited = _gemini_error(429, "RESOURCE_EXHAUSTED", "You exceeded your current quota.")
+    limited = _openrouter_error(429, "google/gemini-2.5-flash: exceeded your current quota")
     _install(monkeypatch, {"model-a": limited, "model-b": _zodiac_body()}, captured)
 
     drafts = write_daily_scripts(
@@ -309,11 +324,11 @@ def test_the_reply_is_requested_as_structured_json(monkeypatch) -> None:
     write_daily_scripts(brief="Daily horoscope", language="hi-IN",
                         publish_date="2026-08-17", settings=_settings())
 
-    config = captured["config"]
-    assert config.response_mime_type == "application/json"
-    keys = list(config.response_schema.properties)
+    schema = captured["config"].response_schema
+    keys = list(schema["properties"])
     assert keys == [sign.key for sign in ZODIAC_SIGNS]
-    assert set(config.response_schema.required) == set(keys)
+    assert set(schema["required"]) == set(keys)
+    assert schema["additionalProperties"] is False
 
 
 def test_recent_scripts_are_grouped_by_sign_for_the_across_day_check(monkeypatch) -> None:
@@ -352,9 +367,9 @@ def test_a_single_item_set_writes_one_script(monkeypatch) -> None:
 
 def test_an_empty_brief_is_refused_before_any_call(monkeypatch) -> None:
     def explode(*_args, **_kwargs):
-        raise AssertionError("must not reach Gemini")
+        raise AssertionError("must not reach the model")
 
-    monkeypatch.setattr("services.script_writer.genai.Client", explode)
+    monkeypatch.setattr("services.script_writer.OpenRouterClient", explode)
 
     with pytest.raises(ScriptWriterError, match="brief"):
         write_daily_scripts(
@@ -380,10 +395,7 @@ def test_only_the_offending_script_is_rewritten(monkeypatch) -> None:
                 return FakeResponse(json.dumps(bad, ensure_ascii=False))
             return FakeResponse(json.dumps({"Taurus": fixed}, ensure_ascii=False))
 
-    monkeypatch.setattr(
-        "services.script_writer.genai.Client",
-        lambda api_key: type("C", (), {"models": FakeModels()})(),
-    )
+    _patch_models(monkeypatch, FakeModels())
 
     drafts = write_daily_scripts(brief="Daily horoscope", language="hi-IN",
                                  publish_date="2026-08-17", settings=_settings())
@@ -435,10 +447,7 @@ def test_a_soft_violation_alone_does_not_trigger_a_repair(monkeypatch) -> None:
             calls.append(contents)
             return FakeResponse(_zodiac_body())
 
-    monkeypatch.setattr(
-        "services.script_writer.genai.Client",
-        lambda api_key: type("C", (), {"models": FakeModels()})(),
-    )
+    _patch_models(monkeypatch, FakeModels())
 
     drafts = write_daily_scripts(
         brief="Daily horoscope", language="hi-IN", publish_date="2026-08-17",
@@ -479,10 +488,7 @@ def test_a_repeat_of_a_recent_colour_is_repaired(monkeypatch) -> None:
                 return FakeResponse(body)
             return FakeResponse(json.dumps({"Aries": fixed}, ensure_ascii=False))
 
-    monkeypatch.setattr(
-        "services.script_writer.genai.Client",
-        lambda api_key: type("C", (), {"models": FakeModels()})(),
-    )
+    _patch_models(monkeypatch, FakeModels())
 
     drafts = write_daily_scripts(
         brief="Daily horoscope", language="hi-IN", publish_date="2026-08-17",
@@ -532,10 +538,7 @@ def test_a_spent_repair_budget_does_not_retry_the_whole_thing_on_the_next_model(
             calls.append(model)
             return FakeResponse(json.dumps(clashing, ensure_ascii=False))
 
-    monkeypatch.setattr(
-        "services.script_writer.genai.Client",
-        lambda api_key: type("C", (), {"models": FakeModels()})(),
-    )
+    _patch_models(monkeypatch, FakeModels())
 
     with pytest.raises(ScriptRepairError):
         write_daily_scripts(brief="Daily horoscope", language="hi-IN",
@@ -578,10 +581,7 @@ def test_a_repair_is_told_which_colours_the_untouched_scripts_hold(monkeypatch) 
             return FakeResponse(json.dumps(
                 {"Taurus": valid_script(colour="जामुनी", number=44)}, ensure_ascii=False))
 
-    monkeypatch.setattr(
-        "services.script_writer.genai.Client",
-        lambda api_key: type("C", (), {"models": FakeModels()})(),
-    )
+    _patch_models(monkeypatch, FakeModels())
 
     write_daily_scripts(brief="Daily horoscope", language="hi-IN",
                         publish_date="2026-08-17", settings=_settings())
@@ -722,7 +722,7 @@ def test_a_bad_request_is_refused_before_any_model_call(monkeypatch, tmp_path, o
     def explode(api_key):
         raise AssertionError("no model should be called")
 
-    monkeypatch.setattr("services.script_writer.genai.Client", explode)
+    monkeypatch.setattr("services.script_writer.OpenRouterClient", explode)
 
     with pytest.raises(script_writer.ScriptRequestError):
         _day(script_writer.ScriptWriter(ScriptHistoryStore(tmp_path)), "2026-08-17", **overrides)

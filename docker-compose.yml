@@ -35,7 +35,10 @@ services:
       # passed through so a model can be changed or rolled back from .env alone,
       # without waiting on an image rebuild.
       GEMINI_QC_MODELS: ${GEMINI_QC_MODELS:-}
-      GEMINI_SCRIPT_MODELS: ${GEMINI_SCRIPT_MODELS:-}
+
+      # The script writer goes through OpenRouter, not the Gemini key above.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_SCRIPT_MODELS: ${OPENROUTER_SCRIPT_MODELS:-}
 
       AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
       AWS_SECRET_KEY: ${AWS_SECRET_KEY}
