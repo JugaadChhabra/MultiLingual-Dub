@@ -9,6 +9,7 @@ The chain is translate -> QC -> speak -> compress, in two halves that can be
 called on their own: ``translate_row`` (translate, then optional QC) gives text
 per language, and ``speak_row`` (speak with the row's emotion, then compress)
 turns that text into audio. ``voice_row`` is simply one followed by the other.
+``qc_row`` is the QC half on its own, for drafts translated earlier.
 The split lets a caller fix every row's text before any of it is spoken.
 
 QC is called ONCE for the whole row rather than per language: Gemini prices
@@ -189,15 +190,35 @@ async def translate_row(
     if not qc or not translated_by_language:
         return translated_by_language, failures
 
-    # 2. QC — one call for the whole row.
-    logger.info("%sQC start for %d language(s)", log_prefix, len(translated_by_language))
+    texts, qc_failures = await qc_row(row, translated_by_language, deps, log_prefix=log_prefix)
+    return texts, failures + qc_failures
+
+
+async def qc_row(
+    row: ExcelRow,
+    drafts_by_language: dict[str, str],
+    deps: VoiceoverDeps,
+    *,
+    log_prefix: str = "",
+) -> tuple[dict[str, str], list[TaskFailure]]:
+    """QC one row's translation drafts, every language in a single Gemini call.
+
+    Returns (text by language, failures); a language appears in exactly one of
+    the two, and a failure here is always a 'qc' one. Never raises for a
+    per-language problem.
+    """
+    failures: list[TaskFailure] = []
+    if not drafts_by_language:
+        return {}, failures
+
+    logger.info("%sQC start for %d language(s)", log_prefix, len(drafts_by_language))
     qc_by_language: dict[str, str] = {}
     try:
         qc_results = await asyncio.to_thread(
             qc_translations_batch,
             row.text,
-            translated_by_language,
-            list(translated_by_language.keys()),
+            drafts_by_language,
+            list(drafts_by_language.keys()),
             settings=deps.qc,
             teaching_mode=deps.teaching_mode,
         )
@@ -205,18 +226,18 @@ async def translate_row(
         reason = f"QC failed: {exc}"
         logger.error("%s%s", log_prefix, reason)
         failures.extend(
-            TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
+            TaskFailure(language=lang, stage="qc", reason=reason) for lang in drafts_by_language
         )
         return {}, failures
     except Exception as exc:
         reason = f"Unexpected QC failure: {exc}"
         logger.error("%s%s", log_prefix, reason)
         failures.extend(
-            TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
+            TaskFailure(language=lang, stage="qc", reason=reason) for lang in drafts_by_language
         )
         return {}, failures
 
-    for language in translated_by_language:
+    for language in drafts_by_language:
         qc_text = (qc_results.get(language) or "").strip()
         if not qc_text:
             failures.append(

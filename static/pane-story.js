@@ -294,7 +294,24 @@
     window.Shell.setRunning("story", false);
     if (summary) U.jobProgress(els, summary, status, state.targets.length || SEL.size);
     summarise();
-    if (report) U.jobEnded({ banners: els.banners, status, summary, cause, name: "Story audio" });
+    if (!report) return;
+    U.jobEnded({ banners: els.banners, status, summary, cause, name: "Story audio" });
+    storyFixReport(summary);
+  }
+
+  // Lines the story fix could not cover got the line-by-line fix instead, and
+  // lines whose length moved far from the draft are worth a listen.
+  function storyFixReport(s) {
+    s = s || {};
+    const fell = s.story_fix_fallback_lines || 0, flagged = s.story_fix_flagged_lines || 0;
+    if (!fell && !flagged && !s.story_fix_warning) return;
+    const counts = [
+      fell && `${fell} line${fell === 1 ? "" : "s"} used the line-by-line fix`,
+      flagged && `${flagged} line${flagged === 1 ? "" : "s"} changed length a lot — worth a listen`,
+    ].filter(Boolean).join(" · ");
+    U.banner(els.banners, { kind: "warn", id: "story-fix", title: "Some lines were fixed differently",
+      detail: [counts, s.story_fix_warning, "Listen to these lines in the ZIP before publishing."]
+        .filter(Boolean).map(U.esc).join("<br>") });
   }
 
   // ── survive a reload ─────────────────────────────────────────────────────
