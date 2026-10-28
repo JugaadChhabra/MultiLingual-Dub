@@ -219,3 +219,6 @@ output/
 
 # macOS folder metadata, anywhere in the tree
 .DS_Store
+
+# Brainstorm mockups
+.superpowers/
