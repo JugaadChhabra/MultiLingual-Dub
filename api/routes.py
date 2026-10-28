@@ -52,7 +52,13 @@ from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.heygen_renderer import HeyGenRenderer
-from services.video_pipeline.intake import IntakeError, SingleSubmission, spec_from_single
+from services.video_pipeline.intake import (
+    BatchSettings,
+    IntakeError,
+    SingleSubmission,
+    spec_from_single,
+    specs_from_batch,
+)
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import ElevenLabsSpeech, SpeechSynth
@@ -446,6 +452,9 @@ async def create_heygen_batch_job(
     # was generated — see the recording step below.
     category: str | None = Form(default=None),
     language: str | None = Form(default=None),
+    # Strings, not bools: intake parses them, as for a single video.
+    include_overlay: str | None = Form(default=None),
+    include_music: str | None = Form(default=None),
 ):
     session = await _session_config_for_request(request)
 
@@ -488,6 +497,18 @@ async def create_heygen_batch_job(
     if not batch_rows_parsed:
         raise HTTPException(status_code=400, detail=empty_detail)
 
+    # Before history is recorded, so a batch refused here leaves no trace there.
+    try:
+        items = specs_from_batch(batch_rows_parsed, BatchSettings(
+            character=character,
+            motion_prompt=motion_prompt,
+            publish_date=publish_date,
+            include_overlay=include_overlay,
+            include_music=include_music,
+        ))
+    except IntakeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Record what is actually being rendered, replacing the drafts recorded when
     # they were written — the operator's edits are what tomorrow must avoid.
     # Only for generated rows: a spreadsheet carries no category or language to
@@ -512,20 +533,17 @@ async def create_heygen_batch_job(
 
     batch_id = uuid.uuid4().hex
     batch_rows = [
-        BatchRowState(row_index=r.row_index, script=r.script, video_title=r.video_title)
-        for r in batch_rows_parsed
+        BatchRowState(row_index=item.row_index, script=item.spec.script, video_title=item.spec.video_title)
+        for item in items
     ]
     await video_batch_jobs_store.create(batch_id, batch_rows)
 
     spawn(
         run_video_batch_job(
             batch_id=batch_id,
-            rows=batch_rows_parsed,
+            items=items,
             image_bytes=image_bytes,
             image_filename=image.filename,
-            character=character or "indian",
-            motion_prompt=motion_prompt or None,
-            publish_date=publish_date or None,
             output_dir=VIDEO_OUTPUT_DIR,
             output_base_dir=OUTPUT_DIR,
             batch_store=video_batch_jobs_store,
@@ -540,7 +558,7 @@ async def create_heygen_batch_job(
         name=f"video-batch:{batch_id}",
     )
 
-    return {"batch_id": batch_id, "status": "queued", "total": len(batch_rows_parsed)}
+    return {"batch_id": batch_id, "status": "queued", "total": len(items)}
 
 
 @app.get("/video/heygen/batch/{batch_id}")

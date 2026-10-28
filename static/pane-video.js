@@ -609,6 +609,9 @@
     // history key. Required at submit (dateSet), so no fallback here.
     fd.append("publish_date", els.date.value);
     if (c.motion_prompt) fd.append("motion_prompt", c.motion_prompt);
+    // Every mode: a one-off written in Auto is no horoscope and wants no cards.
+    fd.append("include_overlay", U.isOn(els.overlay) ? "true" : "false");
+    fd.append("include_music", U.isOn(els.music) ? "true" : "false");
 
     try {
       let url, id;
@@ -632,8 +635,6 @@
       } else {
         fd.append("script", els.script.value.trim());
         fd.append("video_title", safeTitle());
-        fd.append("include_overlay", U.isOn(els.overlay) ? "true" : "false");
-        fd.append("include_music", U.isOn(els.music) ? "true" : "false");
         const r = await fetch("/video/heygen", { method: "POST", body: fd });
         if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
         id = (await r.json()).job_id; url = `/video/heygen/${id}`;

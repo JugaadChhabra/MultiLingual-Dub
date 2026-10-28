@@ -7,15 +7,14 @@ from pathlib import Path
 
 from services.email import EmailSettings, send_batch_summary_email
 from services.nas import NasConfig
-from services.video_pipeline.batch_excel import HeyGenBatchRow
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.pipeline import run_video_job
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.heygen_client import HeyGenSettings
+from services.video_pipeline.intake import BatchItem
 from services.video_pipeline.speech import SpeechSynth
 from services.video_pipeline.store import VideoJobsStore
-from services.video_pipeline.types import VideoJobSpec
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +39,9 @@ def _batch_concurrency(configured: int, row_count: int) -> int:
 async def run_video_batch_job(
     *,
     batch_id: str,
-    rows: list[HeyGenBatchRow],
+    items: list[BatchItem],
     image_bytes: bytes,
     image_filename: str,
-    character: str = "indian",
-    motion_prompt: str | None,
-    publish_date: str | None,
     output_dir: Path,
     output_base_dir: Path,
     batch_store: VideoBatchJobsStore,
@@ -80,24 +76,17 @@ async def run_video_batch_job(
     # those polls overlap, so batch time approaches the slowest single render
     # instead of the sum of all of them. A semaphore caps in-flight renders so we
     # don't trip HeyGen rate limits / concurrent-render quotas.
-    concurrency = _batch_concurrency(heygen.batch_concurrency, len(rows))
+    concurrency = _batch_concurrency(heygen.batch_concurrency, len(items))
     semaphore = asyncio.Semaphore(concurrency)
-    logger.info("Batch %s | running %d rows with concurrency %d", batch_id, len(rows), concurrency)
+    logger.info("Batch %s | running %d rows with concurrency %d", batch_id, len(items), concurrency)
 
-    async def _run_one_row(row: HeyGenBatchRow) -> None:
+    async def _run_one_row(item: BatchItem) -> None:
         async with semaphore:
             job_id = uuid.uuid4().hex
             await video_jobs_store.create(job_id)
-            await batch_store.update_row(batch_id, row.row_index, job_id=job_id, status="running")
+            await batch_store.update_row(batch_id, item.row_index, job_id=job_id, status="running")
 
-            spec = VideoJobSpec(
-                script=row.script,
-                character=character or "indian",
-                video_title=row.video_title,
-                motion_prompt=motion_prompt or None,
-                publish_date=publish_date or None,
-                talking_photo_id=shared_talking_photo_id,
-            )
+            spec = item.spec.model_copy(update={"talking_photo_id": shared_talking_photo_id})
 
             try:
                 await run_video_job(
@@ -111,7 +100,7 @@ async def run_video_batch_job(
                     speech=speech,
                     slots=slots,
                     nas_config=nas_config,
-                    voice_id=heygen.voice_for_character(character),
+                    voice_id=heygen.voice_for_character(spec.character),
                 )
 
                 video_state = await video_jobs_store.get(job_id)
@@ -122,31 +111,31 @@ async def run_video_batch_job(
 
                 video_local_url = _local_video_url(video_state.summary.video_path or "", output_base_dir)
                 await batch_store.update_row(
-                    batch_id, row.row_index,
+                    batch_id, item.row_index,
                     status="completed",
                     video_local_url=video_local_url,
                     nas_path=video_state.summary.nas_path,
                 )
                 await batch_store.row_succeeded(batch_id)
-                logger.info("Batch %s | row %d completed (job %s)", batch_id, row.row_index, job_id)
+                logger.info("Batch %s | row %d completed (job %s)", batch_id, item.row_index, job_id)
 
             except Exception as exc:
-                logger.error("Batch %s | row %d failed: %s", batch_id, row.row_index, exc)
+                logger.error("Batch %s | row %d failed: %s", batch_id, item.row_index, exc)
                 await batch_store.update_row(
-                    batch_id, row.row_index,
+                    batch_id, item.row_index,
                     status="failed",
                     error=str(exc),
                 )
                 await batch_store.row_failed(batch_id)
                 failed_rows.append({
-                    "row_index": row.row_index,
-                    "video_title": row.video_title,
+                    "row_index": item.row_index,
+                    "video_title": spec.video_title,
                     "error": str(exc),
                 })
 
     # return_exceptions=True so one row's unexpected failure can't cancel the rest;
     # _run_one_row already records per-row failures, so this is just a safety net.
-    await asyncio.gather(*(_run_one_row(row) for row in rows), return_exceptions=True)
+    await asyncio.gather(*(_run_one_row(item) for item in items), return_exceptions=True)
 
     await batch_store.complete(batch_id)
 
@@ -155,7 +144,7 @@ async def run_video_batch_job(
         try:
             await asyncio.to_thread(
                 send_batch_summary_email,
-                total=batch_state.total if batch_state else len(rows),
+                total=batch_state.total if batch_state else len(items),
                 succeeded=batch_state.done if batch_state else 0,
                 failed=batch_state.failed_count if batch_state else len(failed_rows),
                 failed_rows=failed_rows,
