@@ -670,12 +670,17 @@ class DaySet:
     warnings: list[str] = field(default_factory=list)
 
 
+def _one_off_name(raw: str | None) -> str:
+    """The name a one-off is keyed and filed under: file stem, spaces as underscores."""
+    return Path(raw or "").stem.replace(" ", "_") or "Script"
+
+
 def _one_off(name: str) -> SetItem:
     """A one-off video's item: its file name is both its key and its title.
 
     The one rule both directions share — writing a one-off day, and mapping a
-    submitted one-off row back to its key. The name is normalised only when the
-    day is written; a submitted row already carries that normalised title.
+    submitted one-off row back to its key. Callers pass a name
+    already run through :func:`_one_off_name`.
     """
     return SetItem(key=name, title=name)
 
@@ -689,7 +694,7 @@ def items_for(item_set: str, title: str | None) -> tuple[SetItem, ...]:
     if item_set == "zodiac":
         return ZODIAC_SIGNS
     if item_set == "single":
-        return (_one_off(Path(title or "").stem.replace(" ", "_") or "Script"),)
+        return (_one_off(_one_off_name(title)),)
     raise ScriptRequestError("item_set must be 'zodiac' or 'single'")
 
 
@@ -710,7 +715,7 @@ def items_for_titles(titles: list[str]) -> list[SetItem]:
     :raises UnknownItemTitleError: For a horoscope batch with a title that is not a sign.
     """
     if not any(title in _SIGN_BY_TITLE for title in titles):
-        return [_one_off(title) for title in titles]
+        return [_one_off(_one_off_name(title)) for title in titles]
     unmapped = sorted({t for t in titles if t not in _SIGN_BY_TITLE})
     if unmapped:
         raise UnknownItemTitleError(unmapped)

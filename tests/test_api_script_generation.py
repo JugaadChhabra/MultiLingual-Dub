@@ -265,6 +265,27 @@ def test_the_rows_submitted_replace_the_drafts_in_the_history(client, monkeypatc
     assert [(d.title, d.script) for d in recorded] == [("2026-08-17 मेष", "मैंने इसे बदल दिया")]
 
 
+def test_history_records_the_title_intake_scrubbed(client, monkeypatch) -> None:
+    async def fake_batch(**_kwargs):
+        pass
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": "एक स्क्रिप्ट", "video_title": "promo: one"}]),
+              "publish_date": "2026-08-17", "category": "sunsign", "language": "hi-IN"},
+    )
+    assert resp.status_code == 202, resp.text
+
+    state = client.get(f"/video/heygen/batch/{resp.json()['batch_id']}").json()
+    scrubbed = state["rows"][0]["video_title"]
+    assert scrubbed != "promo: one"
+    recorded = api.script_history.recent(category="sunsign", language="hi-IN")
+    assert [d.key for d in recorded] == [scrubbed.replace(" ", "_")]
+
+
 def test_a_spreadsheet_batch_records_no_history(client, monkeypatch) -> None:
     """An Excel batch carries no category or language to file it under, and its
     scripts were not written by the model that would be told to avoid them."""
