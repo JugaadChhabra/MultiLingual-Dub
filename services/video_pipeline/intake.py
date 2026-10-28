@@ -128,14 +128,17 @@ def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[
                 include_music=shared.include_music,
             ))
         except IntakeError as exc:
-            raise IntakeError(f"row {row.row_index}: {exc}") from exc
+            # The index is the spreadsheet row; the title is what an Auto
+            # operator recognises, since their drafts have no row numbers.
+            raise IntakeError(f"row {row.row_index} ({row.video_title!r}): {exc}") from exc
         items.append(BatchItem(row_index=row.row_index, spec=spec))
 
     # Each title is a file in the same NAS folder, so two rows with one title
     # means one render overwrites the other. Compared after scrubbing, and
     # without case, as the share and the pane compare them.
-    counts = Counter(i.spec.video_title.casefold() for i in items)
-    dupes = sorted({i.spec.video_title for i in items if counts[i.spec.video_title.casefold()] > 1})
+    titles = [item.spec.video_title for item in items]
+    counts = Counter(t.casefold() for t in titles)
+    dupes = sorted({t for t in titles if counts[t.casefold()] > 1})
     if dupes:
         raise IntakeError(
             "video titles must be unique, or one render overwrites another: "

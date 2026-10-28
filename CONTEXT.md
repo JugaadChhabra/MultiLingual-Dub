@@ -68,8 +68,8 @@ returns as a 400. A single submission (`SingleSubmission`) becomes one
 `VideoJobSpec`; a batch (Excel or JSON rows plus the `BatchSettings` every row
 shares, overlay and music included) becomes one `BatchItem` per row under the
 same rules, and is refused if two rows would be filed under one title. The
-batch runner receives these specs and builds none of its own. Owns the rules that used to
-live only in the Video pane: the title is scrubbed of filename-breaking
+batch runner receives these specs and builds none of its own. Owns the rules
+that used to live only in the Video pane: the title is scrubbed of filename-breaking
 characters and a trailing `.mp4` (it becomes the NAS filename) and refused if
 nothing is left, and the script is capped at the Script writer's
 `MAX_SCRIPT_CHARS`. Also blanks to None, the `indian` character default and the

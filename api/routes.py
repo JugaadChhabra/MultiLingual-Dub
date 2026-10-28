@@ -533,8 +533,8 @@ async def create_heygen_batch_job(
 
     batch_id = uuid.uuid4().hex
     batch_rows = [
-        BatchRowState(row_index=i.row_index, script=i.spec.script, video_title=i.spec.video_title)
-        for i in items
+        BatchRowState(row_index=item.row_index, script=item.spec.script, video_title=item.spec.video_title)
+        for item in items
     ]
     await video_batch_jobs_store.create(batch_id, batch_rows)
 

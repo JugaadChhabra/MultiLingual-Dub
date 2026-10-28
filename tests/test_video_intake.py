@@ -189,7 +189,7 @@ def test_a_row_over_the_length_cap_is_rejected_naming_its_row() -> None:
     rows = _rows("Aries") + [
         HeyGenBatchRow(row_index=7, script="x" * (MAX_SCRIPT_CHARS + 1), video_title="Taurus")
     ]
-    with pytest.raises(IntakeError, match=rf"row 7.*{MAX_SCRIPT_CHARS}"):
+    with pytest.raises(IntakeError, match=rf"row 7 \('Taurus'\).*{MAX_SCRIPT_CHARS}"):
         specs_from_batch(rows, BatchSettings())
 
 
