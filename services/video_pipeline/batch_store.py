@@ -65,22 +65,21 @@ class VideoBatchJobsStore:
         so claiming otherwise would misreport the batch forever.
         """
         assert self._mirror is not None
-        self._jobs = self._mirror.load()
-        for state in self._jobs.values():
-            if state.status not in self.IN_FLIGHT_STATUSES:
-                continue
-            for row in state.rows:
-                if row.status in ("pending", "running"):
-                    row.status = "failed"
-                    row.error = "Interrupted by a restart"
-                    state.failed_count += 1
-            state.status = "failed" if state.done == 0 else "partial"
-            state.finished_at = datetime.now(timezone.utc)
-            self._write(state)
-            logger.warning(
-                "VideoBatch %s was in flight at shutdown → marked %s (%d done, %d failed)",
-                state.batch_id, state.status, state.done, state.failed_count,
-            )
+        self._jobs = self._mirror.load_settled(self.IN_FLIGHT_STATUSES, self._settle)
+
+    @staticmethod
+    def _settle(state: VideoBatchJobState) -> None:
+        for row in state.rows:
+            if row.status in ("pending", "running"):
+                row.status = "failed"
+                row.error = "Interrupted by a restart"
+                state.failed_count += 1
+        state.status = "failed" if state.done == 0 else "partial"
+        state.finished_at = datetime.now(timezone.utc)
+        logger.warning(
+            "VideoBatch %s was in flight at shutdown → marked %s (%d done, %d failed)",
+            state.batch_id, state.status, state.done, state.failed_count,
+        )
 
     async def create(self, batch_id: str, rows: list[BatchRowState]) -> VideoBatchJobState:
         async with self._lock:

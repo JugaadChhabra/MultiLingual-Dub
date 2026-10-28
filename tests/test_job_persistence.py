@@ -61,6 +61,24 @@ def test_an_empty_directory_loads_nothing(tmp_path: Path) -> None:
     assert JsonStateMirror(tmp_path, VideoJobState, lambda s: s.job_id).load() == {}
 
 
+def test_load_settled_settles_only_states_in_the_given_status_set(tmp_path: Path) -> None:
+    mirror = JsonStateMirror(tmp_path, VideoJobState, lambda s: s.job_id)
+    for job_id, status in (("a", "polling"), ("b", "completed"), ("c", "queued")):
+        mirror.write(VideoJobState(job_id=job_id, status=status))
+    settled: list[str] = []
+
+    def settle(state: VideoJobState) -> None:
+        settled.append(state.job_id)
+        state.status = "failed"
+
+    loaded = mirror.load_settled(("polling", "tts"), settle)
+
+    assert settled == ["a"]
+    assert {k: v.status for k, v in loaded.items()} == {"a": "failed", "b": "completed", "c": "queued"}
+    # the settlement was written back, so it survives another restart
+    assert mirror.load()["a"].status == "failed"
+
+
 # --- video jobs ------------------------------------------------------------
 
 

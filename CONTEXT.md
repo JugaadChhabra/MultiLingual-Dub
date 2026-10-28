@@ -119,9 +119,12 @@ still said it.
 ## Persistence
 
 **State mirror** — one JSON file per job, rewritten on every mutation, reloaded
-at boot. All three job stores hold one. Only the serialization is shared: what
-`create` / `start` / `complete` mean differs enough per pipeline that a common
-base class would be mostly overrides.
+at boot. All three job stores hold one. The mirror owns serialization and
+load-and-settle: `load_settled` reloads every job and settles the **Interrupted**
+ones through a callback each store supplies (what "failed" means differs per
+store), and `finalize_summary` is the one timing-stamp helper. What `create` /
+`start` / `complete` mean differs enough per pipeline that a common base class
+would be mostly overrides, so those stay per store.
 
 What the mirror buys differs by pipeline, and the difference is worth keeping
 straight. A *video job* can genuinely be resumed, because its render continues
