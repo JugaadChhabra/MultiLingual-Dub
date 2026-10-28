@@ -38,7 +38,6 @@ services:
 
       # The script writer goes through OpenRouter, not the Gemini key above.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      OPENROUTER_SCRIPT_MODELS: ${OPENROUTER_SCRIPT_MODELS:-}
 
       AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
       AWS_SECRET_KEY: ${AWS_SECRET_KEY}

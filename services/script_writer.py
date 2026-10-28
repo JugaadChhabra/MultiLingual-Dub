@@ -21,7 +21,7 @@ from services.errors import TOP_UP_URLS, classify
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.openrouter import OpenRouterClient
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, read_setting, require
+from services.runtime_config import RuntimeConfig, require
 from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_parse import ScriptFacts, parse_script
 from services.script_validate import (
@@ -40,9 +40,10 @@ from services.script_validate import (
 
 logger = logging.getLogger(__name__)
 
-# OpenRouter model ids. Flash writes the set for a fraction of a cent; Pro is
-# the fallback for a day Flash cannot get right.
-DEFAULT_SCRIPT_MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-pro"]
+# OpenRouter model ids, tried in order. Set here in code, not in .env: changing
+# the model is a code change. Flash writes the set for a fraction of a cent; Pro
+# is the fallback for a day Flash cannot get right.
+SCRIPT_MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-pro"]
 
 @dataclass(frozen=True)
 class SetItem:
@@ -210,9 +211,7 @@ class ScriptWriterSettings:
     @classmethod
     def resolve(cls, session: RuntimeConfig | None = None) -> ScriptWriterSettings:
         values = require(cls.REQUIRED, session)
-        raw = read_setting("OPENROUTER_SCRIPT_MODELS", session).strip()
-        models = [item.strip() for item in raw.split(",") if item.strip()] or DEFAULT_SCRIPT_MODELS
-        return cls(api_key=values["OPENROUTER_API_KEY"], models=models)
+        return cls(api_key=values["OPENROUTER_API_KEY"], models=list(SCRIPT_MODELS))
 
 
 def _parse_response_json(response_text: str) -> dict:
