@@ -38,7 +38,7 @@ class SingleSubmission:
     """
 
     script: str
-    video_title: str | None = None
+    video_title: str
     character: str | None = None
     voice_id: str | None = None
     motion_prompt: str | None = None
@@ -63,9 +63,12 @@ def spec_from_single(fields: SingleSubmission) -> VideoJobSpec:
             f"script is {len(script)} characters; the limit is {MAX_SCRIPT_CHARS}"
         )
 
-    # A blank title keeps the spec default rather than filing a video as ".mp4".
-    title = _scrub_title(fields.video_title or "")
-    optional_title = {"video_title": title} if title else {}
+    # The title is the NAS filename. One that scrubs to nothing would be filed as
+    # ".mp4" — and falling back to the shared default would overwrite the day's
+    # previous render — so it is refused, as the pane refuses it.
+    title = _scrub_title(fields.video_title)
+    if not title:
+        raise IntakeError("video_title must name the file so it does not overwrite an earlier render")
 
     return VideoJobSpec(
         script=script,
@@ -82,7 +85,7 @@ def spec_from_single(fields: SingleSubmission) -> VideoJobSpec:
         use_speaker_boost=_toggle("use_speaker_boost", fields.use_speaker_boost),
         include_overlay=_toggle("include_overlay", fields.include_overlay),
         include_music=_toggle("include_music", fields.include_music),
-        **optional_title,
+        video_title=title,
     )
 
 

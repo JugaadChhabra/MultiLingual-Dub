@@ -66,9 +66,10 @@ Selects the voice and, for `us`, a separate NAS root.
 submission's raw form values (`SingleSubmission`) turned into a `VideoJobSpec`,
 or an `IntakeError` the request returns as a 400. Owns the rules that used to
 live only in the Video pane: the title is scrubbed of filename-breaking
-characters and a trailing `.mp4` (it becomes the NAS filename), and the script
-is capped at the Script writer's `MAX_SCRIPT_CHARS`. Also blanks to None, the
-`indian` character default and the toggle parsing. The pane still checks the
+characters and a trailing `.mp4` (it becomes the NAS filename) and refused if
+nothing is left, and the script is capped at the Script writer's
+`MAX_SCRIPT_CHARS`. Also blanks to None, the `indian` character default and the
+toggle parsing. The pane still checks the
 same rules first, for fast feedback; intake is where they are enforced. The
 upload is not intake's business — whether there is a photo is the request's.
 

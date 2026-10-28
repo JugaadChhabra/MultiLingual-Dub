@@ -38,9 +38,11 @@ def test_titles_are_scrubbed_like_the_pane_scrubs_them(raw, filed_as) -> None:
     assert _spec(video_title=raw).video_title == filed_as
 
 
-@pytest.mark.parametrize("blank", [None, "", "   "])
-def test_a_blank_title_keeps_the_spec_default(blank) -> None:
-    assert _spec(video_title=blank).video_title == VideoJobSpec.model_fields["video_title"].default
+@pytest.mark.parametrize("blank", ["", "   ", ".mp4"])
+def test_a_title_that_scrubs_to_nothing_is_rejected(blank) -> None:
+    # filed as ".mp4", or under a shared default that the next one overwrites
+    with pytest.raises(IntakeError, match="video_title"):
+        _spec(video_title=blank)
 
 
 @pytest.mark.parametrize(
