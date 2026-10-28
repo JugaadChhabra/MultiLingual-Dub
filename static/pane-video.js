@@ -455,7 +455,7 @@
       }
     }
 
-    state.writing = true; refreshGen(); say("Writing today's scripts…");
+    state.writing = true; refreshGen(); say(`Writing the scripts for ${els.date.value}…`);
     U.clearBanners(els.banners);
     const fd = new FormData();
     fd.append("brief", c.script_brief.trim());
@@ -488,9 +488,13 @@
         say(`${state.drafts.length} scripts written — read them before you run`);
       }
     } catch (e) {
+      const why = String(e && e.message || e);
       U.banner(els.banners, { kind: "error", title: "The scripts were not written",
-        detail: "Nothing was rendered and nothing was charged.", raw: String(e && e.message || e) });
-      say("");
+        detail: "Nothing was rendered and nothing was charged.", raw: why });
+      // Said on the message line too, in error style so refreshRun leaves it
+      // alone. Cleared, the line fell back to the idle hint, and a failed
+      // write read as a write that had never been asked for.
+      say(`The scripts were not written: ${why}`, true);
     } finally {
       state.writing = false; renderDrafts(); refreshGen(); refreshRun();
     }
@@ -578,7 +582,7 @@
     if (state.mode === "auto") {
       if (!state.image && !state.photoId) return "Add an avatar to start";
       if (state.writing) return "Waiting for the scripts";
-      if (!state.drafts.length) return "Write today's scripts first";
+      if (!state.drafts.length) return "Write the scripts first";
       if (state.drafts.some((d) => !d.script.trim())) return "One of the drafts is empty";
       if (state.drafts.some((d) => !d.video_title.trim())) return "Every draft needs a file name";
       const titles = state.drafts.map((d) => d.video_title.trim().toLowerCase());
