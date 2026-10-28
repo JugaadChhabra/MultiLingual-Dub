@@ -208,3 +208,34 @@ def test_cancellation_stops_the_job(monkeypatch) -> None:
     assert fakes.fix_calls == []
     assert fakes.tts == []
     assert fakes.uploads == []
+
+
+def test_cancelling_while_speaking_uploads_the_clips_already_spoken(monkeypatch) -> None:
+    store = JobsStore()
+    job_id = "story-cancel-speaking"
+    fakes = Fakes(monkeypatch)
+    loop: dict = {}
+
+    def tts_then_cancel(text, language, settings=None):
+        # TTS runs in a worker thread, so the cancel is handed back to the loop
+        fakes.tts.append((language, text))
+        asyncio.run_coroutine_threadsafe(store.request_cancel(job_id), loop["it"]).result()
+        return b"audio"
+
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", tts_then_cancel)
+
+    async def go():
+        loop["it"] = asyncio.get_running_loop()
+        await store.create(job_id)
+        await run_story_job(
+            job_id=job_id, title="T", activity_name=ACTIVITY, lines=LINES,
+            target_languages=["hi-IN"], jobs_store=store, settings=_settings(),
+        )
+        return await store.get(job_id)
+
+    state = asyncio.run(go())
+
+    assert state.status == "cancelled"
+    assert len(fakes.tts) == 1
+    [(_, files, folder)] = fakes.uploads
+    assert folder == ACTIVITY and sorted(files) == [f"{ACTIVITY}1.mp3"]

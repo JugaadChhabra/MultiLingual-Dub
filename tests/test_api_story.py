@@ -116,8 +116,7 @@ from tests.test_api_batch import ENV_TEXT, _poll_until_done  # noqa: E402
 
 
 async def _fake_story_runner(
-    *, job_id, title, activity_name, lines, target_languages, jobs_store, settings,
-    max_language_parallelism=None, output_dir=None,
+    *, job_id, title, activity_name, lines, target_languages, jobs_store, settings, output_dir=None,
 ):
     """Completes at once, recording what it was given."""
     _fake_story_runner.seen = {"title": title, "activity_name": activity_name,
@@ -204,3 +203,17 @@ def test_story_job_needs_an_english_voice_for_english(monkeypatch) -> None:
     assert client.post("/config/session-env", json={"env_text": env}).status_code == 200
 
     assert "ENGLISH_VOICE" in _refused(monkeypatch, client, target_languages=["hi-IN", "en-IN"])
+
+
+def test_story_job_is_cancelled_through_the_batch_endpoint(monkeypatch) -> None:
+    async def never_finishes(*, job_id, jobs_store, **_kwargs):
+        await jobs_store.start(job_id)
+
+    monkeypatch.setattr(api, "run_story_job", never_finishes)
+    client = _client()
+    job_id = _job(client).json()["job_id"]
+
+    response = client.post(f"/batch/excel-jobs/{job_id}/cancel")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancelling"

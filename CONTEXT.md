@@ -223,7 +223,8 @@ one *story fix* per language, then speak each row with its fixed text. English
 targets get the source lines verbatim — no translation, no Gemini. Shares the
 Excel batch's tally, activity buffer, retry-then-upload tail (`_close_activity`)
 and job endpoints; its retry pass re-speaks a failed voiceover from its fixed
-text instead of re-translating it.
+text instead of re-translating it. Being one activity, nothing uploads until
+the end, so a cancel while speaking uploads the clips already spoken first.
 
 **Story fix** — one Gemini call per language that sees every line's English,
 emotion and draft at once, and rewrites the drafts so the story sounds told, not

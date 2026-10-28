@@ -19,6 +19,7 @@ from batch.models import ExcelRow
 from batch.naming import _resolve_activity_segment_name
 from batch.service import _close_activity, _upload_destination, _voiceover_deps
 from batch.store import JobsStore
+from batch.upload import _upload_activity_archives
 from batch.tally import BatchTally
 from batch.voiceover import (
     RowOutcome,
@@ -61,7 +62,6 @@ async def run_story_job(
     target_languages: list[str],
     jobs_store: JobsStore,
     settings: Settings,
-    max_language_parallelism: int | None = None,
     output_dir: Path | None = None,
 ) -> None:
     """Run a story job to completion. Polled and cancelled like an Excel batch."""
@@ -76,7 +76,6 @@ async def run_story_job(
             jobs_store=jobs_store,
             tally=tally,
             settings=settings,
-            max_language_parallelism=max_language_parallelism,
             output_dir=output_dir,
         )
     except Exception as exc:
@@ -102,28 +101,29 @@ async def _fix_languages(
     """
     semaphore = asyncio.Semaphore(deps.translation_parallelism)
 
-    async def _fix(language: str, story: dict[str, StoryLine], language_drafts: dict[str, str]):
+    async def _fix(language: str, story: dict[str, StoryLine], story_drafts: dict[str, str]):
         async with semaphore:
             return await asyncio.to_thread(
-                fix_story, title, story, language_drafts, language, settings=deps.qc
+                fix_story, title, story, story_drafts, language, settings=deps.qc
             )
 
     # Lines whose translation failed have no draft, and are left out of the fix.
-    jobs: dict[str, tuple[dict[str, StoryLine], dict[str, str]]] = {}
+    # Per language: the lines to fix and their drafts, both keyed by line id.
+    requests: dict[str, tuple[dict[str, StoryLine], dict[str, str]]] = {}
     for language in languages:
         drafted = [row for row in rows if language in drafts[row.row_index]]
         if drafted:
-            jobs[language] = (
+            requests[language] = (
                 {str(row.row_index): StoryLine(text=row.text, emotion=row.emotion) for row in drafted},
                 {str(row.row_index): drafts[row.row_index][language] for row in drafted},
             )
 
     results = await asyncio.gather(
-        *(_fix(language, story, d) for language, (story, d) in jobs.items()),
+        *(_fix(language, story, story_drafts) for language, (story, story_drafts) in requests.items()),
         return_exceptions=True,
     )
 
-    for (language, (story, _)), result in zip(jobs.items(), results):
+    for (language, (story, _drafts)), result in zip(requests.items(), results):
         prefix = f"Job {job_id} | story fix {language} | "
         # Until line-by-line fallback exists, a failed fix fails the language.
         if isinstance(result, BaseException):
@@ -153,7 +153,6 @@ async def _run_story_job_impl(
     jobs_store: JobsStore,
     tally: BatchTally,
     settings: Settings,
-    max_language_parallelism: int | None,
     output_dir: Path | None,
 ) -> None:
     tally.started(await jobs_store.start(job_id))
@@ -169,7 +168,7 @@ async def _run_story_job_impl(
     tally.set_totals(rows=len(rows), languages=len(target_languages))
     await jobs_store.update_summary(job_id, tally.summary)
 
-    deps = _voiceover_deps(settings, target_languages, max_language_parallelism)
+    deps = _voiceover_deps(settings, target_languages, None)
     folder = _resolve_activity_segment_name(activity_name, None)
     rows_by_index = {row.row_index: row for row in rows}
     english = [language for language in target_languages if _is_english(language)]
@@ -223,7 +222,21 @@ async def _run_story_job_impl(
         buffer = ActivityBuffer(target_languages)
         activity_failures: dict[int, list[TaskFailure]] = defaultdict(list)
         for row in rows:
-            if await _cancelled():
+            if await jobs_store.is_cancelled(job_id):
+                # The clips already spoken are paid for, and the cancel dialog
+                # promises finished rows stay uploaded: upload them, unretried.
+                if any(buffer.files.values()):
+                    await _upload_activity_archives(
+                        job_id=job_id,
+                        activity_name=folder,
+                        target_languages=target_languages,
+                        buffer=buffer,
+                        s3_client=s3_client,
+                        tally=tally,
+                        activity_upload_counts={},
+                        output_dir=output_dir,
+                    )
+                await jobs_store.cancel(job_id, tally.summary)
                 return
             prefix = f"Job {job_id} | row {row.row_index} | "
             try:
