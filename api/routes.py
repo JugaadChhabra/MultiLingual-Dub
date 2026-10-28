@@ -29,7 +29,6 @@ from batch.service import english_voice_is_required, run_excel_batch_job
 from services.elevenlabs import ElevenLabsSettings, ElevenLabsTTSConfig, synthesize_speech_bytes
 from batch.store import JobsStore
 from services.video_pipeline import (
-    VideoJobSpec,
     VideoJobsStore,
     recover_video_job,
     run_video_job,
@@ -53,6 +52,7 @@ from services.video_pipeline.batch_runner import run_video_batch_job
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
 from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.heygen_renderer import HeyGenRenderer
+from services.video_pipeline.intake import IntakeError, SingleSubmission, spec_from_single
 from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import ElevenLabsSpeech, SpeechSynth
@@ -234,17 +234,36 @@ async def create_heygen_video_job(
     stability: float = Form(default=0.5),
     similarity_boost: float = Form(default=0.75),
     style: float = Form(default=0.0),
-    use_speaker_boost: bool = Form(default=True),
+    # Toggles arrive as the raw strings the form sent; intake parses them.
+    use_speaker_boost: str | None = Form(default=None),
     # Single-job opt-outs for the branded overlay cards and the music bed
     # (independent). Batch and recovery have no equivalent knobs and always keep
     # both (spec defaults).
-    include_overlay: bool = Form(default=True),
-    include_music: bool = Form(default=True),
+    include_overlay: str | None = Form(default=None),
+    include_music: str | None = Form(default=None),
 ):
     session = await _session_config_for_request(request)
 
-    if not script.strip():
-        raise HTTPException(status_code=400, detail="script must not be empty")
+    try:
+        spec = spec_from_single(SingleSubmission(
+            script=script,
+            video_title=video_title,
+            character=character,
+            voice_id=voice_id,
+            motion_prompt=motion_prompt,
+            publish_date=publish_date,
+            talking_photo_id=talking_photo_id,
+            width=width,
+            height=height,
+            stability=stability,
+            similarity_boost=similarity_boost,
+            style=style,
+            use_speaker_boost=use_speaker_boost,
+            include_overlay=include_overlay,
+            include_music=include_music,
+        ))
+    except IntakeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not (talking_photo_id or (image and image.filename)):
         raise HTTPException(status_code=400, detail="provide either an image file or a talking_photo_id")
@@ -256,24 +275,6 @@ async def create_heygen_video_job(
         if not image_bytes:
             raise HTTPException(status_code=400, detail="image upload was empty")
         image_filename = image.filename
-
-    spec = VideoJobSpec(
-        script=script,
-        character=character or "indian",
-        voice_id=voice_id or None,
-        motion_prompt=motion_prompt or None,
-        width=width,
-        height=height,
-        video_title=video_title,
-        publish_date=publish_date or None,
-        stability=stability,
-        similarity_boost=similarity_boost,
-        style=style,
-        use_speaker_boost=use_speaker_boost,
-        talking_photo_id=talking_photo_id or None,
-        include_overlay=include_overlay,
-        include_music=include_music,
-    )
 
     try:
         deps = _build_video_deps(session)
@@ -295,7 +296,7 @@ async def create_heygen_video_job(
             speech=deps.speech,
             slots=deps.slots,
             nas_config=deps.nas,
-            voice_id=deps.heygen.voice_for_character(character),
+            voice_id=deps.heygen.voice_for_character(spec.character),
         ),
         name=f"video-job:{job_id}",
     )

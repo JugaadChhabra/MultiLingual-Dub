@@ -45,6 +45,8 @@
   const DRAFT_KEEP_DAYS = 7;
   // Matches MAX_SCRIPT_CHARS in services/script_writer.py and the maxlength on
   // the single-mode textarea: past this HeyGen will not render the script.
+  // Checked here for fast feedback; the server enforces the same cap in
+  // services/video_pipeline/intake.py.
   const MAX_SCRIPT = 1000;
   // Which languages get the native face in the draft editor. Latin-script
   // targets read worse in it than in the UI font.
@@ -487,7 +489,8 @@
 
   // A title becomes the NAS filename, so the same scrubbing the single-mode
   // title gets applies here — and it is applied to what is STORED, so what the
-  // operator reads is what gets filed.
+  // operator reads is what gets filed. The server scrubs single-video titles
+  // with the same rule in services/video_pipeline/intake.py.
   const scrubTitle = (v) => v.trim().replace(/[\\/:*?"<>|]+/g, "_").replace(/\.mp4$/i, "");
 
   // A textarea in a display:none subtree reports scrollHeight 0, so the boxes
