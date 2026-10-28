@@ -11,7 +11,7 @@ import asyncio
 import pytest
 
 from batch.models import ExcelRow
-from batch.voiceover import RowOutcome, VoiceoverDeps, voice_row
+from batch.voiceover import RowOutcome, VoiceoverDeps, speak_row, translate_row, voice_row
 from services.elevenlabs import ElevenLabsSettings
 from services.google_translate import GoogleTranslateSettings
 from services.qc import QCError, QCSettings
@@ -285,3 +285,66 @@ def test_retrying_a_subset_of_languages_works_the_same(happy) -> None:
     assert set(outcome.audio) == {"ta-IN"}
     assert len(happy["qc"]) == 1
     assert list(happy["qc"][0][1]) == ["ta-IN"]
+
+
+# --- the two halves on their own -------------------------------------------
+
+
+def test_translate_without_qc_returns_raw_drafts_and_never_calls_qc(happy) -> None:
+    texts, failures = asyncio.run(translate_row(_row(), LANGS, _deps(), qc=False))
+
+    assert texts == {"hi-IN": "t:hello:hi-IN", "ta-IN": "t:hello:ta-IN"}
+    assert failures == []
+    assert happy["qc"] == []
+    assert happy["tts"] == []
+
+
+def test_translate_with_qc_returns_the_qc_text(happy) -> None:
+    texts, failures = asyncio.run(translate_row(_row(), ["hi-IN"], _deps()))
+
+    assert texts == {"hi-IN": "qc:t:hello:hi-IN"}
+    assert failures == []
+    assert happy["tts"] == []
+
+
+def test_translate_reports_translation_failures_per_language(monkeypatch, happy) -> None:
+    async def translate(text, language, _sarvam=None, _google=None):
+        if language == "ta-IN":
+            return language, None, "429 rate limit"
+        if language == "te-IN":
+            return language, "  ", None
+        return language, f"t:{text}:{language}", None
+
+    monkeypatch.setattr("batch.voiceover._translate_language_async", translate)
+
+    texts, failures = asyncio.run(
+        translate_row(_row(), ["hi-IN", "ta-IN", "te-IN"], _deps(), qc=False)
+    )
+
+    assert texts == {"hi-IN": "t:hello:hi-IN"}
+    assert {f.language: f.stage for f in failures} == {"ta-IN": "translation", "te-IN": "translation"}
+    assert "429" in next(f.reason for f in failures if f.language == "ta-IN")
+
+
+def test_speak_prefixes_the_emotion_and_fails_only_the_broken_language(monkeypatch, happy) -> None:
+    def tts(text, language, settings=None):
+        happy["tts"].append((text, language))
+        if language == "ta-IN":
+            raise RuntimeError("11labs timeout")
+        return b"audio"
+
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", tts)
+
+    outcome = asyncio.run(
+        speak_row(_row(emotion="sad"), {"hi-IN": "namaste", "ta-IN": "vanakkam", "te-IN": "namaskaram"}, _deps())
+    )
+
+    assert ("[sad] namaste", "hi-IN") in happy["tts"]
+    assert all(text.startswith("[sad] ") for text, _ in happy["tts"])
+    assert set(outcome.audio) == {"hi-IN", "te-IN"}
+    assert outcome.audio["hi-IN"] == b"audio:compressed"
+    assert len(outcome.failures) == 1
+    assert outcome.failures[0].language == "ta-IN"
+    assert outcome.failures[0].stage == "tts"
+    assert happy["translate"] == []
+    assert happy["qc"] == []
