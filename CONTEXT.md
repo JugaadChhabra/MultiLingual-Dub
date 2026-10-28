@@ -186,6 +186,9 @@ is processed at once so its languages can share one QC call.
 translate, QC, speak, compress. The audio-side counterpart to *render*, and
 deliberately not called that — *render* means the video thing. Both the main
 pass and the retry pass go through `voice_row`, which is why they cannot drift.
+`voice_row` is two halves that can also be called on their own: `translate_row`
+(translate, then optional QC; gives text per language) and `speak_row` (speak
+with the row's emotion tag, then compress).
 
 **Activity buffer** — the audio gathered for the activity being processed, held
 under non-colliding filenames until the activity ends and it is zipped. Discarded

@@ -5,10 +5,15 @@ its own module: the main pass and the retry pass both need exactly this, and
 before it had a name they were two hand-written copies of the same chain that
 could — and did — drift apart.
 
-The chain is translate -> QC -> speak -> compress. QC is called ONCE for the
-whole row rather than per language: Gemini prices per request and the system
-instruction is identical across a row's languages, so batching them is a real
-cost difference on a sheet with hundreds of rows.
+The chain is translate -> QC -> speak -> compress, in two halves that can be
+called on their own: ``translate_row`` (translate, then optional QC) gives text
+per language, and ``speak_row`` (speak with the row's emotion, then compress)
+turns that text into audio. ``voice_row`` is simply one followed by the other.
+The split lets a caller fix every row's text before any of it is spoken.
+
+QC is called ONCE for the whole row rather than per language: Gemini prices
+per request and the system instruction is identical across a row's languages,
+so batching them is a real cost difference on a sheet with hundreds of rows.
 """
 from __future__ import annotations
 
@@ -137,24 +142,25 @@ async def _translate_row_languages(
     return results
 
 
-async def voice_row(
+async def translate_row(
     row: ExcelRow,
     languages: list[str],
     deps: VoiceoverDeps,
     *,
+    qc: bool = True,
     log_prefix: str = "",
-) -> RowOutcome:
-    """Produce audio for ``row`` in each of ``languages``.
+) -> tuple[dict[str, str], list[TaskFailure]]:
+    """Translate ``row`` into each of ``languages``, then QC the row in one call.
 
-    Never raises for a per-language problem — a language that fails translation,
-    QC or TTS comes back as a TaskFailure so the caller can count it and retry
-    it later. Only a genuinely unexpected error propagates.
+    Returns (text by language, failures). A language appears in exactly one of
+    the two. With ``qc=False`` the raw translation drafts come back untouched and
+    Gemini is never called — for a caller that fixes the text some other way.
+    Never raises for a per-language problem.
     """
-    audio: dict[str, bytes] = {}
     failures: list[TaskFailure] = []
 
     if not languages:
-        return RowOutcome(audio=audio, failures=failures)
+        return {}, failures
 
     # 1. Translate, fanned out across languages.
     logger.info(
@@ -176,12 +182,12 @@ async def voice_row(
         if error is not None or not clean:
             reason = error or "empty translation result"
             failures.append(TaskFailure(language=language, stage="translation", reason=reason))
-            logger.error("%slang %s: translation failed; skipping TTS (%s)", log_prefix, language, reason)
+            logger.error("%slang %s: translation failed (%s)", log_prefix, language, reason)
             continue
         translated_by_language[language] = clean
 
-    if not translated_by_language:
-        return RowOutcome(audio=audio, failures=failures)
+    if not qc or not translated_by_language:
+        return translated_by_language, failures
 
     # 2. QC — one call for the whole row.
     logger.info("%sQC start for %d language(s)", log_prefix, len(translated_by_language))
@@ -201,14 +207,14 @@ async def voice_row(
         failures.extend(
             TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
         )
-        return RowOutcome(audio=audio, failures=failures)
+        return {}, failures
     except Exception as exc:
         reason = f"Unexpected QC failure: {exc}"
         logger.error("%s%s", log_prefix, reason)
         failures.extend(
             TaskFailure(language=lang, stage="qc", reason=reason) for lang in translated_by_language
         )
-        return RowOutcome(audio=audio, failures=failures)
+        return {}, failures
 
     for language in translated_by_language:
         qc_text = (qc_results.get(language) or "").strip()
@@ -221,8 +227,25 @@ async def voice_row(
         qc_by_language[language] = qc_text
     logger.info("%sQC complete", log_prefix)
 
-    # 3. Speak each language, then compress.
-    for language, text in qc_by_language.items():
+    return qc_by_language, failures
+
+
+async def speak_row(
+    row: ExcelRow,
+    texts_by_language: dict[str, str],
+    deps: VoiceoverDeps,
+    *,
+    log_prefix: str = "",
+) -> RowOutcome:
+    """Speak each language's text with the row's emotion tag, then compress.
+
+    A language whose TTS fails comes back as a 'tts' TaskFailure; the others
+    still get audio.
+    """
+    audio: dict[str, bytes] = {}
+    failures: list[TaskFailure] = []
+
+    for language, text in texts_by_language.items():
         tts_text = f"[{row.emotion}] {text}" if row.emotion else text
         try:
             raw_audio = await asyncio.to_thread(
@@ -236,3 +259,21 @@ async def voice_row(
         logger.info("%slang %s: audio ready", log_prefix, language)
 
     return RowOutcome(audio=audio, failures=failures)
+
+
+async def voice_row(
+    row: ExcelRow,
+    languages: list[str],
+    deps: VoiceoverDeps,
+    *,
+    log_prefix: str = "",
+) -> RowOutcome:
+    """Produce audio for ``row`` in each of ``languages``: translate_row, then speak_row.
+
+    Never raises for a per-language problem — a language that fails translation,
+    QC or TTS comes back as a TaskFailure so the caller can count it and retry
+    it later. Only a genuinely unexpected error propagates.
+    """
+    texts, failures = await translate_row(row, languages, deps, log_prefix=log_prefix)
+    spoken = await speak_row(row, texts, deps, log_prefix=log_prefix)
+    return RowOutcome(audio=spoken.audio, failures=failures + spoken.failures)
