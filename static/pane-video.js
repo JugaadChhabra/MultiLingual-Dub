@@ -652,7 +652,7 @@
         if (!r.ok) throw new Error("HTTP " + r.status);
         const p = await r.json();
         if (state.kind === "batch") renderBatch(p); else renderSingle(p);
-        if (["completed", "failed", "partial", "cancelled"].includes(p.status)) { finish(p.status, p); return; }
+        if (["completed", "failed", "partial"].includes(p.status)) { finish(p.status, p); return; }
       } catch (_) {}
       await new Promise((res) => setTimeout(res, 4000));
     }
@@ -674,7 +674,7 @@
     const failed = rows.filter((r) => r.status === "failed").length;
     els.pCount.innerHTML = `${uploaded + doneNoNas} <small>of ${total} videos</small>`;
     els.upN.textContent = uploaded; els.doneN.textContent = doneNoNas; els.badN.textContent = failed;
-    U.setBar(els, { total, uploaded, rendered: doneNoNas, failed, live: p.status === "rendering" });
+    U.setBar(els, { total, uploaded, rendered: doneNoNas, failed, live: p.status === "running" });
     const left = U.eta(state.startedAt, uploaded + doneNoNas, total);
     els.pDetail.textContent = [`${uploaded + doneNoNas} of ${total} rows`, left].filter(Boolean).join(" · ");
     els.elapsed.textContent = state.startedAt ? `Started ${U.clock(state.startedAt)}` : "";
@@ -686,7 +686,7 @@
     let latest = null;
     rows.forEach((row) => {
       const s = row.status || "pending";
-      const badge = s === "completed" ? "g" : s === "failed" ? "r" : s === "rendering" ? "a" : "";
+      const badge = s === "completed" ? "g" : s === "failed" ? "r" : s === "running" ? "a" : "";
       const el = document.createElement("div");
       el.className = "qrow";
       el.innerHTML = `<span class="i">row ${row.row_index}</span>` +
@@ -836,7 +836,7 @@
       const r = await U.fetchT(url);
       if (!r.ok) { localStorage.removeItem(JOB_KEY); return; }
       const p = await r.json();
-      if (["completed", "failed", "partial", "cancelled"].includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
+      if (["completed", "failed", "partial"].includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.kind = saved.kind; state.jobId = saved.id;
       state.startedAt = state.startedAt || new Date().toISOString();
       els.live.hidden = false; els.progress.hidden = false; refreshRun();
