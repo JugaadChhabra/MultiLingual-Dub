@@ -54,7 +54,7 @@ def renderer(tmp_path, monkeypatch) -> FakeRenderer:
 
 
 @pytest.fixture
-def launched(monkeypatch) -> list:
+def launched(monkeypatch):
     """Coroutines the routes handed to spawn, in order, not yet run."""
     calls: list = []
 
@@ -62,7 +62,9 @@ def launched(monkeypatch) -> list:
         calls.append((name, coro))
 
     monkeypatch.setattr(api, "spawn", fake_spawn)
-    return calls
+    yield calls
+    for _, coro in calls:
+        coro.close()  # any a test held back; a no-op for those it ran
 
 
 @pytest.fixture
@@ -236,3 +238,18 @@ def test_recover_all_recovers_exactly_the_failed_jobs_with_a_render(client, stor
         assert _status(store, jid) == "completed"
     assert _status(store, "no-render") == "failed"
     assert _status(store, "no-spec") == "failed"
+
+
+def test_a_recovery_that_cannot_be_launched_releases_its_claim(client, store, monkeypatch) -> None:
+    _job(store, "a")
+
+    def broken_spawn(coro, *, name):
+        raise RuntimeError("no event loop")
+
+    monkeypatch.setattr(api, "spawn", broken_spawn)
+
+    with pytest.raises(RuntimeError):
+        client.post("/video/heygen/a/recover")
+
+    assert _status(store, "a") == "failed"
+    assert asyncio.run(store.list_recoverable()) == ["a"]

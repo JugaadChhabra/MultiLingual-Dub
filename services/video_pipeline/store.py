@@ -144,8 +144,14 @@ class VideoJobsStore:
         async with self._lock:
             state = self._jobs.get(job_id)
             check_recoverable(state)
-            state.status = RECOVERING
-            state.stage_message = "Recovery queued"
-            self._write(state)
+            # Persist first, then swap in: a failed write leaves the job as it
+            # was (failed, recoverable) rather than claimed in memory only.
+            claimed = state.model_copy(deep=True)
+            claimed.status = RECOVERING
+            claimed.stage_message = "Recovery queued"
+            claimed.error = None
+            claimed.cause = None
+            self._write(claimed)
+            self._jobs[job_id] = claimed
             logger.info("VideoJob %s → %s", job_id, RECOVERING)
-            return state.model_copy(deep=True)
+            return claimed.model_copy(deep=True)

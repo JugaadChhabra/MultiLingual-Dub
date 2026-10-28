@@ -273,11 +273,16 @@ async def start_recovery(
     recovered now, including when a recovery of it is already under way.
     """
     state = await jobs_store.claim_recovery(job_id)
-    launch(
-        _recover_claimed(state, jobs_store=jobs_store, output_dir=output_dir,
-                         renderer=renderer, nas_config=nas_config),
-        name=f"video-recover:{job_id}",
-    )
+    coro = _recover_claimed(state, jobs_store=jobs_store, output_dir=output_dir,
+                            renderer=renderer, nas_config=nas_config)
+    try:
+        launch(coro, name=f"video-recover:{job_id}")
+    except BaseException as exc:
+        # Nothing will run the recovery, so release the claim — or the job
+        # sits in 'recovering' and refuses every retry until a restart.
+        coro.close()
+        await jobs_store.fail(job_id, f"Recovery could not be started: {exc}", exc=exc)
+        raise
 
 
 async def start_recovery_of_failed(
@@ -357,7 +362,9 @@ async def _recover_claimed(
             nas_config=nas_config,
         )
         logger.info("Recovered video job %s", job_id)
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
+        # Cancellation too: a job left in 'downloading' is not 'failed', so it
+        # would refuse every later recovery until a restart settled it.
         logger.exception("Recovery of video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)
         raise
