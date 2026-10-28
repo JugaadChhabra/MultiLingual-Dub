@@ -167,4 +167,4 @@ def test_library_says_a_cancelled_render_was_not_filed_and_hides_one_never_sent(
 
     entries = build_library([], asyncio.run(scenario()))
 
-    assert [(e.job_id, e.state, e.reason) for e in entries] == [("sent", "not_recoverable", CANCELLED)]
+    assert [(e.job_id, e.state, e.reason) for e in entries] == [("sent", "cancelled", CANCELLED)]

@@ -3,7 +3,7 @@
 These are the last two items from the post-run review, left after the
 architecture and follow-up books. Run with:
 
-    PUSH=end scripts/run-tickets.sh docs/third-prompt-book.md
+    PUSH=end scripts/run-tickets.sh docs/archive/third-prompt-book.md
 
 The runner now refuses to start if the main checkout has uncommitted tracked
 changes, so commit first.

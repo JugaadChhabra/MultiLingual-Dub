@@ -20,6 +20,7 @@
     needs_details: ["o", "Not on NAS"],
     rendering: ["a", "Rendering"],
     not_recoverable: ["r", "Can't recover"],
+    cancelled: ["", "Cancelled"],
   };
   const CAN_DOWNLOAD = new Set(["on_nas", "sendable", "needs_details", "in_progress"]);
   // States whose render finished on HeyGen, so it has a thumbnail to show.
@@ -193,6 +194,7 @@
     else if (e.state === "sendable" && e.reason) why = `<span class="s why">Last attempt failed: ${U.esc(e.reason)}</span>`;
     else if (e.state === "needs_details") why = `<span class="s why">No title or date on file — add them to send it to the NAS.</span>`;
     else if (e.state === "in_progress") why = `<span class="s why">${U.esc(e.stage || "Working")}</span>`;
+    else if (e.state === "cancelled") why = `<span class="s why">${U.esc(e.reason)}</span>`;
     else if (e.state === "rendering") why = `<span class="s why">Still rendering on HeyGen.</span>`;
 
     const vid = U.esc(e.video_id || "");

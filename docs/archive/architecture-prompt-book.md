@@ -3,8 +3,8 @@
 These come from the 28 Oct architecture review. Each ticket is one GitHub issue
 and one unattended session. Run them with:
 
-    scripts/run-tickets.sh docs/architecture-prompt-book.md          # all, in book order
-    PUSH=end scripts/run-tickets.sh docs/architecture-prompt-book.md # one push (one Docker build) at the end
+    scripts/run-tickets.sh docs/archive/architecture-prompt-book.md          # all, in book order
+    PUSH=end scripts/run-tickets.sh docs/archive/architecture-prompt-book.md # one push (one Docker build) at the end
 
 Order: quick independent tickets first, then the Script writer chain (#3 → #4),
 then the Video job intake chain (#5 → #6), then the speculative #7. A ticket

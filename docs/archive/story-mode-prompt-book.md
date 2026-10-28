@@ -3,7 +3,7 @@
 Five tickets that build Story mode, from spec #15 (the design write-up is
 docs/superpowers/specs/2026-10-28-autodub-story-mode-design.md). Run with:
 
-    PUSH=end scripts/run-tickets.sh docs/story-mode-prompt-book.md
+    PUSH=end scripts/run-tickets.sh docs/archive/story-mode-prompt-book.md
 
 The runner refuses to start if the main checkout has uncommitted tracked
 changes, so commit first.

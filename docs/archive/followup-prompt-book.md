@@ -4,12 +4,12 @@ These come from the review after the architecture prompt book merged. Each one
 is a gap between the Video pane and the server that the operator can actually
 hit. Run them with:
 
-    PUSH=end scripts/run-tickets.sh docs/followup-prompt-book.md
+    PUSH=end scripts/run-tickets.sh docs/archive/followup-prompt-book.md
 
 None blocks another. All four touch static/pane-video.js, and the runner works
 serially, cutting each worktree from the latest main, so they don't conflict.
 
-Conventions, as in docs/architecture-prompt-book.md:
+Conventions, as in docs/archive/architecture-prompt-book.md:
 - Use CONTEXT.md vocabulary.
 - Commit messages are one imperative sentence in sentence case with no
   `feat:`/`fix:` prefix.

@@ -15,6 +15,7 @@ Each entry is in exactly one state:
 - ``needs_details``    finished on HeyGen, but we don't know what to call it
 - ``rendering``        HeyGen is still working on it
 - ``not_recoverable``  there is no video to file; ``reason`` says why
+- ``cancelled``        the operator cancelled it before it was filed; left alone
 
 ``build_library`` decides that and nothing else. ``RenderCatalog`` keeps the
 account's listing between page loads, since the full listing is ~30 requests.
@@ -34,7 +35,8 @@ from services.video_pipeline.types import VideoJobState
 
 logger = logging.getLogger(__name__)
 
-LibraryState = Literal["on_nas", "in_progress", "sendable", "needs_details", "rendering", "not_recoverable"]
+LibraryState = Literal["on_nas", "in_progress", "sendable", "needs_details", "rendering", "not_recoverable",
+                       "cancelled"]
 
 RENDER_FAILED = "HeyGen's render failed, so there is no video to recover. Re-run it to make a new one."
 NOTHING_RENDERED = "Failed before anything was sent to HeyGen, so nothing was rendered. Re-run it."
@@ -87,7 +89,7 @@ def _from_job(state: VideoJobState, render: RenderListing | None) -> LibraryEntr
     if state.status == "completed":
         return LibraryEntry(state="on_nas", **base)
     if state.status == "cancelled":
-        return LibraryEntry(state="not_recoverable", reason=CANCELLED, **base)
+        return LibraryEntry(state="cancelled", reason=CANCELLED, **base)
     if state.status != "failed":
         return LibraryEntry(state="in_progress", stage=state.stage_message or state.status, **base)
 
@@ -152,7 +154,7 @@ def build_library(renders: list[RenderListing], jobs: list[VideoJobState]) -> li
 
 
 STATES: tuple[LibraryState, ...] = ("on_nas", "in_progress", "sendable", "needs_details",
-                                    "rendering", "not_recoverable")
+                                    "rendering", "not_recoverable", "cancelled")
 
 
 @dataclass(frozen=True)
