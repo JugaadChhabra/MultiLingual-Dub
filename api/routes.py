@@ -245,9 +245,9 @@ async def create_heygen_video_job(
     style: float = Form(default=0.0),
     # Toggles arrive as the raw strings the form sent; intake parses them.
     use_speaker_boost: str | None = Form(default=None),
-    # Single-job opt-outs for the branded overlay cards and the music bed
-    # (independent). Batch and recovery have no equivalent knobs and always keep
-    # both (spec defaults).
+    # Opt-outs for the branded overlay cards and the music bed (independent).
+    # Batch takes the same two; only recovery has no knobs, and it replays the
+    # job's saved spec.
     include_overlay: str | None = Form(default=None),
     include_music: str | None = Form(default=None),
 ):

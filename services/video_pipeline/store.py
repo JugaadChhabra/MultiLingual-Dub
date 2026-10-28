@@ -56,8 +56,10 @@ class VideoJobsStore:
 
     @staticmethod
     def _settle(state: VideoJobState) -> None:
-        state.status = "failed"
+        # Read the stage before overwriting it, or a job with no stage message
+        # reports dying "while failed".
         state.error = f"Interrupted by a restart while {state.stage_message or state.status}"
+        state.status = "failed"
         finalize_summary(state.summary)
         logger.warning(
             "VideoJob %s was in flight at shutdown → marked failed (recoverable=%s)",

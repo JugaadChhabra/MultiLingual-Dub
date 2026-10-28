@@ -491,6 +491,17 @@
   // title gets applies here — and it is applied to what is STORED, so what the
   // operator reads is what gets filed. The server scrubs single-video titles
   // with the same rule in services/video_pipeline/intake.py.
+  // A non-2xx answer as an Error carrying the server's own words. FastAPI puts
+  // them in `detail`: a string for our 400s, a list for its 422 validation.
+  async function refusal(r) {
+    const raw = await r.text();
+    let detail = null;
+    try { detail = JSON.parse(raw).detail; } catch (_) {}
+    if (Array.isArray(detail)) detail = detail.map((d) => (d && d.msg) || String(d)).join("; ");
+    const e = new Error(typeof detail === "string" && detail ? detail : `HTTP ${r.status}`);
+    e.refused = true; e.raw = raw;
+    return e;
+  }
   const scrubTitle = (v) => v.trim().replace(/[\\/:*?"<>|]+/g, "_").replace(/\.mp4$/i, "");
 
   // A textarea in a display:none subtree reports scrollHeight 0, so the boxes
@@ -629,21 +640,25 @@
           fd.append("language", els.lang.value);
         } else fd.append("excel", state.excel);
         const r = await fetch("/video/heygen/batch", { method: "POST", body: fd });
-        if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+        if (!r.ok) throw await refusal(r);
         id = (await r.json()).batch_id; url = `/video/heygen/batch/${id}`;
       } else {
         fd.append("script", els.script.value.trim());
         fd.append("video_title", safeTitle());
         const r = await fetch("/video/heygen", { method: "POST", body: fd });
-        if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+        if (!r.ok) throw await refusal(r);
         id = (await r.json()).job_id; url = `/video/heygen/${id}`;
       }
       state.jobId = id;
       try { localStorage.setItem(JOB_KEY, JSON.stringify({ kind: state.kind, id })); } catch (_) {}
       poll(url);
     } catch (e) {
-      U.banner(els.banners, { kind: "error", title: "Could not start the render",
-        detail: "The request never reached the render service.", raw: String(e && e.message || e) });
+      // A refusal reached the server and was turned down (a title, a length, a
+      // duplicate): say why. Anything else never got an answer at all.
+      U.banner(els.banners, e && e.refused
+        ? { kind: "error", title: "The server refused the render", detail: e.message, raw: e.raw }
+        : { kind: "error", title: "Could not start the render",
+            detail: "The request never reached the render service.", raw: String(e && e.message || e) });
       finish("failed", null);
     }
   }

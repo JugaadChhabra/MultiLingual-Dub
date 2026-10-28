@@ -315,3 +315,19 @@ def test_a_completed_video_batch_is_left_alone(tmp_path: Path) -> None:
 
     assert state.status == "completed"
     assert state.failed_count == 0
+
+
+def test_an_interrupted_job_without_a_stage_message_names_the_stage_it_died_in(tmp_path: Path) -> None:
+    """The settle used to overwrite the status before reading it, so a job with
+    no stage message reloaded as 'Interrupted by a restart while failed'."""
+    async def _before():
+        store = VideoJobsStore(persist_dir=tmp_path)
+        await store.create("job-1")
+        await store.set_status("job-1", "downloading")
+
+    asyncio.run(_before())
+
+    state = asyncio.run(VideoJobsStore(persist_dir=tmp_path).get("job-1"))
+
+    assert state.status == "failed"
+    assert state.error == "Interrupted by a restart while downloading"
