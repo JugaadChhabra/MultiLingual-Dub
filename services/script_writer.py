@@ -41,9 +41,11 @@ from services.script_validate import (
 logger = logging.getLogger(__name__)
 
 # OpenRouter model ids, tried in order. Set here in code, not in .env: changing
-# the model is a code change. Flash writes the set for a fraction of a cent; Pro
-# is the fallback for a day Flash cannot get right.
-SCRIPT_MODELS = ["google/gemini-2.5-flash", "google/gemini-2.5-pro"]
+# the model is a code change. Haiku won a side-by-side on the sunsign brief
+# (Oct 2026): the most natural spoken Hindi, and clean on the first call in
+# every run, where gemini-2.5-flash needed repairs or failed. Gemini 3 Flash is
+# the fallback — a different provider, so one outage does not stop the day.
+SCRIPT_MODELS = ["anthropic/claude-haiku-5.5", "google/gemini-3-flash-preview"]
 
 @dataclass(frozen=True)
 class SetItem:
