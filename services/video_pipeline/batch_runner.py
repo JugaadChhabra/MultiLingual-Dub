@@ -129,10 +129,14 @@ async def run_video_batch_job(
 
             except Exception as exc:
                 logger.error("Batch %s | row %d failed: %s", batch_id, item.row_index, exc)
+                # Reuse the cause the video job already classified rather than
+                # re-reading this exception's string, which has lost the status code
+                video_state = await video_jobs_store.get(job_id)
                 await batch_store.update_row(
                     batch_id, item.row_index,
                     status="failed",
                     error=str(exc),
+                    cause=video_state.cause if video_state else None,
                 )
                 await batch_store.row_failed(batch_id)
                 failed_rows.append({
