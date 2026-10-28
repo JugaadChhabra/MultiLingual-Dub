@@ -11,7 +11,7 @@
     langs: $("#sLangs"), selN: $("#sSelN"), groups: $("#sGroups"),
     split: $("#sSplit"), msg: $("#sMsg"), live: $("#storyLive"),
     lines: $("#sLines"), lineN: $("#sLineN"), reviewActivity: $("#sReviewActivity"),
-    back: $("#sBack"), reviewMsg: $("#sReviewMsg"),
+    back: $("#sBack"), download: $("#sDownload"), reviewMsg: $("#sReviewMsg"),
   };
 
   // emotions and maxLineChars come from the split response, so the dropdown and
@@ -124,18 +124,71 @@
       row.innerHTML =
         `<span class="i">${i + 1}</span>` +
         `<textarea class="area" rows="1" aria-label="Line ${i + 1} text"></textarea>` +
-        `<select class="fld" aria-label="Line ${i + 1} emotion">${options}</select>`;
+        `<select class="fld" aria-label="Line ${i + 1} emotion">${options}</select>` +
+        `<span class="tools"><button type="button" class="btn" data-act="split" title="Split this line at the cursor">Split</button>` +
+        `<button type="button" class="btn" data-act="merge" title="Merge with the next line"${i === state.lines.length - 1 ? " disabled" : ""}>Merge</button></span>`;
       const area = row.querySelector("textarea"), pick = row.querySelector("select");
       area.value = line.text;
       pick.value = line.emotion;
       area.addEventListener("input", () => { line.text = area.value; fit(area); flag(row, line); });
       pick.addEventListener("change", () => { line.emotion = pick.value; flag(row, line); });
+      row.querySelector('[data-act="split"]').addEventListener("click", () => splitAt(i, area.selectionStart));
+      row.querySelector('[data-act="merge"]').addEventListener("click", () => mergeNext(i));
       els.lines.appendChild(row);
       fit(area);
       flag(row, line, false);
     });
     summarise();
   }
+
+  // Merge joins with a space and keeps the first line's emotion.
+  function mergeNext(i) {
+    const a = state.lines[i], b = state.lines[i + 1];
+    if (!b) return;
+    const merged = { text: `${a.text.trim()} ${b.text.trim()}`.trim(), emotion: a.emotion };
+    if (state.maxLineChars && tagged(merged) > state.maxLineChars) {
+      els.reviewMsg.textContent = `Lines ${i + 1} and ${i + 2} are too long to merge: over ${state.maxLineChars} characters`;
+      els.reviewMsg.classList.add("err");
+      return;
+    }
+    state.lines.splice(i, 2, merged);
+    renderLines();
+  }
+  // Split at the cursor; both halves keep the emotion.
+  function splitAt(i, pos) {
+    const line = state.lines[i];
+    const head = line.text.slice(0, pos).trim(), tail = line.text.slice(pos).trim();
+    if (!head || !tail) {
+      els.reviewMsg.textContent = "Put the cursor inside the line, between the words to split";
+      els.reviewMsg.classList.add("err");
+      return;
+    }
+    state.lines.splice(i, 1, { text: head, emotion: line.emotion }, { text: tail, emotion: line.emotion });
+    renderLines();
+  }
+
+  els.download.addEventListener("click", async () => {
+    const bad = state.lines.some((l) => !l.text.trim());
+    if (!state.lines.length || bad) { summarise(); return; }
+    try {
+      const r = await U.fetchT("/batch/story/xlsx", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activity_name: els.reviewActivity.textContent, lines: state.lines }),
+      }, 30000);
+      if (!r.ok) {
+        let d = ""; try { d = (await r.json()).detail; } catch (_) {}
+        throw new Error(typeof d === "string" && d ? d : `HTTP ${r.status}`);
+      }
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = `${els.reviewActivity.textContent}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      els.reviewMsg.textContent = `Download failed: ${e.message}`;
+      els.reviewMsg.classList.add("err");
+    }
+  });
 
   // A line too long to voice, or emptied, is marked where it is.
   function flag(row, line, resummarise = true) {

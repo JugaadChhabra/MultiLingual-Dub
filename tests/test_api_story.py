@@ -74,3 +74,37 @@ def test_split_maps_gemini_being_down_to_502(monkeypatch) -> None:
     response = _client().post("/batch/story/split", json={"title": "T", "text": "Once upon a time."})
 
     assert response.status_code == 502
+
+
+def _xlsx(client, payload):
+    return client.post("/batch/story/xlsx", json=payload)
+
+
+def test_xlsx_round_trips_through_the_excel_reader(tmp_path) -> None:
+    from batch.excel import read_excel_rows
+
+    response = _xlsx(_client(), {
+        "activity_name": "moti1story",
+        "lines": [
+            {"text": "Hi there!", "emotion": "Cheerful"},
+            {"text": "Moti barked.", "emotion": "Narrative"},
+        ],
+    })
+
+    assert response.status_code == 200
+    assert 'filename="moti1story.xlsx"' in response.headers["content-disposition"]
+    path = tmp_path / "story.xlsx"
+    path.write_bytes(response.content)
+    rows = read_excel_rows(path)
+    assert [r.voiceover_text for r in rows] == ["Hi there!", "Moti barked."]
+    assert [r.emotion for r in rows] == ["Cheerful", "Narrative"]
+    assert {r.activity_name for r in rows} == {"moti1story"}
+    assert [r.voiceover_title for r in rows] == ["moti1story1", "moti1story2"]
+
+
+def test_xlsx_rejects_bad_input() -> None:
+    client = _client()
+    ok = {"text": "Hi.", "emotion": "Cheerful"}
+    assert _xlsx(client, {"activity_name": "a", "lines": []}).status_code == 400
+    assert _xlsx(client, {"activity_name": "a", "lines": [ok, {"text": "  ", "emotion": "Cheerful"}]}).status_code == 400
+    assert _xlsx(client, {"activity_name": "a", "lines": [{"text": "Hi.", "emotion": "Furious"}]}).status_code == 400

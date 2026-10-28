@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+from io import BytesIO
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import logging
@@ -21,10 +23,12 @@ from api.models import (
     SessionEnvConfigRequest,
     SessionEnvConfigResponse,
     StorySplitRequest,
+    StoryXlsxRequest,
     TranslateRequest,
 )
 from api.session_config import SESSION_COOKIE_NAME, SessionConfigStore
 from api.utils import ensure_file_extension, parse_target_languages, safe_stem, save_upload_file, to_output_url
+from batch.excel import REQUIRED_HEADERS
 from batch.models import CreateJobResponse, JobState
 from batch.service import english_voice_is_required, run_excel_batch_job
 from services.elevenlabs import ElevenLabsSettings, ElevenLabsTTSConfig, synthesize_speech_bytes
@@ -767,6 +771,37 @@ async def split_story_route(payload: StorySplitRequest, request: Request):
         "emotions": STORY_EMOTIONS,
         "max_line_chars": MAX_LINE_CHARS,
     }
+
+
+@app.post("/batch/story/xlsx")
+async def story_xlsx_route(payload: StoryXlsxRequest):
+    """The reviewed lines as a sheet the normal Audio (Excel) flow accepts."""
+    from openpyxl import Workbook
+
+    activity = payload.activity_name.strip()
+    if not activity:
+        raise HTTPException(status_code=400, detail="The activity name is empty")
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="There are no lines to download")
+    for n, line in enumerate(payload.lines, start=1):
+        if not line.text.strip():
+            raise HTTPException(status_code=400, detail=f"Line {n} is empty")
+        if line.emotion not in STORY_EMOTIONS:
+            raise HTTPException(status_code=400, detail=f"Line {n} has an unknown emotion: {line.emotion}")
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(REQUIRED_HEADERS)
+    for n, line in enumerate(payload.lines, start=1):
+        sheet.append([line.text.strip(), line.emotion, activity, f"{activity}{n}"])
+    buffer = BytesIO()
+    workbook.save(buffer)
+    filename = re.sub(r"[^A-Za-z0-9_.-]", "_", activity) + ".xlsx"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/batch/excel-jobs/{job_id}", response_model=JobState)
