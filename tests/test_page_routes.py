@@ -14,7 +14,7 @@ def test_html_pages_are_never_heuristically_cached() -> None:
     """
     client = TestClient(api.app)
 
-    for path in ("/", "/videogen"):
+    for path in ("/", "/videogen", "/story"):
         response = client.get(path)
         assert response.status_code == 200, path
         cache_control = response.headers.get("cache-control", "")
@@ -41,7 +41,8 @@ def test_static_assets_stay_cacheable() -> None:
     client = TestClient(api.app)
 
     for path in ("/static/app.css", "/static/ui.js", "/static/shell.js",
-                 "/static/pane-audio.js", "/static/pane-video.js"):
+                 "/static/pane-audio.js", "/static/pane-video.js",
+                 "/static/pane-story.js"):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "no-cache" not in response.headers.get("cache-control", ""), path
@@ -52,10 +53,22 @@ def test_shared_modules_load_before_their_first_use() -> None:
     order is load-bearing — shell.js boots and must come last."""
     index = TestClient(api.app).get("/").text
 
-    for module in ("/static/ui.js", "/static/pane-audio.js", "/static/pane-video.js", "/static/shell.js"):
+    for module in ("/static/ui.js", "/static/pane-audio.js", "/static/pane-video.js",
+                   "/static/pane-story.js", "/static/shell.js"):
         assert module in index, module
 
     assert index.index("/static/ui.js") < index.index("/static/pane-audio.js")
     assert index.index("/static/ui.js") < index.index("/static/pane-video.js")
     assert index.index("/static/pane-audio.js") < index.index("/static/shell.js")
     assert index.index("/static/pane-video.js") < index.index("/static/shell.js")
+    assert index.index("/static/ui.js") < index.index("/static/pane-story.js")
+    assert index.index("/static/pane-story.js") < index.index("/static/shell.js")
+
+
+def test_story_section_has_its_own_linkable_path() -> None:
+    """/story serves the app, and the app has a Story section for it to open."""
+    response = TestClient(api.app).get("/story")
+
+    assert response.status_code == 200
+    assert 'id="pane-story"' in response.text
+    assert 'data-section="story"' in response.text

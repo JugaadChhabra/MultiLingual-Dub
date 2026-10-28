@@ -302,6 +302,55 @@
     btn.addEventListener("drop", (ev) => { const f = ev.dataTransfer.files[0]; if (f) onFile(f); });
   }
 
+  // ── target-language picker ──────────────────────────────────────────────
+  // Audio and Story pick languages the same way. Names are display only; the
+  // codes drive the API. Returns the live Set of picked codes.
+  const INDIAN = [["bn-IN","বাংলা","Bengali"],["en-IN","English","English"],["gu-IN","ગુજરાતી","Gujarati"],
+    ["hi-IN","हिन्दी","Hindi"],["kn-IN","ಕನ್ನಡ","Kannada"],["ml-IN","മലയാളം","Malayalam"],
+    ["mr-IN","मराठी","Marathi"],["od-IN","ଓଡ଼ିଆ","Odia"],["pa-IN","ਪੰਜਾਬੀ","Punjabi"],
+    ["ta-IN","தமிழ்","Tamil"],["te-IN","తెలుగు","Telugu"]];
+  const INTL = [["fr","Français","French"],["de","Deutsch","German"],["es","Español","Spanish"],
+    ["ru","Русский","Russian"],["pt","Português","Portuguese"]];
+  const ALL_LANGS = [...INDIAN, ...INTL];
+  const LANG_GROUPS = { all: ALL_LANGS, indian: INDIAN, intl: INTL };
+
+  function langPicker({ tokens, groups, count, initial = ["hi-IN"], onChange }) {
+    const sel = new Set(initial);
+    const groupOn = (list) => list.length > 0 && list.every(([c]) => sel.has(c));
+    function sync() {
+      tokens.querySelectorAll(".token").forEach((t) =>
+        t.setAttribute("aria-pressed", String(sel.has(t.dataset.code))));
+      count.textContent = `· ${sel.size} of ${ALL_LANGS.length}`;
+      groups.querySelectorAll("button").forEach((b) =>
+        b.setAttribute("aria-pressed", String(groupOn(LANG_GROUPS[b.dataset.group] || []))));
+    }
+    tokens.innerHTML = "";
+    ALL_LANGS.forEach(([code, native, english]) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "token"; b.dataset.code = code;
+      b.setAttribute("aria-label", `${english} (${code})`);
+      // English until it is picked, then it morphs into the native script —
+      // the two share one grid cell so the pill never changes width
+      b.innerHTML = `<span class="morph"><span class="en">${esc(english)}</span>` +
+        `<span class="nat">${esc(native)}</span></span>`;
+      b.addEventListener("click", () => {
+        sel.has(code) ? sel.delete(code) : sel.add(code);
+        sync(); if (onChange) onChange();
+      });
+      tokens.appendChild(b);
+    });
+    // group buttons toggle: turning one off is what a separate "clear" used to do
+    groups.addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const list = LANG_GROUPS[b.dataset.group] || [];
+      const off = groupOn(list);
+      list.forEach(([c]) => (off ? sel.delete(c) : sel.add(c)));
+      sync(); if (onChange) onChange();
+    });
+    sync();
+    return sel;
+  }
+
   window.UI = { $, esc, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
-                notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone };
+                notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone, langPicker };
 })();

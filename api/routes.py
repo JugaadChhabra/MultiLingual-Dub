@@ -20,6 +20,7 @@ from api.models import (
     FinalizeTextRequest,
     SessionEnvConfigRequest,
     SessionEnvConfigResponse,
+    StorySplitRequest,
     TranslateRequest,
 )
 from api.session_config import SESSION_COOKIE_NAME, SessionConfigStore
@@ -66,7 +67,16 @@ from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import ElevenLabsSpeech, SpeechSynth
 from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
+from services.qc import QCSettings
 from services.settings import Settings, missing_keys, required_keys
+from services.story import (
+    MAX_LINE_CHARS,
+    STORY_EMOTIONS,
+    StoryGeminiError,
+    StorySplitError,
+    activity_name as story_activity_name,
+    split_story,
+)
 from services.stt import transcribe_audio
 from services.tts import text_to_speech
 from services.translation import translate_with_fallback
@@ -198,6 +208,12 @@ def videogen_page() -> FileResponse:
     """Both pipelines live in one app now. This stays a real route so the Video
     section can be linked and bookmarked directly — the shell reads the path and
     opens it."""
+    return index()
+
+
+@app.get("/story")
+def story_page() -> FileResponse:
+    """The Story section's own linkable path, like /videogen."""
     return index()
 
 
@@ -722,6 +738,35 @@ async def create_excel_job(
     )
 
     return CreateJobResponse(job_id=job_id, status="queued")
+
+
+@app.post("/batch/story/split")
+async def split_story_route(payload: StorySplitRequest, request: Request):
+    """Break a pasted story into voiceover lines with emotions, for review.
+    Synchronous: one Gemini call (two if the first split fails validation)."""
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Paste a story first: the text is empty")
+    session = await _session_config_for_request(request)
+    try:
+        settings = QCSettings.resolve(session)
+    except (MissingSettingError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        lines = await asyncio.to_thread(split_story, payload.text, settings=settings)
+    except StorySplitError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except StoryGeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {
+        "activity_name": story_activity_name(payload.title),
+        "lines": [{"text": line.text, "emotion": line.emotion} for line in lines],
+        # The review table is fed from here so it and the validator share one
+        # list and one cap.
+        "emotions": STORY_EMOTIONS,
+        "max_line_chars": MAX_LINE_CHARS,
+    }
 
 
 @app.get("/batch/excel-jobs/{job_id}", response_model=JobState)

@@ -5,11 +5,13 @@
   const U = window.UI, $ = U.$;
 
   let envConfigured = false;
-  const running = { audio: false, video: false };
+  const running = { audio: false, video: false, story: false };
 
   // ── sections ─────────────────────────────────────────────────────────────
-  // /videogen is a real, linkable path for the Video section. The old /heygen
-  // redirects to it, so existing bookmarks still land in the right place.
+  // /videogen and /story are real, linkable paths for their sections. The old
+  // /heygen redirects to /videogen, so existing bookmarks still land right.
+  const PATHS = { audio: "/", video: "/videogen", story: "/story" };
+  const TITLES = { audio: "AutoDub — Audio", video: "AutoDub — Video", story: "AutoDub — Story" };
   function show(section, push = true) {
     document.querySelectorAll(".sbi[data-section]").forEach((b) => {
       const on = b.dataset.section === section;
@@ -17,13 +19,15 @@
     });
     $("#pane-audio").hidden = section !== "audio";
     $("#pane-video").hidden = section !== "video";
-    document.title = section === "video" ? "AutoDub — Video" : "AutoDub — Audio";
+    $("#pane-story").hidden = section !== "story";
+    document.title = TITLES[section];
     // The draft boxes size themselves to their text, which they cannot measure
     // while the pane is hidden. This is the moment it stops being hidden.
     if (section === "video" && window.PaneVideo && window.PaneVideo.fitDrafts) {
       window.PaneVideo.fitDrafts();
     }
-    if (push) history.replaceState({}, "", section === "video" ? "/videogen" : "/");
+    if (section === "story" && window.PaneStory) window.PaneStory.fitLines();
+    if (push) history.replaceState({}, "", PATHS[section]);
   }
   document.querySelectorAll(".sbi[data-section]").forEach((b) =>
     b.addEventListener("click", () => show(b.dataset.section)));
@@ -100,11 +104,12 @@
   // ── toolbar running indicator ────────────────────────────────────────────
   function setRunning(section, on, label) {
     running[section] = on;
-    const any = running.audio || running.video;
+    const any = running.audio || running.video || running.story;
     $("#tbRun").hidden = !any;
     $("#tbSep").hidden = !any;
     if (any && label) $("#tbRunText").textContent = label;
-    else if (any) $("#tbRunText").textContent = running.audio ? "Audio running" : "Video rendering";
+    else if (any) $("#tbRunText").textContent =
+      running.audio ? "Audio running" : running.video ? "Video rendering" : "Story splitting";
   }
 
   // ── a classified failure, rendered ───────────────────────────────────────
@@ -171,7 +176,8 @@
   let savedSidebar = null;
   try { savedSidebar = localStorage.getItem(SB_KEY); } catch (_) {}
   applySidebar(savedSidebar === "rail", false);
-  show(location.pathname.startsWith("/videogen") ? "video" : "audio", false);
+  const p = location.pathname;
+  show(p.startsWith("/videogen") ? "video" : p.startsWith("/story") ? "story" : "audio", false);
   refreshEnv();
   setInterval(refreshEnv, 20000);
   refreshRecoverable();
