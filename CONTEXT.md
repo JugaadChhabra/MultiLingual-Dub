@@ -17,7 +17,8 @@ voiced MP3s out, zipped per language and pushed to S3. Terms: *row*, *activity*,
 **Video pipeline** (`services/video_pipeline/`) — a script and a photo in, a
 lip-synced video out, pushed to the NAS. The script is now usually written for
 the operator rather than by them, so on most days the photo is the only input.
-Terms: *video job*, *render*, *talking photo*, *batch*, *draft*, *script brief*.
+Terms: *video job*, *video job intake*, *render*, *talking photo*, *batch*, *draft*,
+*script brief*.
 
 ## Video pipeline
 
@@ -60,6 +61,17 @@ idempotent: without this, a retry creates a second paid render. Called
 
 **Character** — which persona a video is voiced and filed as (`indian`, `us`).
 Selects the voice and, for `us`, a separate NAS root.
+
+**Video job intake** (`services/video_pipeline/intake.py`) — a single
+submission's raw form values (`SingleSubmission`) turned into a `VideoJobSpec`,
+or an `IntakeError` the request returns as a 400. Owns the rules that used to
+live only in the Video pane: the title is scrubbed of filename-breaking
+characters and a trailing `.mp4` (it becomes the NAS filename) and refused if
+nothing is left, and the script is capped at the Script writer's
+`MAX_SCRIPT_CHARS`. Also blanks to None, the `indian` character default and the
+toggle parsing. The pane still checks the
+same rules first, for fast feedback; intake is where they are enforced. The
+upload is not intake's business — whether there is a photo is the request's.
 
 **Draft** — a written script the operator has not committed to yet: title plus
 text, held in the browser, belonging to no job. Becomes a batch row on Run and
