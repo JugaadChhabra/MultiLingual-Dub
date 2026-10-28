@@ -238,6 +238,103 @@
     catch (_) { return ""; }
   };
 
+  // ── a batch job, watched until it ends ──────────────────────────────────
+  // An Excel sheet (Audio) and a story (Story) are the same kind of job: polled
+  // and cancelled on the same endpoints, summarised by the same JobSummary.
+  const JOB_ENDED = ["completed", "failed", "cancelled"];
+  const pause = (ms) => new Promise((res) => setTimeout(res, ms));
+
+  // Resolves with the job's last state once it ends; onProgress sees each poll.
+  async function pollJob(id, onProgress) {
+    let notFound = 0;
+    while (true) {
+      try {
+        const r = await fetchT(`/batch/excel-jobs/${id}`);
+        if (r.status === 404) {
+          if (++notFound >= 3) return { status: "failed", summary: null, cause: null };
+          await pause(2000); continue;
+        }
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const p = await r.json(); notFound = 0;
+        onProgress(p.summary, p.status);
+        if (JOB_ENDED.includes(p.status)) return { status: p.status, summary: p.summary, cause: p.cause };
+      } catch (_) { /* keep polling through a blip */ }
+      await pause(2000);
+    }
+  }
+
+  // Everything here comes from fields JobSummary already collected. `els` holds
+  // the progress block's parts; `languages` the run's language count.
+  function jobProgress(els, s, status, languages) {
+    s = s || {};
+    els.progress.hidden = false;
+    const total = s.language_tasks_total || (s.total_rows || 0) * languages || 0;
+    const uploaded = s.uploads_succeeded || 0;
+    const succeeded = s.language_tasks_succeeded || 0;
+    const failed = (s.language_tasks_failed || 0) + (s.uploads_failed || 0);
+    // succeeded includes uploaded, so the middle band is the difference
+    const rendered = Math.max(0, succeeded - uploaded);
+
+    els.clips.innerHTML = `${uploaded + rendered} <small>of ${total} clips</small>`;
+    els.upN.textContent = uploaded;
+    els.doneN.textContent = rendered;
+    els.badN.textContent = failed;
+    els.queueN.textContent = Math.max(0, total - uploaded - rendered - failed);
+    setBar(els, { total, uploaded, rendered, failed, live: status === "running" });
+
+    const rows = s.total_rows || 0, processed = s.rows_processed || 0;
+    const left = status === "running" ? eta(s.started_at, processed, rows) : null;
+    els.detail.textContent = status === "running"
+      ? [`Row ${processed} of ${rows}`, left].filter(Boolean).join(" · ")
+      : `Finished ${rows} rows`;
+    els.started.textContent = s.started_at ? `Started ${clock(s.started_at)}` : "";
+  }
+
+  // The toast, notification and banner for a job that has ended. `name` is
+  // what the operator calls the run, e.g. "Audio dubbing".
+  function jobEnded({ banners, status, summary, cause, name }) {
+    const s = summary || {};
+    const uploaded = s.uploads_succeeded || 0;
+    const failed = (s.language_tasks_failed || 0) + (s.uploads_failed || 0);
+
+    // the classified cause, if the backend produced one
+    if (cause) window.Shell.showCause(banners, cause);
+
+    if (status === "completed" && !failed) {
+      toast(`All ${uploaded} clips uploaded`, { kind: "ok",
+        detail: `Finished ${clock(new Date().toISOString())}.` });
+      notify(`${name} finished`, `${uploaded} clips uploaded to S3`, false);
+    } else if (status === "cancelled") {
+      toast("Run cancelled", { kind: "info",
+        detail: `${uploaded} clips finished and stayed uploaded.` });
+      notify(`${name} cancelled`, `${uploaded} clips were uploaded before stopping`, true);
+    } else {
+      const head = cause ? cause.title : "The run did not finish";
+      notify(`${name} finished with ${failed} failures`, `${head} · ${uploaded} uploaded`, true);
+      if (!cause) {
+        banner(banners, { kind: "error", title: "The run did not finish",
+          detail: "No cause was reported by the server." });
+      }
+    }
+  }
+
+  // The cancel button: confirm, then ask the server. `jobId()` is read at click
+  // time, because the button outlives any one run.
+  function bindJobCancel(btn, jobId) {
+    btn.addEventListener("click", () => {
+      confirm({
+        title: "Cancel this run?",
+        message: "Rows already finished stay uploaded. The row in flight completes first.",
+        confirmLabel: "Cancel run", cancelLabel: "Keep running",
+        onOk: async () => {
+          btn.disabled = true; btn.textContent = "Cancelling…";
+          try { await fetchT(`/batch/excel-jobs/${jobId()}/cancel`, { method: "POST" }); } catch (_) {}
+        },
+      });
+    });
+  }
+  const resetJobCancel = (btn) => { btn.disabled = false; btn.textContent = "Cancel run"; };
+
   // ── notification + sound ────────────────────────────────────────────────
   // Permission is requested on the first run rather than at page load, so the
   // prompt arrives attached to an action the operator just took.
@@ -352,5 +449,6 @@
   }
 
   window.UI = { $, esc, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
+                JOB_ENDED, pollJob, jobProgress, jobEnded, bindJobCancel, resetJobCancel,
                 notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone, langPicker };
 })();

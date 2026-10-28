@@ -20,7 +20,7 @@
   };
 
   const state = { file: null, rows: 0, sheetProblem: null, running: false,
-                  jobId: null, cancelling: false, targets: [] };
+                  jobId: null, targets: [] };
   const JOB_KEY = "autodub_audio_job";
 
   // ── language tokens ──────────────────────────────────────────────────────
@@ -88,47 +88,13 @@
   const say = (text, bad) => { els.msg.textContent = text || ""; els.msg.classList.toggle("err", !!bad); };
 
   // ── progress ─────────────────────────────────────────────────────────────
-  // Everything here comes from fields JobSummary already collected; the old UI
-  // showed four of them and threw the rest away.
   function renderProgress(s, status) {
-    s = s || {};
-    els.progress.hidden = false;
-    const total = s.language_tasks_total || (s.total_rows || 0) * (state.targets.length || SEL.size) || 0;
-    const uploaded = s.uploads_succeeded || 0;
-    const succeeded = s.language_tasks_succeeded || 0;
-    const failed = (s.language_tasks_failed || 0) + (s.uploads_failed || 0);
-    // succeeded includes uploaded, so the middle band is the difference
-    const rendered = Math.max(0, succeeded - uploaded);
-
-    els.clips.innerHTML = `${uploaded + rendered} <small>of ${total} clips</small>`;
-    els.upN.textContent = uploaded;
-    els.doneN.textContent = rendered;
-    els.badN.textContent = failed;
-    els.queueN.textContent = Math.max(0, total - uploaded - rendered - failed);
-    U.setBar(els, { total, uploaded, rendered, failed, live: status === "running" });
-
-    const rows = s.total_rows || 0, processed = s.rows_processed || 0;
-    const left = status === "running" ? U.eta(s.started_at, processed, rows) : null;
-    els.detail.textContent = status === "running"
-      ? [`Row ${processed} of ${rows}`, left].filter(Boolean).join(" · ")
-      : `Finished ${rows} rows`;
-    els.started.textContent = s.started_at ? `Started ${U.clock(s.started_at)}` : "";
+    U.jobProgress(els, s, status, state.targets.length || SEL.size);
   }
 
   // ── run ──────────────────────────────────────────────────────────────────
   els.run.addEventListener("click", start);
-  els.cancel.addEventListener("click", () => {
-    U.confirm({
-      title: "Cancel this run?",
-      message: "Rows already finished stay uploaded. The row in flight completes first.",
-      confirmLabel: "Cancel run", cancelLabel: "Keep running",
-      onOk: async () => {
-        state.cancelling = true;
-        els.cancel.disabled = true; els.cancel.textContent = "Cancelling…";
-        try { await U.fetchT(`/batch/excel-jobs/${state.jobId}/cancel`, { method: "POST" }); } catch (_) {}
-      },
-    });
-  });
+  U.bindJobCancel(els.cancel, () => state.jobId);
 
   async function start() {
     const why = blocker();
@@ -139,7 +105,7 @@
     // must not wait on someone noticing it. Permission lands before the job ends.
     U.askNotify();
 
-    state.running = true; state.cancelling = false; state.targets = [...SEL];
+    state.running = true; state.targets = [...SEL];
     els.live.hidden = false; refreshRun();
     window.Shell.setRunning("audio", true);
 
@@ -165,24 +131,11 @@
   }
 
   async function poll(id) {
-    let notFound = 0;
-    while (true) {
-      try {
-        const r = await U.fetchT(`/batch/excel-jobs/${id}`);
-        if (r.status === 404) {
-          if (++notFound >= 3) { finish("failed", null, null); return; }
-          await new Promise((res) => setTimeout(res, 2000)); continue;
-        }
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const p = await r.json(); notFound = 0;
-        renderProgress(p.summary, p.status);
-        window.Shell.setRunning("audio", true, shortProgress(p.summary));
-        if (["completed", "failed", "cancelled"].includes(p.status)) {
-          finish(p.status, p.summary, p.cause); return;
-        }
-      } catch (_) { /* keep polling through a blip */ }
-      await new Promise((res) => setTimeout(res, 2000));
-    }
+    const end = await U.pollJob(id, (summary, status) => {
+      renderProgress(summary, status);
+      window.Shell.setRunning("audio", true, shortProgress(summary));
+    });
+    finish(end.status, end.summary, end.cause);
   }
   function shortProgress(s) {
     s = s || {};
@@ -193,34 +146,11 @@
     state.running = false; state.jobId = null;
     try { localStorage.removeItem(JOB_KEY); } catch (_) {}
     els.live.hidden = true;
-    els.cancel.disabled = false; els.cancel.textContent = "Cancel run";
+    U.resetJobCancel(els.cancel);
     window.Shell.setRunning("audio", false);
     if (summary) renderProgress(summary, status);
     refreshRun();
-
-    const s = summary || {};
-    const uploaded = s.uploads_succeeded || 0;
-    const failed = (s.language_tasks_failed || 0) + (s.uploads_failed || 0);
-
-    // the classified cause, if the backend produced one
-    if (cause) window.Shell.showCause(els.banners, cause);
-
-    if (status === "completed" && !failed) {
-      U.toast(`All ${uploaded} clips uploaded`, { kind: "ok",
-        detail: `Finished ${U.clock(new Date().toISOString())}.` });
-      U.notify("Audio dubbing finished", `${uploaded} clips uploaded to S3`, false);
-    } else if (status === "cancelled") {
-      U.toast("Run cancelled", { kind: "info",
-        detail: `${uploaded} clips finished and stayed uploaded.` });
-      U.notify("Audio dubbing cancelled", `${uploaded} clips were uploaded before stopping`, true);
-    } else {
-      const head = cause ? cause.title : "The run did not finish";
-      U.notify(`Audio dubbing finished with ${failed} failures`, `${head} · ${uploaded} uploaded`, true);
-      if (!cause) {
-        U.banner(els.banners, { kind: "error", title: "The run did not finish",
-          detail: "No cause was reported by the server." });
-      }
-    }
+    U.jobEnded({ banners: els.banners, status, summary, cause, name: "Audio dubbing" });
   }
 
   // ── survive a reload ─────────────────────────────────────────────────────
@@ -232,7 +162,7 @@
       const r = await U.fetchT(`/batch/excel-jobs/${id}`);
       if (!r.ok) { localStorage.removeItem(JOB_KEY); return; }
       const p = await r.json();
-      if (["completed", "failed", "cancelled"].includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
+      if (U.JOB_ENDED.includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.jobId = id; state.targets = [...SEL];
       els.live.hidden = false; refreshRun();
       U.toast("Reattached to a run already in progress", { kind: "info",

@@ -22,6 +22,7 @@ from api.models import (
     FinalizeTextRequest,
     SessionEnvConfigRequest,
     SessionEnvConfigResponse,
+    StoryJobRequest,
     StorySplitRequest,
     StoryXlsxRequest,
     TranslateRequest,
@@ -31,6 +32,7 @@ from api.utils import ensure_file_extension, parse_target_languages, safe_stem, 
 from batch.excel import REQUIRED_HEADERS
 from batch.models import CreateJobResponse, JobState
 from batch.service import english_voice_is_required, run_excel_batch_job
+from batch.story_job import run_story_job
 from services.elevenlabs import ElevenLabsSettings, ElevenLabsTTSConfig, synthesize_speech_bytes
 from batch.store import JobsStore
 from services.video_pipeline import (
@@ -77,8 +79,10 @@ from services.story import (
     MAX_LINE_CHARS,
     STORY_EMOTIONS,
     StoryGeminiError,
+    StoryLine,
     StorySplitError,
     activity_name as story_activity_name,
+    line_problem,
     split_story,
 )
 from services.stt import transcribe_audio
@@ -802,6 +806,50 @@ async def story_xlsx_route(payload: StoryXlsxRequest):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.post("/batch/story-jobs", status_code=202, response_model=CreateJobResponse)
+async def create_story_job(payload: StoryJobRequest, request: Request):
+    """Voice a reviewed story: translate, one story fix per language, speak.
+    Polled and cancelled through the Excel job endpoints."""
+    activity = payload.activity_name.strip()
+    if not activity:
+        raise HTTPException(status_code=400, detail="The activity name is empty")
+    if not payload.lines:
+        raise HTTPException(status_code=400, detail="There are no lines to voice")
+    lines = [StoryLine(text=line.text.strip(), emotion=line.emotion) for line in payload.lines]
+    for n, line in enumerate(lines, start=1):
+        problem = line_problem(line)
+        if problem:
+            raise HTTPException(status_code=400, detail=f"Line {n}: {problem}")
+
+    parsed_languages = parse_target_languages(payload.target_languages, None)
+
+    session = await _session_config_for_request(request)
+    try:
+        settings = Settings.resolve(session)
+        english_voice_is_required(parsed_languages, settings.eleven)
+    except (MissingSettingError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    job_id = uuid.uuid4().hex
+    await jobs_store.create(job_id)
+
+    spawn(
+        run_story_job(
+            job_id=job_id,
+            title=payload.title.strip(),
+            activity_name=activity,
+            lines=lines,
+            target_languages=parsed_languages,
+            jobs_store=jobs_store,
+            settings=settings,
+            output_dir=OUTPUT_DIR,
+        ),
+        name=f"story-job:{job_id}",
+    )
+
+    return CreateJobResponse(job_id=job_id, status="queued")
 
 
 @app.get("/batch/excel-jobs/{job_id}", response_model=JobState)

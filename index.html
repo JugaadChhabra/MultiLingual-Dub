@@ -129,6 +129,25 @@
 
         <div id="storyBanners"></div>
 
+        <div id="storyProgress" hidden>
+          <div class="prog">
+            <div class="v" id="spClips">0 <small>of 0 clips</small></div>
+            <div class="k" id="spDetail">Starting…</div>
+            <div class="bar">
+              <i class="up" id="spUp" style="width:0"></i>
+              <i class="done live" id="spDone" style="width:0"></i>
+              <i class="bad" id="spBad" style="width:0"></i>
+            </div>
+            <div class="legend">
+              <span><i class="k g"></i>Uploaded <b id="spUpN">0</b></span>
+              <span><i class="k a"></i>Rendered, uploading <b id="spDoneN">0</b></span>
+              <span><i class="k r"></i>Failed <b id="spBadN">0</b></span>
+              <span><i class="k"></i>Queued <b id="spQueueN">0</b></span>
+              <span class="grow" id="spStarted"></span>
+            </div>
+          </div>
+        </div>
+
         <section id="sPaste">
           <div class="gh">Story</div>
           <div class="grp">
@@ -175,9 +194,10 @@
           <div class="grp" id="sLines"></div>
 
           <div class="runbar">
+            <button class="btn p big" id="sGenerate">Generate audio</button>
+            <button class="btn" id="sCancel" hidden>Cancel run</button>
             <button class="btn" id="sBack">Edit the story</button>
             <button class="btn" id="sDownload">Download as Excel</button>
-            <!-- Generate audio arrives in ticket #19 -->
             <span class="msg grow" id="sReviewMsg" role="status" aria-live="polite"></span>
           </div>
         </section>

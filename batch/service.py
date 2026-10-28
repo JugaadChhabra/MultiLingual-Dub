@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from batch.activity import ActivityBuffer
@@ -52,6 +53,43 @@ def _resolve_language_parallelism(
     return min(total_languages, requested)
 
 
+# How the retry pass re-attempts one row's failed languages. An Excel batch
+# re-voices them from scratch; a story job re-speaks text it has already fixed.
+Revoice = Callable[[ExcelRow, list[TaskFailure], str], Awaitable[RowOutcome]]
+
+
+def _upload_destination(settings: Settings, tally: BatchTally) -> S3Client | None:
+    """The S3 client to upload through, or None for local ZIP downloads."""
+    if settings.batch.upload_to_s3:
+        return S3Client(settings.s3)
+    tally.warn_about_uploads(
+        "Cloud upload is disabled because BATCH_ENABLE_S3_UPLOAD is not true. "
+        "Local ZIP downloads will be prepared instead."
+    )
+    return None
+
+
+def _voiceover_deps(
+    settings: Settings,
+    target_languages: list[str],
+    max_language_parallelism: int | None,
+    *,
+    teaching_mode: bool = False,
+) -> VoiceoverDeps:
+    return VoiceoverDeps(
+        sarvam=settings.sarvam,
+        google_translate=settings.google_translate,
+        qc=settings.qc,
+        eleven=settings.eleven,
+        teaching_mode=teaching_mode,
+        translation_parallelism=_resolve_language_parallelism(
+            total_languages=len(target_languages),
+            requested_parallelism=max_language_parallelism,
+            configured_parallelism=settings.batch.max_language_parallelism,
+        ),
+    )
+
+
 async def _retry_failed_tasks(
     *,
     job_id: str,
@@ -61,6 +99,7 @@ async def _retry_failed_tasks(
     buffer: ActivityBuffer,
     tally: BatchTally,
     deps: VoiceoverDeps,
+    revoice: Revoice | None = None,
 ) -> None:
     """Re-attempt an activity's failed language tasks, once, before upload.
 
@@ -83,10 +122,13 @@ async def _retry_failed_tasks(
 
     for row_index, row_failures in failures.items():
         row = rows_by_index[row_index]
-        languages = [failure.language for failure in row_failures]
         prefix = f"Job {job_id} | row {row_index} | retry | "
         try:
-            outcome = await voice_row(row, languages, deps, log_prefix=prefix)
+            if revoice is None:
+                languages = [failure.language for failure in row_failures]
+                outcome = await voice_row(row, languages, deps, log_prefix=prefix)
+            else:
+                outcome = await revoice(row, row_failures, prefix)
         except Exception as exc:
             logger.error("%sretry crashed, keeping tasks as failed: %s", prefix, exc)
             continue
@@ -101,6 +143,49 @@ async def _retry_failed_tasks(
                 "%slang %s: retry failed; keeping task as failed (%s)",
                 prefix, failure.language, failure.reason,
             )
+
+
+async def _close_activity(
+    *,
+    job_id: str,
+    activity_name: str,
+    target_languages: list[str],
+    failures: dict[int, list[TaskFailure]],
+    rows_by_index: dict[int, ExcelRow],
+    buffer: ActivityBuffer,
+    tally: BatchTally,
+    deps: VoiceoverDeps,
+    s3_client: S3Client | None,
+    activity_upload_counts: dict[str, int],
+    jobs_store: JobsStore,
+    output_dir: Path | None = None,
+    append_mode: bool = False,
+    revoice: Revoice | None = None,
+) -> None:
+    """The end of an activity: retry what failed, then upload what stuck."""
+    await _retry_failed_tasks(
+        job_id=job_id,
+        activity_name=activity_name,
+        failures=failures,
+        rows_by_index=rows_by_index,
+        buffer=buffer,
+        tally=tally,
+        deps=deps,
+        revoice=revoice,
+    )
+    tally.collisions_resolved(buffer.collisions_resolved)
+    await _upload_activity_archives(
+        job_id=job_id,
+        activity_name=activity_name,
+        target_languages=target_languages,
+        buffer=buffer,
+        s3_client=s3_client,
+        tally=tally,
+        activity_upload_counts=activity_upload_counts,
+        output_dir=output_dir,
+        append_mode=append_mode,
+    )
+    await jobs_store.update_summary(job_id, tally.summary)
 
 
 async def run_excel_batch_job(
@@ -161,14 +246,7 @@ async def _run_batch_job_impl(
     logger.info("Job %s started | excel=%s | languages=%s", job_id, excel_path, target_languages)
 
     try:
-        s3_client: S3Client | None = None
-        if settings.batch.upload_to_s3:
-            s3_client = S3Client(settings.s3)
-        else:
-            tally.warn_about_uploads(
-                "Cloud upload is disabled because BATCH_ENABLE_S3_UPLOAD is not true. "
-                "Local ZIP downloads will be prepared instead."
-            )
+        s3_client = _upload_destination(settings, tally)
 
         try:
             rows = await asyncio.to_thread(read_excel_rows, excel_path)
@@ -206,17 +284,8 @@ async def _run_batch_job_impl(
         await jobs_store.complete(job_id, tally.summary)
         return
 
-    deps = VoiceoverDeps(
-        sarvam=settings.sarvam,
-        google_translate=settings.google_translate,
-        qc=settings.qc,
-        eleven=settings.eleven,
-        teaching_mode=teaching_mode,
-        translation_parallelism=_resolve_language_parallelism(
-            total_languages=len(target_languages),
-            requested_parallelism=max_language_parallelism,
-            configured_parallelism=settings.batch.max_language_parallelism,
-        ),
+    deps = _voiceover_deps(
+        settings, target_languages, max_language_parallelism, teaching_mode=teaching_mode
     )
 
     rows_by_index = {row.row_index: row for row in rows}
@@ -225,31 +294,24 @@ async def _run_batch_job_impl(
     buffer = ActivityBuffer(target_languages)
     activity_failures: dict[int, list[TaskFailure]] = defaultdict(list)
 
-    async def _close_activity(name: str) -> None:
+    async def _close_and_reset(name: str) -> None:
         """Retry what failed, upload what stuck, then start fresh."""
         nonlocal buffer, activity_failures
-        await _retry_failed_tasks(
+        await _close_activity(
             job_id=job_id,
             activity_name=name,
+            target_languages=target_languages,
             failures=dict(activity_failures),
             rows_by_index=rows_by_index,
             buffer=buffer,
             tally=tally,
             deps=deps,
-        )
-        tally.collisions_resolved(buffer.collisions_resolved)
-        await _upload_activity_archives(
-            job_id=job_id,
-            activity_name=name,
-            target_languages=target_languages,
-            buffer=buffer,
             s3_client=s3_client,
-            tally=tally,
             activity_upload_counts=activity_upload_counts,
+            jobs_store=jobs_store,
             output_dir=output_dir,
             append_mode=append_mode,
         )
-        await jobs_store.update_summary(job_id, tally.summary)
         buffer = ActivityBuffer(target_languages)
         activity_failures = defaultdict(list)
 
@@ -264,7 +326,7 @@ async def _run_batch_job_impl(
                 if current_activity is None:
                     current_activity = activity
                 elif activity != current_activity:
-                    await _close_activity(current_activity)
+                    await _close_and_reset(current_activity)
                     current_activity = activity
 
                 languages = _languages_still_needed(
@@ -301,7 +363,7 @@ async def _run_batch_job_impl(
                 await jobs_store.update_summary(job_id, tally.summary)
 
         if current_activity is not None:
-            await _close_activity(current_activity)
+            await _close_and_reset(current_activity)
 
         await jobs_store.complete(job_id, tally.summary)
     except Exception as exc:

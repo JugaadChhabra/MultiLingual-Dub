@@ -213,3 +213,62 @@ def test_reply_in_a_code_fence_is_accepted(monkeypatch) -> None:
 def test_activity_name_from_title() -> None:
     assert story.activity_name("The boy who followed the stream") == "theboywhofollowedthestreamstory"
     assert story.activity_name("  Kiran's Map! (Part 2) ") == "kiransmappart2story"
+
+
+# ── story fix ────────────────────────────────────────────────────────────────
+
+FIX_LINES = {
+    "1": StoryLine(text="Kiran called Moti.", emotion="Narrative"),
+    "2": StoryLine(text="Moti barked.", emotion="Cheerful"),
+}
+FIX_DRAFTS = {"1": "किरण ने मोती को बुलाया।", "2": "मोती भौंका।"}
+
+
+def test_fix_prompt_carries_the_hindi_register_and_every_line_id(monkeypatch) -> None:
+    gemini = FakeGemini(monkeypatch, [json.dumps({"1": "किरण ने मोती को आवाज़ दी।", "2": "मोती भौंकने लगा।"})])
+
+    story.fix_story("The stream", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)
+
+    [call] = gemini.calls
+    assert "parent tells a bedtime story" in call["system"]
+    assert "स्कूल" in call["system"] and "बस" in call["system"]
+    # per-story data goes in contents, not the system prompt
+    sent = json.loads(call["contents"][call["contents"].index("["):])
+    assert [line["id"] for line in sent] == ["1", "2"]
+    assert sent[1] == {"id": "2", "english": "Moti barked.", "emotion": "Cheerful", "draft": "मोती भौंका।"}
+    assert "The stream" in call["contents"]
+    # QC's "no unnecessary English" rule does not carry over: loanwords stay
+    assert "unnecessary English" not in call["system"]
+
+
+def test_fix_prompt_for_another_language_uses_everyday_register(monkeypatch) -> None:
+    gemini = FakeGemini(monkeypatch, [json.dumps({"1": "a", "2": "b"})])
+
+    story.fix_story("T", FIX_LINES, FIX_DRAFTS, "ta-IN", settings=SETTINGS)
+
+    system = gemini.calls[0]["system"]
+    assert "Everyday spoken Tamil" in system
+    assert "bedtime" not in system
+
+
+def test_fix_reply_is_parsed_into_a_mapping_keyed_by_line_id(monkeypatch) -> None:
+    reply = "```json\n" + json.dumps({"1": " किरण ने आवाज़ दी। ", "2": "मोती भौंकने लगा।", "9": "stray"}) + "\n```"
+    FakeGemini(monkeypatch, [reply])
+
+    fixed = story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)
+
+    # trimmed, and an id that was never asked for is dropped
+    assert fixed == {"1": "किरण ने आवाज़ दी।", "2": "मोती भौंकने लगा।"}
+
+
+def test_fix_reply_missing_or_empty_ids_leaves_them_out(monkeypatch) -> None:
+    FakeGemini(monkeypatch, [json.dumps({"1": "  "})])
+
+    assert story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS) == {}
+
+
+def test_fix_that_no_model_can_answer_raises(monkeypatch) -> None:
+    FakeGemini(monkeypatch, ["not json", "still not json"])
+
+    with pytest.raises(story.StoryFixError):
+        story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)

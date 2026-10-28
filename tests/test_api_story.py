@@ -108,3 +108,99 @@ def test_xlsx_rejects_bad_input() -> None:
     assert _xlsx(client, {"activity_name": "a", "lines": []}).status_code == 400
     assert _xlsx(client, {"activity_name": "a", "lines": [ok, {"text": "  ", "emotion": "Cheerful"}]}).status_code == 400
     assert _xlsx(client, {"activity_name": "a", "lines": [{"text": "Hi.", "emotion": "Furious"}]}).status_code == 400
+
+
+# ── story job creation ───────────────────────────────────────────────────────
+
+from tests.test_api_batch import ENV_TEXT, _poll_until_done  # noqa: E402
+
+
+async def _fake_story_runner(
+    *, job_id, title, activity_name, lines, target_languages, jobs_store, settings,
+    max_language_parallelism=None, output_dir=None,
+):
+    """Completes at once, recording what it was given."""
+    _fake_story_runner.seen = {"title": title, "activity_name": activity_name,
+                               "lines": lines, "target_languages": target_languages}
+    await jobs_store.start(job_id)
+    summary = (await jobs_store.get(job_id)).summary
+    summary.total_rows = len(lines)
+    summary.rows_processed = len(lines)
+    await jobs_store.complete(job_id, summary)
+
+
+def _job(client, **overrides):
+    payload = {
+        "title": "The stream",
+        "activity_name": "thestreamstory",
+        "lines": [{"text": "Hi there!", "emotion": "Cheerful"}, {"text": "Moti barked.", "emotion": "Narrative"}],
+        "target_languages": ["hi-IN"],
+    }
+    payload.update(overrides)
+    return client.post("/batch/story-jobs", json=payload)
+
+
+def test_story_job_is_created_and_pollable(monkeypatch) -> None:
+    monkeypatch.setattr(api, "run_story_job", _fake_story_runner)
+    client = _client()
+
+    response = _job(client, target_languages=["hi-IN", "ta-IN", "hi-IN"])
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+    assert body["status"] == "queued"
+    state = _poll_until_done(client, body["job_id"])
+    assert state["status"] == "completed"
+    assert state["summary"]["total_rows"] == 2
+    seen = _fake_story_runner.seen
+    assert seen["activity_name"] == "thestreamstory"
+    assert seen["title"] == "The stream"
+    assert seen["target_languages"] == ["hi-IN", "ta-IN"]
+    assert [(line.text, line.emotion) for line in seen["lines"]] == [
+        ("Hi there!", "Cheerful"), ("Moti barked.", "Narrative"),
+    ]
+
+
+def _refused(monkeypatch, client, **overrides):
+    async def runner(**_kwargs):
+        raise AssertionError("a refused story job must not start")
+
+    monkeypatch.setattr(api, "run_story_job", runner)
+    response = _job(client, **overrides)
+    assert response.status_code == 400, response.text
+    return response.json()["detail"]
+
+
+def test_story_job_refuses_empty_lines(monkeypatch) -> None:
+    client = _client()
+    assert "no lines" in _refused(monkeypatch, client, lines=[])
+    assert "Line 2" in _refused(monkeypatch, client, lines=[
+        {"text": "Hi", "emotion": "Cheerful"}, {"text": "  ", "emotion": "Cheerful"},
+    ])
+
+
+def test_story_job_refuses_an_unknown_emotion(monkeypatch) -> None:
+    detail = _refused(monkeypatch, _client(), lines=[{"text": "Hi", "emotion": "Furious"}])
+    assert "Line 1" in detail and "Furious" in detail
+
+
+def test_story_job_refuses_an_over_length_line(monkeypatch) -> None:
+    detail = _refused(monkeypatch, _client(), lines=[{"text": "a" * MAX_LINE_CHARS, "emotion": "Calm"}])
+    assert str(MAX_LINE_CHARS) in detail
+
+
+def test_story_job_refuses_an_empty_activity_name(monkeypatch) -> None:
+    assert "activity" in _refused(monkeypatch, _client(), activity_name="  ")
+
+
+def test_story_job_refuses_no_target_languages(monkeypatch) -> None:
+    assert "language" in _refused(monkeypatch, _client(), target_languages=[])
+
+
+def test_story_job_needs_an_english_voice_for_english(monkeypatch) -> None:
+    monkeypatch.delenv("ENGLISH_VOICE", raising=False)
+    client = TestClient(api.app)
+    env = "\n".join(line for line in ENV_TEXT.splitlines() if not line.startswith("ENGLISH_VOICE"))
+    assert client.post("/config/session-env", json={"env_text": env}).status_code == 200
+
+    assert "ENGLISH_VOICE" in _refused(monkeypatch, client, target_languages=["hi-IN", "en-IN"])
