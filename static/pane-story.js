@@ -45,9 +45,9 @@
     if (state.splitting) { els.split.disabled = true; return; }
     const why = blocker();
     els.split.disabled = Boolean(why);
-    if (!els.msg.classList.contains("err")) els.msg.textContent = why || "";
+    els.msg.textContent = why || "";
   }
-  const say = (text, bad) => { els.msg.textContent = text || ""; els.msg.classList.toggle("err", !!bad); };
+  const say = (text) => { els.msg.textContent = text || ""; };
 
   // ── break into lines ─────────────────────────────────────────────────────
   els.split.addEventListener("click", async () => {
@@ -69,6 +69,8 @@
       if (!r.ok) {
         let detail = "";
         try { detail = (await r.json()).detail; } catch (_) { detail = `HTTP ${r.status}`; }
+        // FastAPI's own 422s carry a list of problems, not a sentence
+        if (typeof detail !== "string") detail = JSON.stringify(detail);
         throw Object.assign(new Error(detail || `HTTP ${r.status}`), { status: r.status });
       }
       const d = await r.json();
@@ -92,7 +94,6 @@
       els.split.textContent = "Break into lines";
       els.live.hidden = true;
       window.Shell.setRunning("story", false);
-      els.msg.classList.remove("err");
       refreshRun();
     }
   });
@@ -131,16 +132,16 @@
       pick.addEventListener("change", () => { line.emotion = pick.value; flag(row, line); });
       els.lines.appendChild(row);
       fit(area);
-      flag(row, line);
+      flag(row, line, false);
     });
     summarise();
   }
 
   // A line too long to voice, or emptied, is marked where it is.
-  function flag(row, line) {
+  function flag(row, line, resummarise = true) {
     const bad = !line.text.trim() || (state.maxLineChars && tagged(line) > state.maxLineChars);
     row.dataset.flag = bad ? "bad" : "";
-    summarise();
+    if (resummarise) summarise();
   }
   function summarise() {
     const empty = state.lines.filter((l) => !l.text.trim()).length;

@@ -91,6 +91,13 @@ def test_quote_style_and_whitespace_do_not_count_as_changed_wording(monkeypatch)
     assert [line.emotion for line in lines] == ["Cheerful", "Narrative"]
 
 
+def test_emotion_case_and_typography_are_not_held_against_the_split(monkeypatch) -> None:
+    source = "Moti barked… and ran."
+    FakeGemini(monkeypatch, [_reply([("Moti barked... and ran.", "narrative")])])
+
+    assert split_story(source, settings=SETTINGS) == [StoryLine("Moti barked... and ran.", "Narrative")]
+
+
 def test_a_model_failure_falls_back_to_the_next_model(monkeypatch) -> None:
     gemini = FakeGemini(monkeypatch, [_reply(REFERENCE)])
     calls: list[str] = []
@@ -167,8 +174,8 @@ def test_a_story_split_into_too_many_lines_is_refused(monkeypatch) -> None:
     with pytest.raises(StorySplitError, match="too long"):
         split_story(source, settings=SETTINGS)
 
-    # retrying will not make a long story shorter
-    assert len(gemini.calls) == 1
+    # an over-split is a bad split like any other, so it gets the retry too
+    assert len(gemini.calls) == 2
 
 
 def test_a_story_too_big_to_fit_is_refused_without_calling_gemini(monkeypatch) -> None:

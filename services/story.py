@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 
 import google.genai as genai
@@ -42,10 +43,6 @@ class StorySplitError(Exception):
     """The story, or Gemini's split of it, cannot be used. The operator's to fix."""
 
 
-class StoryTooLongError(StorySplitError):
-    """More lines than one run takes. Final: retrying will not shorten it."""
-
-
 class StoryGeminiError(Exception):
     """Gemini could not be reached on any model."""
 
@@ -77,7 +74,12 @@ _QUOTES = str.maketrans({"‘": "'", "’": "'", "‚": "'", "‛": "'", "“": 
 
 
 def _normalise(text: str) -> str:
-    return " ".join(text.translate(_QUOTES).split())
+    # NFKC folds typography a model rewrites without meaning to: "…" to "...",
+    # composed and decomposed accents to one form.
+    return " ".join(unicodedata.normalize("NFKC", text).translate(_QUOTES).split())
+
+
+_EMOTION_CASE = {emotion.lower(): emotion for emotion in STORY_EMOTIONS}
 
 
 _SYSTEM_INSTRUCTION = f"""You split children's stories into voiceover lines. Each line is recorded as a separate audio clip and read aloud with an emotion.
@@ -105,7 +107,10 @@ def _parse_lines(response_text: str) -> list[StoryLine]:
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             raise StorySplitError("Gemini's reply has a line without text")
-        lines.append(StoryLine(text=item["text"].strip(), emotion=str(item.get("emotion", "")).strip()))
+        emotion = str(item.get("emotion", "")).strip()
+        # "narrative" is the right answer in the wrong case, not a wrong answer
+        emotion = _EMOTION_CASE.get(emotion.lower(), emotion)
+        lines.append(StoryLine(text=item["text"].strip(), emotion=emotion))
     return lines
 
 
@@ -119,8 +124,8 @@ def _validate(source: str, lines: list[StoryLine]) -> None:
         raise StorySplitError("The split was rejected: it changed the story's wording")
 
 
-def _too_long() -> StoryTooLongError:
-    return StoryTooLongError(
+def _too_long() -> StorySplitError:
+    return StorySplitError(
         f"This story is too long for one run: the limit is {MAX_STORY_LINES} lines. "
         "Split it into parts and run each one."
     )
@@ -166,8 +171,6 @@ def split_story(text: str, *, settings: QCSettings) -> list[StoryLine]:
             if len(lines) > MAX_STORY_LINES:
                 raise _too_long()
             _validate(source, lines)
-        except StoryTooLongError:
-            raise
         except StorySplitError as exc:
             last_error = exc
             logger.warning("Story split attempt %d rejected: %s", attempt, exc)
