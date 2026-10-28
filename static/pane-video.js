@@ -718,7 +718,11 @@
       el.className = "qrow";
       el.innerHTML = `<span class="i">row ${row.row_index}</span>` +
         `<span class="nm">${U.esc(row.video_title || "untitled")}</span>` +
-        `<span class="path">${U.esc(row.nas_path || "—")}</span>` +
+        // A failed row has no NAS path to show, so its error takes that slot:
+        // first line only, the whole message on hover.
+        (s === "failed" && row.error
+          ? `<span class="path err" title="${U.esc(row.error)}">${U.esc(row.error.split("\n")[0])}</span>`
+          : `<span class="path">${U.esc(row.nas_path || "—")}</span>`) +
         `<span class="badge ${badge}">${U.esc(s[0].toUpperCase() + s.slice(1))}</span>` +
         (row.video_local_url ? `<a class="btn q" href="${row.video_local_url}" download>Open</a>` : `<span></span>`);
       els.queue.appendChild(el);

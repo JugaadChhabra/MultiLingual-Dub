@@ -439,6 +439,7 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 .qrow .nm.nat{font-family:var(--native);}
 .qrow .path{font-family:var(--mono);font-size:var(--t-caption2);color:var(--label3);
   max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.qrow .path.err{color:var(--red-ink);max-width:320px;}
 
 /* ─── drafts ────────────────────────────────────────────────────────────── */
 /* A written script, before it is a render — and it should read as writing, not as

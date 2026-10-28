@@ -292,3 +292,76 @@ def test_a_configured_batch_emails_a_summary_naming_failed_rows(
     (mail,) = sent
     assert (mail["total"], mail["succeeded"], mail["failed"]) == (2, 1, 1)
     assert [r["video_title"] for r in mail["failed_rows"]] == ["Title 3"]
+
+
+# --- why a batch failed ------------------------------------------------------
+
+
+def test_a_partial_batch_with_different_row_errors_summarises_them(
+    tmp_path: Path, nas_root: Path
+) -> None:
+    class FailsTwoDifferently(FakeRenderer):
+        async def await_render(self, *, video_id: str):
+            if video_id in ("video-2", "video-3"):
+                raise RuntimeError(f"render failed: {video_id}")
+            return await super().await_render(video_id=video_id)
+
+    state = asyncio.run(_run_batch(
+        tmp_path=tmp_path, rows=_rows(3), renderer=FailsTwoDifferently(), nas_root=nas_root,
+    ))
+
+    assert state.status == "partial"
+    failed = [r for r in state.rows if r.status == "failed"]
+    assert [r.error for r in failed] == ["render failed: video-2", "render failed: video-3"]
+    assert state.cause["kind"] == "batch_rows_failed"
+    assert state.cause["severity"] == "error"
+    assert state.cause["title"] == "2 of 3 rows failed"
+    assert state.cause["detail"] == "render failed: video-2"
+    assert state.cause["raw"].splitlines() == [
+        f"row {failed[0].row_index}: render failed: video-2",
+        f"row {failed[1].row_index}: render failed: video-3",
+    ]
+
+
+def test_a_batch_whose_rows_share_one_error_reuses_that_rows_classified_cause(
+    tmp_path: Path, nas_root: Path
+) -> None:
+    class HeyGenDown(Exception):
+        status_code = 503
+
+    class AlwaysDown(FakeRenderer):
+        async def await_render(self, *, video_id: str):
+            raise HeyGenDown("heygen: service unavailable")
+
+    state = asyncio.run(_run_batch(
+        tmp_path=tmp_path, rows=_rows(2), renderer=AlwaysDown(), nas_root=nas_root,
+    ))
+
+    assert state.status == "failed"
+    assert all(r.error == "heygen: service unavailable" for r in state.rows)
+    # the video job's own classification, not one re-derived from the string
+    assert state.rows[0].cause["kind"] == "provider_down"
+    assert state.cause == state.rows[0].cause
+
+
+def test_a_clean_batch_has_no_cause(tmp_path: Path, nas_root: Path) -> None:
+    state = asyncio.run(_run_batch(tmp_path=tmp_path, rows=_rows(2), renderer=FakeRenderer(), nas_root=nas_root))
+
+    assert state.status == "completed"
+    assert state.cause is None
+
+
+def test_the_batch_status_response_carries_each_rows_error(tmp_path: Path, nas_root: Path) -> None:
+    class FailsSecondRender(FakeRenderer):
+        async def await_render(self, *, video_id: str):
+            if video_id == "video-2":
+                raise RuntimeError("render failed: fake")
+            return await super().await_render(video_id=video_id)
+
+    state = asyncio.run(_run_batch(tmp_path=tmp_path, rows=_rows(2), renderer=FailsSecondRender(), nas_root=nas_root))
+
+    # what GET /video/heygen/batch/{id} returns
+    body = state.model_dump(mode="json")
+    errors = {r["row_index"]: r["error"] for r in body["rows"]}
+    assert sorted(e or "" for e in errors.values()) == ["", "render failed: fake"]
+    assert body["cause"]["raw"] == "render failed: fake"

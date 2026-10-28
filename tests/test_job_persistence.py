@@ -331,3 +331,40 @@ def test_an_interrupted_job_without_a_stage_message_names_the_stage_it_died_in(t
 
     assert state.status == "failed"
     assert state.error == "Interrupted by a restart while downloading"
+
+
+def test_a_failed_video_batchs_cause_survives_a_reload(tmp_path: Path) -> None:
+    async def _before():
+        store = VideoBatchJobsStore(persist_dir=tmp_path)
+        await store.create("batch-1", _rows(2))
+        await store.start("batch-1")
+        await store.update_row("batch-1", 2, status="completed", nas_path="12-08-2026/T2.mp4")
+        await store.row_succeeded("batch-1")
+        await store.update_row("batch-1", 3, status="failed", error="render failed: fake")
+        await store.row_failed("batch-1")
+        await store.complete("batch-1")
+        return (await store.get("batch-1")).cause
+
+    before = asyncio.run(_before())
+
+    state = asyncio.run(VideoBatchJobsStore(persist_dir=tmp_path).get("batch-1"))
+
+    assert state.status == "partial"
+    assert before is not None
+    assert state.cause == before
+    assert state.cause["title"] == "1 of 2 rows failed"
+
+
+def test_an_interrupted_video_batch_says_why_its_rows_failed(tmp_path: Path) -> None:
+    async def _before():
+        store = VideoBatchJobsStore(persist_dir=tmp_path)
+        await store.create("batch-1", _rows(2))
+        await store.start("batch-1")
+
+    asyncio.run(_before())
+
+    state = asyncio.run(VideoBatchJobsStore(persist_dir=tmp_path).get("batch-1"))
+
+    assert state.cause["kind"] == "batch_rows_failed"
+    assert state.cause["title"] == "2 of 2 rows failed"
+    assert state.cause["detail"] == "Interrupted by a restart"
