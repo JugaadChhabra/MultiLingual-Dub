@@ -76,8 +76,16 @@ item list. The author, not a translator or an extractor: nothing is fetched and
 no source text exists. Twelve signs come back from one call so they can be varied
 against each other.
 
+One operation writes a day for a category: given the category, language, date,
+brief and item set (the zodiac, or a one-off of one), it reads its own Script
+history, writes, records the result, and returns the drafts with any warnings.
+It owns that history — the generate request only calls it. A set whose repair
+budget ran out is still recorded and returned, every draft present, with the
+unresolved clashes as warnings; only a set with nothing usable is an error.
+
 **Script history** — every set the writer has produced, on disk, quoted back to
-it as what not to repeat. The only defence against a model converging on its own
+it as what not to repeat. Read and written by the Script writer; the one other
+writer is the batch submit below. The only defence against a model converging on its own
 favourite phrasings across days. Keyed by day, category and language, so
 regenerating a day replaces it rather than adding to the record.
 

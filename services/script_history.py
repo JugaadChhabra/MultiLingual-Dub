@@ -14,6 +14,7 @@ never pruned, in line with everything else under ``output/``.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
@@ -22,10 +23,30 @@ from pydantic import BaseModel, Field
 
 from services.script_parse import parse_script
 from services.script_validate import HISTORY_DAYS, PROSE_DAYS, HistoryFacts
-from services.script_writer import DraftScript
 from services.state_mirror import JsonStateMirror
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DraftScript:
+    """One generated video: what it is called, and what gets spoken.
+
+    ``title`` becomes the NAS filename downstream, so it travels with the script
+    from the moment it is written rather than being derived twice. ``key`` is
+    the item key the model answered under, carried so history can be grouped per
+    item without re-deriving the mapping; it defaults empty because callers that
+    only read a draft have no use for it.
+
+    Defined here rather than in the writer because history is the lower layer:
+    the writer reads and records drafts through this store, and the batch route
+    records the operator's edited rows as drafts without writing anything.
+    """
+
+    title: str
+    script: str
+    key: str = ""
+
 
 # Ten days for the facts — colours, numbers, area combinations — because those
 # are the rules stated over ten days, and a fact costs a few dozen characters.

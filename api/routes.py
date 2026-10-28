@@ -36,15 +36,13 @@ from services.video_pipeline import (
 )
 from services.email import EmailSettings
 from services.nas import NasConfig, NasService
-from services.script_history import ScriptHistoryStore
+from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_writer import (
     ZODIAC_SIGNS,
-    DraftScript,
-    SetItem,
-    ScriptRepairError,
+    ScriptRequestError,
+    ScriptWriter,
     ScriptWriterError,
     ScriptWriterSettings,
-    write_daily_scripts,
 )
 from services.video_pipeline.batch_excel import (
     BatchExcelError,
@@ -112,6 +110,10 @@ VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Generated scripts, kept so the writer can be shown what it already said. Not a
 # job store: nothing here is in flight, and every read comes off disk.
 script_history = ScriptHistoryStore(OUTPUT_DIR / "heygen" / "_scripts")
+# Reads and records that history itself; the generate route only calls it. The
+# batch route still records to the store directly, because what it files is
+# the operator's edits, not anything the writer produced.
+script_writer = ScriptWriter(script_history)
 
 
 async def _session_config_for_request(request: Request) -> RuntimeConfig | None:
@@ -433,79 +435,35 @@ async def generate_video_scripts(
     """
     session = await _session_config_for_request(request)
 
-    if item_set not in ("zodiac", "single"):
-        raise HTTPException(status_code=400, detail="item_set must be 'zodiac' or 'single'")
-    if not brief.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="This category has no script brief. Add one in the category editor.",
-        )
-
-    if item_set == "zodiac":
-        items = ZODIAC_SIGNS
-    else:
-        # A one-off video is its own set of one: the operator's file name is both
-        # the key the model answers under and the name the render is filed as.
-        name = safe_stem(title or "") or "Script"
-        items = (SetItem(key=name, title=name),)
-
     try:
         settings = ScriptWriterSettings.resolve(session)
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    def _write() -> list[DraftScript]:
-        # History read and write share this thread with the generation itself:
-        # all three are blocking, and the recent-days read is only meaningful
-        # immediately before the call that consumes it.
-        recent = script_history.recent(
-            category=category, language=language, before=publish_date
-        )
-        history = script_history.facts(
-            category=category, language=language, before=publish_date
-        )
-        drafts = write_daily_scripts(
-            brief=brief,
-            language=language,
-            publish_date=publish_date,
-            items=items,
-            recent=recent,
-            history=history,
-            settings=settings,
-        )
-        script_history.record(
-            publish_date=publish_date, category=category, language=language, drafts=drafts
-        )
-        return drafts
-
-    warnings: list[str] = []
+    # Blocking throughout — history read, the Gemini call, history write — so
+    # the whole day runs off the event loop. A set whose repair budget ran out
+    # still comes back, with the unresolved clashes as warnings.
     try:
-        drafts = await asyncio.to_thread(_write)
-    except ScriptRepairError as exc:
-        # The set could not be made fully clean, but every script is present.
-        # Rather than leave the operator with nothing, hand back the twelve to
-        # review and record them, with the unresolved clashes as warnings so
-        # the review can point at the one that needs a manual fix. An empty
-        # set (should not happen) still falls through to the error below.
-        if not exc.drafts:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        drafts = exc.drafts
-        warnings = [str(v) for v in exc.violations]
-        await asyncio.to_thread(
-            script_history.record,
-            publish_date=publish_date,
+        day = await asyncio.to_thread(
+            script_writer.write_day,
             category=category,
             language=language,
-            drafts=drafts,
+            publish_date=publish_date,
+            brief=brief,
+            item_set=item_set,
+            title=title,
+            settings=settings,
         )
+    except ScriptRequestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ScriptWriterError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return {
         "language": language,
         "publish_date": publish_date,
-        "items": [{"video_title": d.title, "script": d.script} for d in drafts],
-        "warnings": warnings,
+        "items": [{"video_title": d.title, "script": d.script} for d in day.drafts],
+        "warnings": day.warnings,
     }
 
 
