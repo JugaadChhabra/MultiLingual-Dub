@@ -67,7 +67,9 @@ raw form values turned into validated specs, or an `IntakeError` the request
 returns as a 400. A single submission (`SingleSubmission`) becomes one
 `VideoJobSpec`; a batch (Excel or JSON rows plus the `BatchSettings` every row
 shares, overlay and music included) becomes one `BatchItem` per row under the
-same rules, and is refused if two rows would be filed under one title. The
+same rules, and is refused if two rows would be filed under one title. A
+batch with any bad row is refused whole, but only after every row is checked:
+the one refusal names each bad row and any duplicate titles. The
 batch runner receives these specs and builds none of its own. Owns the rules
 that used to live only in the Video pane: the title is scrubbed of filename-breaking
 characters and a trailing `.mp4` (it becomes the NAS filename) and refused if

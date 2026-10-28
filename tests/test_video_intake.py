@@ -196,3 +196,75 @@ def test_a_row_over_the_length_cap_is_rejected_naming_its_row() -> None:
 def test_an_unreadable_batch_toggle_is_rejected() -> None:
     with pytest.raises(IntakeError, match="include_overlay"):
         specs_from_batch(_rows("Aries"), BatchSettings(include_overlay="maybe"))
+
+
+# ── a refused batch names every problem at once ───────────────────────────────
+
+_TOO_LONG = "x" * (MAX_SCRIPT_CHARS + 1)
+
+
+def test_every_bad_row_is_reported_in_one_refusal_in_row_order() -> None:
+    rows = [
+        HeyGenBatchRow(row_index=2, script="राशिफल", video_title="Aries"),
+        HeyGenBatchRow(row_index=3, script=_TOO_LONG, video_title="Taurus"),
+        HeyGenBatchRow(row_index=4, script="राशिफल", video_title=".mp4"),
+        HeyGenBatchRow(row_index=5, script="राशिफल", video_title="Gemini"),
+        HeyGenBatchRow(row_index=6, script=_TOO_LONG, video_title="Cancer"),
+    ]
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(rows, BatchSettings())
+
+    lines = str(exc.value).splitlines()
+    assert len(lines) == 3
+    assert lines[0].startswith("row 3 ('Taurus'): ") and str(MAX_SCRIPT_CHARS) in lines[0]
+    assert lines[1].startswith("row 4 ('.mp4'): video_title")
+    assert lines[2].startswith("row 6 ('Cancer'): ") and str(MAX_SCRIPT_CHARS) in lines[2]
+    assert exc.value.problems == lines
+
+
+def test_bad_rows_and_duplicate_titles_are_refused_together() -> None:
+    rows = [
+        HeyGenBatchRow(row_index=2, script="राशिफल", video_title="Aries"),
+        HeyGenBatchRow(row_index=3, script=_TOO_LONG, video_title="Leo"),
+        HeyGenBatchRow(row_index=4, script="राशिफल", video_title=""),
+        HeyGenBatchRow(row_index=5, script="राशिफल", video_title="aries.mp4"),
+        # a bad row's title still names a file once its script is fixed
+        HeyGenBatchRow(row_index=6, script="राशिफल", video_title="Leo"),
+    ]
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(rows, BatchSettings())
+
+    lines = str(exc.value).splitlines()
+    assert [line.split(":")[0] for line in lines[:2]] == ["row 3 ('Leo')", "row 4 ('')"]
+    assert lines[2].startswith("video titles must be unique")
+    assert "Aries" in lines[2] and "Leo" in lines[2]
+    assert len(lines) == 3
+
+
+def test_a_long_refusal_is_capped_with_a_count_of_the_rest() -> None:
+    rows = [
+        HeyGenBatchRow(row_index=i, script=_TOO_LONG, video_title=f"T{i}")
+        for i in range(2, 27)
+    ]
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(rows, BatchSettings())
+
+    lines = str(exc.value).splitlines()
+    assert len(lines) == 21
+    assert lines[0].startswith("row 2 ('T2'): ")
+    assert lines[19].startswith("row 21 ('T21'): ")
+    assert lines[20] == "…and 5 more"
+    assert len(exc.value.problems) == 25
+
+
+def test_a_clean_batch_is_unchanged_by_the_collection() -> None:
+    items = specs_from_batch(_rows("Aries", "a/b", "Leo.mp4"), BatchSettings(character="us"))
+    assert [(i.row_index, i.spec.video_title, i.spec.character) for i in items] == [
+        (2, "Aries", "us"), (3, "a_b", "us"), (4, "Leo", "us"),
+    ]
+
+
+def test_an_unreadable_batch_toggle_is_named_once_not_per_row() -> None:
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(_rows("Aries", "Taurus", "Gemini"), BatchSettings(include_music="maybe"))
+    assert str(exc.value).count("include_music") == 1
