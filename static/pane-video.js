@@ -477,7 +477,16 @@
         video_title: item.video_title || "", script: item.script || "", edited: false,
       }));
       saveDrafts();
-      say(`${state.drafts.length} scripts written — read them before you run`);
+      const clashes = Array.isArray(body.warnings) ? body.warnings : [];
+      if (clashes.length) {
+        // banner() takes detail as HTML, so each warning is escaped.
+        U.banner(els.banners, { kind: "warn", id: "script-warnings",
+          title: "Some drafts still clash",
+          detail: clashes.map((w) => U.esc(String(w))).join("<br>") });
+        say(`${state.drafts.length} scripts written, some still clash — read them before you run`);
+      } else {
+        say(`${state.drafts.length} scripts written — read them before you run`);
+      }
     } catch (e) {
       U.banner(els.banners, { kind: "error", title: "The scripts were not written",
         detail: "Nothing was rendered and nothing was charged.", raw: String(e && e.message || e) });

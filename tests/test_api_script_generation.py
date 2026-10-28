@@ -101,6 +101,7 @@ def test_generate_returns_twelve_drafts_and_starts_nothing(client, monkeypatch) 
     assert [item["video_title"] for item in body["items"]] == [s.title for s in ZODIAC_SIGNS]
     assert body["items"][0]["video_title"] == "मेष"
     assert all(item["script"] for item in body["items"])
+    assert body["warnings"] == []
 
 
 def test_generation_feeds_earlier_days_back_to_the_writer(client, monkeypatch) -> None:
@@ -182,6 +183,7 @@ def test_an_unrepaired_set_comes_back_with_its_clashes_as_warnings(client, monke
     body = resp.json()
     assert len(body["items"]) == len(ZODIAC_SIGNS)
     assert len(body["warnings"]) == 1 and "Taurus" in body["warnings"][0]
+    assert all(isinstance(w, str) for w in body["warnings"])
 
 
 def test_an_unknown_item_set_is_refused(client, monkeypatch) -> None:
