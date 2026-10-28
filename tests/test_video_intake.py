@@ -257,7 +257,7 @@ def test_a_long_refusal_is_capped_with_a_count_of_the_rest() -> None:
     assert len(exc.value.problems) == 25
 
 
-def test_a_clean_batch_is_unchanged_by_the_collection() -> None:
+def test_a_clean_batch_still_yields_every_spec() -> None:
     items = specs_from_batch(_rows("Aries", "a/b", "Leo.mp4"), BatchSettings(character="us"))
     assert [(i.row_index, i.spec.video_title, i.spec.character) for i in items] == [
         (2, "Aries", "us"), (3, "a_b", "us"), (4, "Leo", "us"),
@@ -268,3 +268,27 @@ def test_an_unreadable_batch_toggle_is_named_once_not_per_row() -> None:
     with pytest.raises(IntakeError) as exc:
         specs_from_batch(_rows("Aries", "Taurus", "Gemini"), BatchSettings(include_music="maybe"))
     assert str(exc.value).count("include_music") == 1
+
+
+def test_the_cap_never_hides_the_duplicate_titles() -> None:
+    rows = [
+        HeyGenBatchRow(row_index=i, script=_TOO_LONG, video_title=f"T{i}")
+        for i in range(2, 27)
+    ] + [HeyGenBatchRow(row_index=27, script="राशिफल", video_title="t2")]
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(rows, BatchSettings())
+
+    lines = str(exc.value).splitlines()
+    assert lines[20] == "…and 5 more"
+    assert lines[21].startswith("video titles must be unique") and "T2" in lines[21]
+
+
+def test_a_bad_toggle_does_not_stop_the_rows_being_checked() -> None:
+    rows = _rows("Aries") + [HeyGenBatchRow(row_index=3, script=_TOO_LONG, video_title="Leo")]
+    with pytest.raises(IntakeError) as exc:
+        specs_from_batch(rows, BatchSettings(include_overlay="maybe"))
+
+    lines = str(exc.value).splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("include_overlay")
+    assert lines[1].startswith("row 3 ('Leo'): ")
