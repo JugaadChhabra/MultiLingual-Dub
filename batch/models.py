@@ -40,6 +40,12 @@ class JobSummary(BaseModel):
     local_archives_succeeded: int = 0
     local_archives_failed: int = 0
     upload_warning: str | None = None
+    # Story jobs only. Lines whose story fix failed or left them out, and so got
+    # per-row QC instead; lines whose fixed text is suspiciously far in length
+    # from the draft; and the languages that fell back, in words.
+    story_fix_fallback_lines: int = 0
+    story_fix_flagged_lines: int = 0
+    story_fix_warning: str | None = None
     archive_downloads: list[ArchiveDownload] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None

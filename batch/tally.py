@@ -129,3 +129,18 @@ class BatchTally:
         original explanation."""
         if self._summary.upload_warning is None:
             self._summary.upload_warning = message
+
+    # --- story fix --------------------------------------------------------
+
+    def story_fix_fell_back(self, language: str, *, lines: int, whole_language: bool) -> None:
+        """``lines`` of ``language`` got per-row QC instead of the story fix.
+        Each language that fell back is named in the warning, in order."""
+        self._summary.story_fix_fallback_lines += lines
+        what = "failed" if whole_language else f"left out {lines} line{'s' if lines != 1 else ''}"
+        message = f"story fix {what} for {language} — used line-by-line fix"
+        current = self._summary.story_fix_warning
+        self._summary.story_fix_warning = f"{current}; {message}" if current else message
+
+    def story_fix_flagged(self) -> None:
+        """One fixed line whose length moved too far from its draft's."""
+        self._summary.story_fix_flagged_lines += 1

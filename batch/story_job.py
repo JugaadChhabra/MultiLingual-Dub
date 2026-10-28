@@ -4,7 +4,8 @@ A story is one activity, one row per line, built in memory rather than read
 from a sheet. It differs from an Excel batch in its order: every row is
 translated into a raw draft first, then one *story fix* per language rewrites
 all of that language's drafts at once with the whole story in view, and only
-then is anything spoken. The tally, activity buffer, retry-then-upload tail and
+then is anything spoken. Lines a language's fix fails or leaves out fall back
+to the Excel batch's per-row QC of their drafts, and are counted. The tally, activity buffer, retry-then-upload tail and
 job-status shape are the Excel batch's own, from batch.service.
 """
 from __future__ import annotations
@@ -25,6 +26,7 @@ from batch.voiceover import (
     RowOutcome,
     TaskFailure,
     VoiceoverDeps,
+    qc_row,
     speak_row,
     translate_row,
     voice_row,
@@ -83,6 +85,19 @@ async def run_story_job(
         await jobs_store.fail(job_id, f"Story job crashed: {exc}", tally.summary, exc=exc)
 
 
+# A fixed line this much shorter or longer than its draft has likely gained or
+# lost content to a neighbour. It is still used, but counted as flagged.
+STORY_FIX_MIN_LENGTH_RATIO = 0.4
+STORY_FIX_MAX_LENGTH_RATIO = 2.5
+
+
+def _length_is_suspect(fixed: str, draft: str) -> bool:
+    if not draft:
+        return False
+    ratio = len(fixed) / len(draft)
+    return not STORY_FIX_MIN_LENGTH_RATIO <= ratio <= STORY_FIX_MAX_LENGTH_RATIO
+
+
 async def _fix_languages(
     *,
     job_id: str,
@@ -93,11 +108,14 @@ async def _fix_languages(
     texts: dict[int, dict[str, str]],
     failures: dict[int, list[TaskFailure]],
     deps: VoiceoverDeps,
+    tally: BatchTally,
 ) -> None:
     """One story fix per language, fanned out as wide as translations are.
 
-    Fixed text lands in ``texts``. A language whose fix fails, and a line its
-    fix left out, become 'qc' failures for the rows concerned.
+    Fixed text lands in ``texts``. A language whose fix fails or returns nothing
+    usable, and a line its fix left out, fall back to per-row QC of the draft —
+    one QC call per row, over every language of it that fell back. Only a line
+    that per-row QC also fails becomes a 'qc' failure.
     """
     semaphore = asyncio.Semaphore(deps.translation_parallelism)
 
@@ -123,24 +141,35 @@ async def _fix_languages(
         return_exceptions=True,
     )
 
-    for (language, (story, _drafts)), result in zip(requests.items(), results):
+    # Per row, the drafts of the languages whose fix did not cover it.
+    fallback: dict[int, dict[str, str]] = defaultdict(dict)
+    for (language, (story, story_drafts)), result in zip(requests.items(), results):
         prefix = f"Job {job_id} | story fix {language} | "
-        # Until line-by-line fallback exists, a failed fix fails the language.
+        fixed_by_id = {} if isinstance(result, BaseException) else result
         if isinstance(result, BaseException):
-            reason = f"Story fix failed: {result}"
-            logger.error("%s%s", prefix, reason)
-            for line_id in story:
-                failures[int(line_id)].append(TaskFailure(language=language, stage="qc", reason=reason))
-            continue
+            logger.error("%sfailed, falling back to per-row QC: %s", prefix, result)
+        missing = [line_id for line_id in story if not fixed_by_id.get(line_id)]
         for line_id in story:
-            fixed = result.get(line_id)
-            if fixed:
-                texts[int(line_id)][language] = fixed
-            else:
-                logger.error("%sline %s left out of the fix", prefix, line_id)
-                failures[int(line_id)].append(
-                    TaskFailure(language=language, stage="qc", reason="Story fix left this line out")
-                )
+            fixed = fixed_by_id.get(line_id)
+            if not fixed:
+                fallback[int(line_id)][language] = story_drafts[line_id]
+                continue
+            if _length_is_suspect(fixed, story_drafts[line_id]):
+                logger.warning("%sline %s: fixed length is far from the draft's", prefix, line_id)
+                tally.story_fix_flagged()
+            texts[int(line_id)][language] = fixed
+        if missing:
+            whole = len(missing) == len(story)
+            if not whole:
+                logger.error("%slines %s left out, falling back to per-row QC", prefix, missing)
+            tally.story_fix_fell_back(language, lines=len(missing), whole_language=whole)
+
+    rows_by_index = {row.row_index: row for row in rows}
+    for row_index, row_drafts in fallback.items():
+        prefix = f"Job {job_id} | row {row_index} | story fix fallback | "
+        qc_texts, qc_failures = await qc_row(rows_by_index[row_index], row_drafts, deps, log_prefix=prefix)
+        texts[row_index].update(qc_texts)
+        failures[row_index].extend(qc_failures)
 
 
 async def _run_story_job_impl(
@@ -216,6 +245,7 @@ async def _run_story_job_impl(
             texts=texts,
             failures=failures,
             deps=deps,
+            tally=tally,
         )
 
         # 3. Speak each row with its fixed text.
@@ -263,19 +293,24 @@ async def _run_story_job_impl(
                 await jobs_store.update_summary(job_id, tally.summary)
 
         async def _revoice(row: ExcelRow, row_failures: list[TaskFailure], prefix: str) -> RowOutcome:
-            """A failed voiceover is re-spoken from its fixed text; a failed
-            translation is re-voiced on its own, with per-row QC. A failed fix
-            is not retried here."""
+            """A failed voiceover is re-spoken from its fixed text, and a draft
+            whose per-row QC failed is QC'd again; neither is re-translated or
+            re-fixed. Only a failed translation is re-voiced from scratch, with
+            per-row QC of its own."""
             respeak = {
                 f.language: texts[row.row_index][f.language] for f in row_failures if f.stage == "tts"
             }
+            requalify = {
+                f.language: drafts[row.row_index][f.language] for f in row_failures if f.stage == "qc"
+            }
             retranslate = [f.language for f in row_failures if f.stage == "translation"]
-            kept = [f for f in row_failures if f.stage == "qc"]
-            spoken = await speak_row(row, respeak, deps, log_prefix=prefix)
+            qc_texts, qc_failures = await qc_row(row, requalify, deps, log_prefix=prefix)
+            texts[row.row_index].update(qc_texts)
+            spoken = await speak_row(row, {**respeak, **qc_texts}, deps, log_prefix=prefix)
             voiced = await voice_row(row, retranslate, deps, log_prefix=prefix)
             return RowOutcome(
                 audio={**spoken.audio, **voiced.audio},
-                failures=spoken.failures + voiced.failures + kept,
+                failures=qc_failures + spoken.failures + voiced.failures,
             )
 
         await _close_activity(

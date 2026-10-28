@@ -223,7 +223,8 @@ one *story fix* per language, then speak each row with its fixed text. English
 targets get the source lines verbatim — no translation, no Gemini. Shares the
 Excel batch's tally, activity buffer, retry-then-upload tail (`_close_activity`)
 and job endpoints; its retry pass re-speaks a failed voiceover from its fixed
-text instead of re-translating it. Being one activity, nothing uploads until
+text and re-QCs a failed fallback from its draft, re-translating only a failed
+translation. Being one activity, nothing uploads until
 the end, so a cancel while speaking uploads the clips already spoken first.
 
 **Story fix** — one Gemini call per language that sees every line's English,
@@ -232,5 +233,9 @@ translated (`fix_story`). Separate from per-row QC: its own prompt sets the
 register (Hindi: everyday spoken, as a parent tells a bedtime story, common
 English loanwords kept), keeps names, pronouns and forms of address consistent
 across lines, keeps each line's meaning inside that line, and carries over only
-QC's script-hygiene rule. Returns fixed text keyed by line id; a line it leaves
-out, or a language whose fix fails, fails those language tasks.
+QC's script-hygiene rule. Returns fixed text keyed by line id. A line it leaves
+out or empties, or every line of a language whose fix fails or returns nothing
+usable, falls back to per-row QC of its draft (`qc_row`) and is counted in
+`story_fix_fallback_lines`, with the language named in `story_fix_warning`. A
+fixed line far shorter or longer than its draft (outside 0.4×–2.5×) is still
+used, but counted in `story_fix_flagged_lines`.

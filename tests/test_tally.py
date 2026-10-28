@@ -213,3 +213,19 @@ def test_the_summary_is_a_snapshot() -> None:
     snapshot.rows_succeeded = 999
 
     assert tally.summary.rows_succeeded == 1
+
+
+def test_story_fix_fallbacks_add_up_and_each_language_is_named() -> None:
+    tally = _tally()
+
+    tally.story_fix_fell_back("hi-IN", lines=3, whole_language=True)
+    tally.story_fix_fell_back("ta-IN", lines=1, whole_language=False)
+    tally.story_fix_flagged()
+
+    summary = tally.summary
+    assert summary.story_fix_fallback_lines == 4
+    assert summary.story_fix_flagged_lines == 1
+    assert summary.story_fix_warning == (
+        "story fix failed for hi-IN — used line-by-line fix; "
+        "story fix left out 1 line for ta-IN — used line-by-line fix"
+    )
