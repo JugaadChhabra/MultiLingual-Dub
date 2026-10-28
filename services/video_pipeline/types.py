@@ -43,7 +43,7 @@ class VideoJobSummary(BaseModel):
 
 class VideoJobState(BaseModel):
     job_id: str
-    status: str = Field(pattern="^(queued|tts|uploading|generating|polling|downloading|nas_upload|completed|failed)$")
+    status: str = Field(pattern="^(queued|tts|uploading|generating|polling|downloading|nas_upload|recovering|completed|failed)$")
     stage_message: str = ""
     summary: VideoJobSummary = Field(default_factory=VideoJobSummary)
     error: str | None = None

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from services.state_mirror import JsonStateMirror, finalize_summary
+from services.video_pipeline.recovery import RECOVERING, check_recoverable, is_recoverable
 from services.video_pipeline.types import VideoJobSpec, VideoJobState, VideoJobSummary
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,8 @@ class VideoJobsStore:
     # Statuses a job can still be sitting in when the process goes away. None of
     # them can be true of a reloaded job: the asyncio task that owned it died
     # with the process.
-    IN_FLIGHT_STATUSES = ("queued", "tts", "uploading", "generating", "polling", "downloading", "nas_upload")
+    IN_FLIGHT_STATUSES = ("queued", "tts", "uploading", "generating", "polling", "downloading", "nas_upload",
+                          RECOVERING)
 
     def __init__(self, persist_dir: Path | str | None = None) -> None:
         self._jobs: dict[str, VideoJobState] = {}
@@ -127,10 +129,29 @@ class VideoJobsStore:
 
     # --- recovery --------------------------------------------------------
     async def list_recoverable(self) -> list[str]:
-        """job_ids of failed jobs whose HeyGen render actually finished — i.e. a
-        heygen_video_id is on file — so the download/NAS tail can be re-run."""
+        """job_ids of jobs Recovery would accept now: failed, with a HeyGen
+        render on file and the spec to finish it from (see recovery.py)."""
         async with self._lock:
-            return [
-                jid for jid, s in self._jobs.items()
-                if s.status == "failed" and s.summary.heygen_video_id
-            ]
+            return [jid for jid, s in self._jobs.items() if is_recoverable(s)]
+
+    async def claim_recovery(self, job_id: str) -> VideoJobState:
+        """Check the job is recoverable and move it to 'recovering', atomically.
+
+        Done under the lock so two requests for one job can't both pass the
+        check: the second sees 'recovering' and is refused. Raises
+        NotRecoverable. Returns a copy of the claimed state.
+        """
+        async with self._lock:
+            state = self._jobs.get(job_id)
+            check_recoverable(state)
+            # Persist first, then swap in: a failed write leaves the job as it
+            # was (failed, recoverable) rather than claimed in memory only.
+            claimed = state.model_copy(deep=True)
+            claimed.status = RECOVERING
+            claimed.stage_message = "Recovery queued"
+            claimed.error = None
+            claimed.cause = None
+            self._write(claimed)
+            self._jobs[job_id] = claimed
+            logger.info("VideoJob %s → %s", job_id, RECOVERING)
+            return claimed.model_copy(deep=True)
