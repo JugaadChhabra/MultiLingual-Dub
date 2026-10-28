@@ -20,6 +20,14 @@ class RenderedVideo:
     duration_seconds: float | None = None
 
 
+@dataclass(frozen=True)
+class TalkingPhoto:
+    """A talking photo held on the account, as the avatar picker shows it."""
+    talking_photo_id: str
+    name: str = ""
+    preview_url: str | None = None
+
+
 class VideoRenderer(ABC):
     """The seam between a video job and whoever actually renders it.
 
@@ -43,6 +51,10 @@ class VideoRenderer(ABC):
         expected to handle that cap itself (rotate, or raise). Deciding *when*
         to upload is the caller's job — see ``TalkingPhotoSlots``.
         """
+
+    @abstractmethod
+    async def list_photos(self) -> list[TalkingPhoto]:
+        """List the talking photos this account currently holds."""
 
     @abstractmethod
     async def clear_photos(self) -> int:

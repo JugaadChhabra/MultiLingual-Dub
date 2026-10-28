@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from services.elevenlabs import ElevenLabsTTSConfig
-from services.video_pipeline.renderer import RenderedVideo, UploadedAudio, VideoRenderer
+from services.video_pipeline.renderer import RenderedVideo, TalkingPhoto, UploadedAudio, VideoRenderer
 from services.video_pipeline.speech import SpeechSynth
 
 
@@ -21,7 +21,11 @@ class FakeRenderer(VideoRenderer):
         video_bytes: bytes = b"fake-mp4-content",
         fail_download: bool = False,
         render_failed: bool = False,
+        photos: list[TalkingPhoto] | None = None,
+        list_error: Exception | None = None,
     ) -> None:
+        self.photos = list(photos or [])
+        self.list_error = list_error
         self.video_bytes = video_bytes
         self.fail_download = fail_download
         self.render_failed = render_failed
@@ -45,6 +49,12 @@ class FakeRenderer(VideoRenderer):
         self.calls.append("upload_photo")
         self.uploaded_photos.append((content, content_type))
         return f"photo-{len(self.uploaded_photos)}"
+
+    async def list_photos(self) -> list[TalkingPhoto]:
+        self.calls.append("list_photos")
+        if self.list_error is not None:
+            raise self.list_error
+        return list(self.photos)
 
     async def clear_photos(self) -> int:
         self.calls.append("clear_photos")
