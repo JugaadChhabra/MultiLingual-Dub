@@ -527,7 +527,7 @@ async def create_heygen_batch_job(
                 category=category,
                 language=language,
                 publish_date=publish_date,
-                rows=[(r.video_title, r.script) for r in batch_rows_parsed],
+                rows=[(item.spec.video_title, item.spec.script) for item in items],
             )
         except UnknownItemTitleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

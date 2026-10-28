@@ -750,6 +750,24 @@ def test_a_one_off_submitted_back_lines_up_with_the_day_it_was_written_as(
     ]
 
 
+def test_a_one_off_title_with_spaces_normalises_the_same_in_both_directions(
+    monkeypatch, tmp_path
+) -> None:
+    _install(monkeypatch, json.dumps({"diwali_promo": valid_script(colour="लाल", number=21)},
+                                     ensure_ascii=False))
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    day = _day(writer, "2026-08-17", item_set="single", title="diwali promo")
+    written_key = [d.key for d in store.recent(category="sunsign", language="hi-IN")]
+
+    _submit(writer, [("diwali promo", "बदला हुआ")])
+
+    recorded = store.recent(category="sunsign", language="hi-IN")
+    assert written_key == ["diwali_promo"]
+    assert [(d.key, d.script) for d in recorded] == [("diwali_promo", "बदला हुआ")]
+    assert len(recorded) == len(day.drafts)
+
+
 def test_a_horoscope_batch_with_an_unmapped_title_is_refused(tmp_path) -> None:
     """A stray non-sign title in a zodiac batch is refused, not filed under a
     key nothing matches — the silent history hole the old fallback allowed."""
