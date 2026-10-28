@@ -29,9 +29,11 @@ from batch.service import english_voice_is_required, run_excel_batch_job
 from services.elevenlabs import ElevenLabsSettings, ElevenLabsTTSConfig, synthesize_speech_bytes
 from batch.store import JobsStore
 from services.video_pipeline import (
+    NotRecoverable,
     VideoJobsStore,
-    recover_video_job,
     run_video_job,
+    start_recovery,
+    start_recovery_of_failed,
 )
 from services.email import EmailSettings
 from services.nas import NasConfig, NasService
@@ -338,53 +340,43 @@ async def recover_heygen_video_job(job_id: str, request: Request):
     """Re-download a finished-but-failed render and push it to the NAS. Recovers
     a job that died on the download/NAS step (its HeyGen render is intact)."""
     session = await _session_config_for_request(request)
-    state = await video_jobs_store.get(job_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if not state.summary.heygen_video_id:
-        raise HTTPException(status_code=409, detail="Job has no HeyGen render to recover")
-    if not state.spec:
-        raise HTTPException(status_code=409, detail="Job has no persisted spec to recover from")
-
     try:
         deps = _build_video_deps(session)
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    spawn(
-        recover_video_job(
+    try:
+        await start_recovery(
             job_id=job_id,
             jobs_store=video_jobs_store,
             output_dir=VIDEO_OUTPUT_DIR,
             renderer=deps.renderer,
             nas_config=deps.nas,
-        ),
-        name=f"video-recover:{job_id}",
-    )
+            launch=spawn,
+        )
+    except NotRecoverable as exc:
+        status = 404 if exc.kind == "not_found" else 409
+        raise HTTPException(status_code=status, detail=exc.reason) from exc
     return {"job_id": job_id, "status": "recovering"}
 
 
 @app.post("/video/heygen/recover-failed", status_code=202)
 async def recover_all_failed_heygen_jobs(request: Request):
-    """Recover every failed job whose render finished on HeyGen, in one shot."""
+    """Recover every failed job whose render finished on HeyGen, in one shot.
+    Jobs already being recovered are passed by."""
     session = await _session_config_for_request(request)
     try:
         deps = _build_video_deps(session)
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    ids = await video_jobs_store.list_recoverable()
-    for jid in ids:
-        spawn(
-            recover_video_job(
-                job_id=jid,
-                jobs_store=video_jobs_store,
-                output_dir=VIDEO_OUTPUT_DIR,
-                renderer=deps.renderer,
-                nas_config=deps.nas,
-            ),
-            name=f"video-recover:{jid}",
-        )
+    ids = await start_recovery_of_failed(
+        jobs_store=video_jobs_store,
+        output_dir=VIDEO_OUTPUT_DIR,
+        renderer=deps.renderer,
+        nas_config=deps.nas,
+        launch=spawn,
+    )
     return {"status": "recovering", "job_ids": ids, "count": len(ids)}
 
 

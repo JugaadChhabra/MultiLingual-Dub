@@ -44,8 +44,15 @@ once), and the batch rule that all rows share a single acquired photo.
 
 **Recovery** — re-running the download-and-NAS tail of a video job whose render
 finished but which failed afterward. Possible only because the job's render id
-and spec are persisted before the download is attempted. See
-`recover_video_job` and `VideoJobsStore.list_recoverable`.
+and spec are persisted before the download is attempted. Its rules live in
+`services/video_pipeline/recovery.py` (`check_recoverable`, raising
+`NotRecoverable`): a job is recoverable only if it is `failed`, has a render id
+and a spec, and is not already being recovered. A recovery first *claims* the
+job (`VideoJobsStore.claim_recovery`, under the store's lock), moving it to the
+in-flight status `recovering`, so a second request for the same job is refused
+and recover-all passes it by. Recovering a completed job would file it to the
+NAS twice. See `start_recovery`, `start_recovery_of_failed` and
+`recover_video_job` in the pipeline.
 
 **Interrupted** — a job that was still in flight when the process stopped. On
 reload every such job is settled to `failed`, because nothing is running any

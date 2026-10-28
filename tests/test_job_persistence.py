@@ -110,8 +110,30 @@ def test_a_video_job_interrupted_mid_poll_becomes_recoverable(tmp_path: Path) ->
     assert state.spec.video_title == "T"
 
 
+def test_a_restart_mid_recovery_leaves_the_job_recoverable_again(tmp_path: Path) -> None:
+    """A claimed recovery whose process died must not hold the job in
+    'recovering' forever — that would refuse every later recover request."""
+    async def _before():
+        store = VideoJobsStore(persist_dir=tmp_path)
+        await store.create("job-1")
+        await store.set_spec("job-1", _video_spec())
+        await store.patch_summary("job-1", heygen_video_id="video-1")
+        await store.fail("job-1", "download failed")
+        await store.claim_recovery("job-1")
+        assert await store.list_recoverable() == []
+
+    asyncio.run(_before())
+
+    reloaded = VideoJobsStore(persist_dir=tmp_path)
+    state = asyncio.run(reloaded.get("job-1"))
+
+    assert state.status == "failed"
+    assert "Interrupted by a restart while Recovery queued" == state.error
+    assert asyncio.run(reloaded.list_recoverable()) == ["job-1"]
+
+
 @pytest.mark.parametrize(
-    "status", ["queued", "tts", "uploading", "generating", "polling", "downloading", "nas_upload"]
+    "status", ["queued", "tts", "uploading", "generating", "polling", "downloading", "nas_upload", "recovering"]
 )
 def test_every_in_flight_video_status_is_settled(tmp_path: Path, status: str) -> None:
     async def _before():

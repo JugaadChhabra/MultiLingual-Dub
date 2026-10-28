@@ -13,6 +13,7 @@ import pytest
 
 from services.nas import NasConfig
 from services.video_pipeline.pipeline import recover_video_job, run_video_job
+from services.video_pipeline.recovery import NotRecoverable
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.store import VideoJobsStore
 from services.video_pipeline.types import VideoJobSpec
@@ -386,6 +387,7 @@ def test_recovery_refuses_a_job_with_no_render(tmp_path: Path) -> None:
     async def _go():
         store = VideoJobsStore()
         await store.create("job-x")
+        await store.fail("job-x", "tts failed")
         await recover_video_job(
             job_id="job-x",
             jobs_store=store,
@@ -394,7 +396,7 @@ def test_recovery_refuses_a_job_with_no_render(tmp_path: Path) -> None:
             nas_config=_nas(tmp_path / "nas"),
         )
 
-    with pytest.raises(ValueError, match="no render id"):
+    with pytest.raises(NotRecoverable, match="no HeyGen render"):
         asyncio.run(_go())
 
 
