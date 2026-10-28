@@ -38,3 +38,13 @@ class SessionEnvConfigResponse(BaseModel):
 class StorySplitRequest(BaseModel):
     title: str = ""
     text: str
+
+
+class StoryLineIn(BaseModel):
+    text: str
+    emotion: str
+
+
+class StoryXlsxRequest(BaseModel):
+    activity_name: str
+    lines: list[StoryLineIn]

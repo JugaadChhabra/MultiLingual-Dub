@@ -444,7 +444,9 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
 /* ─── story lines ───────────────────────────────────────────────────────── */
 /* A queue row that can be edited: the number, the line as text on the card (the
    draft treatment — ringed only on focus), and its emotion. */
-#sLines .qrow{grid-template-columns:28px minmax(0,1fr) 150px;align-items:start;}
+#sLines .qrow{grid-template-columns:28px minmax(0,1fr) 150px auto;align-items:start;}
+#sLines .tools{display:flex;gap:var(--s2);}
+#sLines .tools .btn{padding:2px 8px;font-size:var(--t-caption2);}
 #sLines .qrow .i{padding-top:3px;text-align:right;}
 #sLines .area{background:none;box-shadow:none;padding:2px 4px;min-height:0;resize:none;}
 #sLines .area:focus{box-shadow:0 0 0 3.5px var(--accent-soft);}
