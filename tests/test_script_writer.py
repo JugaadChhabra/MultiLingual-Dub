@@ -768,6 +768,20 @@ def test_a_one_off_title_with_spaces_normalises_the_same_in_both_directions(
     assert len(recorded) == len(day.drafts)
 
 
+@pytest.mark.parametrize("title, key", [
+    ("Dr. Sharma tips", "Dr._Sharma_tips"),
+    ("v1.2 launch", "v1.2_launch"),
+    ("Diwali.mp4", "Diwali"),
+    ("Diwali.MP4", "Diwali"),
+    ("", "Script"),
+])
+def test_a_one_off_name_keeps_dots_and_drops_only_a_trailing_mp4(title, key) -> None:
+    """A dot inside a title is not an extension: "Dr. Sharma tips" and
+    "Dr. Rao tips" must not both collapse to "Dr" and share history."""
+    assert script_writer.items_for("single", title)[0].key == key
+    assert script_writer.items_for_titles([title])[0].key == key
+
+
 def test_a_horoscope_batch_with_an_unmapped_title_is_refused(tmp_path) -> None:
     """A stray non-sign title in a zodiac batch is refused, not filed under a
     key nothing matches — the silent history hole the old fallback allowed."""

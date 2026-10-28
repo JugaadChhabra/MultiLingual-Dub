@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import google.genai as genai
 from google.genai import types
@@ -670,9 +670,15 @@ class DaySet:
     warnings: list[str] = field(default_factory=list)
 
 
+_MP4_SUFFIX = re.compile(r"\.mp4$", re.IGNORECASE)
+
+
 def _one_off_name(raw: str | None) -> str:
-    """The name a one-off is keyed and filed under: file stem, spaces as underscores."""
-    return Path(raw or "").stem.replace(" ", "_") or "Script"
+    """The name a one-off is keyed and filed under: spaces as underscores, a
+    trailing .mp4 dropped as intake drops it. Only that suffix goes, so a dot
+    inside a title ("Dr. Sharma tips", "v1.2 launch") is kept, not read as an
+    extension that truncates the key."""
+    return _MP4_SUFFIX.sub("", (raw or "").strip()).replace(" ", "_") or "Script"
 
 
 def _one_off(name: str) -> SetItem:
