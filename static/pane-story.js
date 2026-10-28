@@ -1,5 +1,5 @@
-/* Story pane — a pasted story, broken into voiceover lines for review.
-   Paste → Review. Generate arrives in a later ticket; nothing here spends
+/* Story pane — a pasted story, broken into voiceover lines for review, then
+   voiced. Paste → Review → Generate. Nothing before Generate spends
    text-to-speech credits. */
 (() => {
   "use strict";
@@ -12,13 +12,21 @@
     split: $("#sSplit"), msg: $("#sMsg"), live: $("#storyLive"),
     lines: $("#sLines"), lineN: $("#sLineN"), reviewActivity: $("#sReviewActivity"),
     back: $("#sBack"), download: $("#sDownload"), reviewMsg: $("#sReviewMsg"),
+    generate: $("#sGenerate"), cancel: $("#sCancel"),
+    // the progress block, shaped as U.jobProgress expects
+    progress: $("#storyProgress"), clips: $("#spClips"), detail: $("#spDetail"), started: $("#spStarted"),
+    up: $("#spUp"), done: $("#spDone"), bad: $("#spBad"),
+    upN: $("#spUpN"), doneN: $("#spDoneN"), badN: $("#spBadN"), queueN: $("#spQueueN"),
   };
 
   // emotions and maxLineChars come from the split response, so the dropdown and
   // the server's validator share one list
-  const state = { splitting: false, activityEdited: false, lines: [], emotions: [], maxLineChars: 0 };
+  const state = { splitting: false, activityEdited: false, lines: [], emotions: [], maxLineChars: 0,
+                  running: false, jobId: null, targets: [] };
+  const JOB_KEY = "autodub_story_job";
 
-  const SEL = U.langPicker({ tokens: els.langs, groups: els.groups, count: els.selN });
+  const SEL = U.langPicker({ tokens: els.langs, groups: els.groups, count: els.selN,
+                             onChange: () => { if (!els.review.hidden) summarise(); } });
 
   // ── paste ────────────────────────────────────────────────────────────────
   // The same rule the server applies; shown live so the operator can see and
@@ -202,16 +210,122 @@
     const problems = [];
     if (empty) problems.push(`${empty} empty line${empty === 1 ? "" : "s"}`);
     if (long) problems.push(`${long} line${long === 1 ? "" : "s"} over ${state.maxLineChars} characters`);
-    els.reviewMsg.textContent = problems.length
-      ? problems.join(" · ")
-      : `${state.lines.length} lines × ${SEL.size} language${SEL.size === 1 ? "" : "s"}`;
-    els.reviewMsg.classList.toggle("err", problems.length > 0);
+    if (!state.lines.length) problems.push("no lines");
+    if (!SEL.size) problems.push("pick at least one target language on the story step");
+    if (!window.Shell.configured()) problems.push("runtime config is not ready");
+    if (!state.running) {
+      els.reviewMsg.textContent = problems.length
+        ? problems.join(" · ")
+        : `${state.lines.length} lines × ${SEL.size} language${SEL.size === 1 ? "" : "s"} = ` +
+          `${state.lines.length * SEL.size} clips`;
+      els.reviewMsg.classList.toggle("err", problems.length > 0);
+    }
+    refreshGenerate(problems.length > 0);
+  }
+
+  // ── generate ─────────────────────────────────────────────────────────────
+  function refreshGenerate(blocked) {
+    els.cancel.hidden = !state.running;
+    els.generate.disabled = state.running || state.splitting || blocked;
+    els.back.disabled = state.running;
+  }
+
+  els.generate.addEventListener("click", generate);
+  U.bindJobCancel(els.cancel, () => state.jobId);
+
+  async function generate() {
+    if (state.running) return;
+    U.clearBanners(els.banners);
+    // Not awaited, as in Audio: the run must not wait on a permission prompt.
+    U.askNotify();
+    state.running = true; state.targets = [...SEL];
+    els.live.hidden = false;
+    els.reviewMsg.textContent = "Starting…"; els.reviewMsg.classList.remove("err");
+    window.Shell.setRunning("story", true, "Story audio running");
+    summarise();
+
+    try {
+      const r = await U.fetchT("/batch/story-jobs", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: els.title.value.trim(),
+          activity_name: els.reviewActivity.textContent,
+          lines: state.lines,
+          target_languages: state.targets,
+        }),
+      }, 30000);
+      if (!r.ok) {
+        let detail = "";
+        try { detail = (await r.json()).detail; } catch (_) {}
+        if (typeof detail !== "string" || !detail) detail = `HTTP ${r.status}`;
+        throw Object.assign(new Error(detail), { status: r.status });
+      }
+      const { job_id } = await r.json();
+      state.jobId = job_id;
+      try { localStorage.setItem(JOB_KEY, job_id); } catch (_) {}
+      await poll(job_id);
+    } catch (e) {
+      // a 400 is about the lines or the setup; anything else never got there
+      U.banner(els.banners, e.status === 400
+        ? { kind: "error", title: "The story could not be voiced", detail: U.esc(e.message) }
+        : { kind: "error", title: "Could not start the run",
+            detail: "The request never reached the server.", raw: String(e && e.message || e) });
+      finish("failed", null, null, false);
+    }
+  }
+
+  async function poll(id) {
+    const end = await U.pollJob(id, (summary, status) => {
+      U.jobProgress(els, summary, status, state.targets.length || SEL.size);
+      window.Shell.setRunning("story", true, shortProgress(summary));
+    });
+    finish(end.status, end.summary, end.cause);
+  }
+  function shortProgress(s) {
+    s = s || {};
+    return s.total_rows ? `Story ${s.rows_processed || 0}/${s.total_rows}` : "Story audio running";
+  }
+
+  function finish(status, summary, cause, report = true) {
+    state.running = false; state.jobId = null;
+    try { localStorage.removeItem(JOB_KEY); } catch (_) {}
+    els.live.hidden = true;
+    U.resetJobCancel(els.cancel);
+    window.Shell.setRunning("story", false);
+    if (summary) U.jobProgress(els, summary, status, state.targets.length || SEL.size);
+    summarise();
+    if (report) U.jobEnded({ banners: els.banners, status, summary, cause, name: "Story audio" });
+  }
+
+  // ── survive a reload ─────────────────────────────────────────────────────
+  // The reviewed lines are gone after a reload, but the run is not: progress,
+  // results and cancel come back.
+  async function reattach() {
+    let id = null;
+    try { id = localStorage.getItem(JOB_KEY); } catch (_) {}
+    if (!id) return;
+    try {
+      const r = await U.fetchT(`/batch/excel-jobs/${id}`);
+      if (!r.ok) { localStorage.removeItem(JOB_KEY); return; }
+      const p = await r.json();
+      if (U.JOB_ENDED.includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
+      state.running = true; state.jobId = id; state.targets = [...SEL];
+      els.live.hidden = false;
+      // the cancel button lives on the review step
+      showReview();
+      els.reviewMsg.textContent = "Running…"; els.reviewMsg.classList.remove("err");
+      window.Shell.setRunning("story", true, "Story audio running");
+      U.toast("Reattached to a story run already in progress", { kind: "info",
+        detail: "Nothing was lost when the page reloaded." });
+      poll(id);
+    } catch (_) {}
   }
 
   // The line boxes size themselves to their text, which they cannot measure
   // while the pane is hidden.
   function fitLines() { els.lines.querySelectorAll("textarea").forEach(fit); }
 
-  refreshRun();
-  window.PaneStory = { refreshRun, fitLines, isSplitting: () => state.splitting };
+  refreshRun(); reattach();
+  window.PaneStory = { refreshRun, fitLines, isSplitting: () => state.splitting,
+                       isRunning: () => state.running };
 })();

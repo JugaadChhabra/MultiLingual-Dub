@@ -48,3 +48,11 @@ class StoryLineIn(BaseModel):
 class StoryXlsxRequest(BaseModel):
     activity_name: str
     lines: list[StoryLineIn]
+
+
+class StoryJobRequest(BaseModel):
+    activity_name: str
+    lines: list[StoryLineIn]
+    target_languages: list[str]
+    # Context for the story fix only; nothing is named after it.
+    title: str = ""

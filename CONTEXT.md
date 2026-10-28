@@ -214,3 +214,23 @@ story over `MAX_STORY_LINES` is refused rather than chunked.
 **Story line** — one line of a story: its text and its emotion. Becomes a row
 once the story is generated; until then it lives only in the Story pane, where
 the operator reviews it.
+
+**Story job** — a reviewed story voiced as one activity (`run_story_job` in
+`batch/story_job.py`). Its rows are built in memory, one per story line, each
+titled the activity name plus its 1-based line number. Unlike an Excel batch it
+works phase by phase: translate every row into drafts with no per-row QC, then
+one *story fix* per language, then speak each row with its fixed text. English
+targets get the source lines verbatim — no translation, no Gemini. Shares the
+Excel batch's tally, activity buffer, retry-then-upload tail (`_close_activity`)
+and job endpoints; its retry pass re-speaks a failed voiceover from its fixed
+text instead of re-translating it. Being one activity, nothing uploads until
+the end, so a cancel while speaking uploads the clips already spoken first.
+
+**Story fix** — one Gemini call per language that sees every line's English,
+emotion and draft at once, and rewrites the drafts so the story sounds told, not
+translated (`fix_story`). Separate from per-row QC: its own prompt sets the
+register (Hindi: everyday spoken, as a parent tells a bedtime story, common
+English loanwords kept), keeps names, pronouns and forms of address consistent
+across lines, keeps each line's meaning inside that line, and carries over only
+QC's script-hygiene rule. Returns fixed text keyed by line id; a line it leaves
+out, or a language whose fix fails, fails those language tasks.
