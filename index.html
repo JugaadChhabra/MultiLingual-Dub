@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" href="favicon.png" />
 <title>AutoDub</title>
-<link rel="stylesheet" href="/static/app.css?v=12" />
+<link rel="stylesheet" href="/static/app.css?v=14" />
 </head>
 <body>
 <div class="app">
@@ -41,10 +41,15 @@
         <span class="g o" aria-hidden="true">¶</span> <span class="lbl">Story</span>
         <span class="live" id="storyLive" hidden></span>
       </button>
+      <div class="sbh">Videos</div>
+      <button class="sbi" data-section="library">
+        <span class="g" aria-hidden="true">▦</span> <span class="lbl">Library</span>
+        <span class="live" id="libraryLive" hidden></span>
+      </button>
       <div id="recoverWrap" hidden>
         <div class="sbh">Needs attention</div>
         <button class="sbi" id="recoverBtn">
-          <span class="g r" aria-hidden="true">!</span> <span class="lbl">Stranded renders</span>
+          <span class="g r" aria-hidden="true">!</span> <span class="lbl">Not on the NAS</span>
           <span class="meta" id="recoverN">0</span>
         </button>
       </div>
@@ -413,6 +418,36 @@
         </div>
       </div>
     </main>
+
+    <!-- ══════════════ LIBRARY ══════════════ -->
+    <main class="pane" id="pane-library" aria-label="Video library" hidden>
+      <div class="pane-inner">
+        <h1>Video library</h1>
+        <div class="sub">Every video rendered on HeyGen. Download any of them, or send one that never
+          reached the NAS — sending re-downloads it, it never re-renders, so it costs no credits.</div>
+
+        <div id="libraryBanners"></div>
+
+        <div class="libbar">
+          <div class="seg" id="libFilter" role="group" aria-label="Show">
+            <button type="button" data-state="" aria-pressed="true">All <span class="n" data-n=""></span></button>
+            <button type="button" data-state="sendable,needs_details" aria-pressed="false">Not on NAS <span class="n" data-n="sendable,needs_details"></span></button>
+            <button type="button" data-state="in_progress,rendering" aria-pressed="false">Working <span class="n" data-n="in_progress,rendering"></span></button>
+            <button type="button" data-state="on_nas" aria-pressed="false">On NAS <span class="n" data-n="on_nas"></span></button>
+            <button type="button" data-state="not_recoverable" aria-pressed="false">Can't recover <span class="n" data-n="not_recoverable"></span></button>
+          </div>
+          <input class="fld grow" id="libSearch" type="search" placeholder="Search title, date or id" aria-label="Search the library" />
+          <button class="btn" id="libRefresh">Refresh</button>
+          <button class="btn p" id="libSendAll" hidden>Send all to NAS</button>
+        </div>
+
+        <div class="grp" id="libList" aria-live="polite"></div>
+        <div class="runbar">
+          <button class="btn" id="libMore" hidden>Show more</button>
+          <span class="msg grow" id="libMsg" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </main>
   </div>
 </div>
 
@@ -474,7 +509,8 @@
 <script src="/static/pane-audio.js?v=4"></script>
 <script src="/static/pane-video.js?v=7"></script>
 <script src="/static/pane-story.js?v=2"></script>
-<script src="/static/shell.js?v=5"></script>
+<script src="/static/pane-library.js?v=2"></script>
+<script src="/static/shell.js?v=6"></script>
   <div class="toasts" role="status" aria-live="polite"></div>
 </body>
 </html>

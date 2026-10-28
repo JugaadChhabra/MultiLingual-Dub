@@ -47,12 +47,31 @@ finished but which failed afterward. Possible only because the job's render id
 and spec are persisted before the download is attempted. Its rules live in
 `services/video_pipeline/recovery.py` (`check_recoverable`, raising
 `NotRecoverable`): a job is recoverable only if it is `failed`, has a render id
-and a spec, and is not already being recovered. A recovery first *claims* the
+and a spec, its render was not failed by HeyGen itself (`render_failed`, set
+when HeyGen reports the render failed — there is then no video to fetch), and
+it is not already being recovered. A recovery first *claims* the
 job (`VideoJobsStore.claim_recovery`, under the store's lock), moving it to the
 in-flight status `recovering`, so a second request for the same job is refused
 and recover-all passes it by. Recovering a completed job would file it to the
-NAS twice. See `start_recovery`, `start_recovery_of_failed` and
-`recover_video_job` in the pipeline.
+NAS twice. At most `RECOVERY_CONCURRENCY` (2) recoveries run at once; the rest
+wait in `recovering`. A recovered job that rendered a batch row marks that row
+done (`VideoBatchJobsStore.row_recovered`). See `start_recovery`,
+`start_recovery_of_failed` and `recover_video_job` in the pipeline.
+
+**Library** — every render on the HeyGen account, matched to the job that made
+it on `heygen_video_id` (HeyGen keeps renders but not our titles). Each entry is
+in one state — `on_nas`, `in_progress`, `sendable`, `needs_details`,
+`rendering`, `not_recoverable` (with a reason) — decided in
+`services/video_pipeline/library.py` (`build_library`). *Sending to the NAS* a
+`sendable` entry is Recovery; a `needs_details` entry (a render no job of ours
+accounts for) is filed under an operator-supplied title and date by adopting it
+into a new job (`start_filing_render`). `LibraryService`
+(`library_service.py`) holds the caching, so nothing expensive is done twice:
+`RenderCatalog` keeps the account's listing (~30 requests in full) and refreshes
+it in the background, stopping at renders already known; the built library is
+reused until the listing or the job store's `version` changes; thumbnails and
+raw renders go through `MediaCache`, on disk under `output/heygen/_library`,
+fetched from HeyGen once per video and served to the browser as immutable.
 
 **Interrupted** — a job that was still in flight when the process stopped. On
 reload every such job is settled to `failed`, because nothing is running any

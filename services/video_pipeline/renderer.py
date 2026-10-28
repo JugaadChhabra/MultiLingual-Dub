@@ -38,6 +38,16 @@ class RenderListing:
 
 
 @dataclass(frozen=True)
+class RenderMedia:
+    """Where a render's files can be fetched right now, from a single status
+    lookup — never a wait. The URLs are signed and expire, so they are for
+    fetching at once, not for keeping."""
+    status: Literal["completed", "failed", "processing"]
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+
+
+@dataclass(frozen=True)
 class TalkingPhoto:
     """A talking photo held on the account, as the avatar picker shows it."""
     talking_photo_id: str
@@ -111,6 +121,11 @@ class VideoRenderer(ABC):
         """
 
     @abstractmethod
+    async def render_media(self, *, video_id: str) -> RenderMedia:
+        """Look the render up once and say where its files are, without
+        waiting for it to finish (compare ``await_render``)."""
+
+    @abstractmethod
     async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:
         """Every render on the account, newest first.
 
@@ -121,7 +136,8 @@ class VideoRenderer(ABC):
 
     @abstractmethod
     async def download(self, *, video_url: str, dest_path: Path) -> int:
-        """Download a finished render to ``dest_path``, returning bytes written.
+        """Download a file of a render (the video, or its thumbnail) to
+        ``dest_path``, returning bytes written.
 
         Implementations are expected to survive a mid-transfer connection drop;
         a partially-downloaded file at ``dest_path`` may be resumed.

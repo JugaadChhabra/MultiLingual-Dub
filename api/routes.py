@@ -43,7 +43,8 @@ from services.video_pipeline import (
     start_recovery,
     start_recovery_of_failed,
 )
-from services.video_pipeline.library import RenderCatalog, build_library
+from services.video_pipeline.library import page_of
+from services.video_pipeline.library_service import Download, LibraryService, NoMedia, sniff_image_type
 from services.video_pipeline.pipeline import start_filing_render
 from services.video_pipeline.types import VideoJobSpec, VideoJobState
 from services.email import EmailSettings
@@ -113,6 +114,12 @@ async def lifespan(app: FastAPI):
         NasService(NasConfig.resolve()).ensure_base_folders()
     except Exception as exc:
         logging.warning("NAS base folder init failed (non-fatal): %s", exc)
+    # The library's first full listing of the HeyGen account is ~30 requests.
+    # Make it now, so the first person to open the library doesn't wait on it.
+    try:
+        spawn(video_library.catalog.renders(_build_renderer(None)), name="library-warmup")
+    except MissingSettingError:
+        pass
     yield
 
 
@@ -138,8 +145,10 @@ session_config_store = SessionConfigStore()
 VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
 VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# The HeyGen account's render listing, kept between library page loads.
-render_catalog = RenderCatalog()
+# Every HeyGen render, matched to its job; holds the listing and media caches.
+video_library = LibraryService(
+    video_jobs_store, jobs_dir=VIDEO_OUTPUT_DIR, cache_dir=VIDEO_OUTPUT_DIR / "_library",
+)
 
 # Generated scripts, kept so the writer can be shown what it already said. Not a
 # job store: nothing here is in flight, and every read comes off disk.
@@ -356,21 +365,22 @@ async def create_heygen_video_job(
 
 # --- library ---------------------------------------------------------------
 # Declared before /video/heygen/{job_id}, which would otherwise take "library"
-# for a job id.
+# for a job id. The rules live in services/video_pipeline/library.py and the
+# caching in library_service.py; these only translate to and from HTTP.
 
-LIBRARY_STATES = ("on_nas", "in_progress", "sendable", "needs_details", "rendering", "not_recoverable")
+# A render's thumbnail never changes, so the browser may keep it for good.
+IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
-async def _library(renderer: VideoRenderer, *, refresh: bool = False):
-    """The library, and why HeyGen's half of it is missing if it is: a listing
-    failure still shows every job we know of rather than an empty page."""
-    listing_error = None
+def _csv(raw: str | None) -> set[str]:
+    return set((raw or "").split(",")) - {""}
+
+
+def _renderer_for(session: RuntimeConfig | None) -> VideoRenderer:
     try:
-        renders = await render_catalog.renders(renderer, refresh=refresh)
-    except Exception as exc:
-        logging.warning("HeyGen render listing failed: %s", exc)
-        renders, listing_error = [], f"Could not list renders on HeyGen: {exc}"
-    return build_library(renders, await video_jobs_store.snapshot()), listing_error
+        return _build_renderer(session)
+    except MissingSettingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 async def _record_recovery(state: VideoJobState) -> None:
@@ -389,36 +399,22 @@ async def get_video_library(
     refresh: bool = False,
     state: str | None = None,
     q: str | None = None,
+    ids: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ):
     """Every render on the HeyGen account, newest first, each with what can be
-    done with it. ``counts`` covers the whole library; ``items`` the filtered page."""
-    session = await _session_config_for_request(request)
-    try:
-        renderer = _build_renderer(session)
-    except MissingSettingError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    entries, listing_error = await _library(renderer, refresh=refresh)
-
-    counts = {s: 0 for s in LIBRARY_STATES}
-    for e in entries:
-        counts[e.state] += 1
-    wanted = set((state or "").split(",")) - {""}
-    needle = (q or "").strip().lower()
-    picked = [
-        e for e in entries
-        if (not wanted or e.state in wanted)
-        and (not needle or any(needle in (v or "").lower()
-                               for v in (e.title, e.video_id, e.job_id, e.publish_date, e.nas_path)))
-    ]
-    limit = max(1, min(limit, 200))
-    offset = max(0, offset)
+    done with it. ``counts`` covers the whole library; ``items`` the filtered
+    page. ``ids`` lets the page ask after the renders it sent, wherever they are."""
+    renderer = _renderer_for(await _session_config_for_request(request))
+    lib = await video_library.library(renderer, refresh=refresh)
+    page = page_of(lib.entries, states=_csv(state), ids=_csv(ids), query=q or "",
+                   offset=offset, limit=min(limit, 200))
     return {
-        "items": [e.to_dict() for e in picked[offset:offset + limit]],
-        "total": len(picked),
-        "counts": counts,
-        "listing_error": listing_error,
+        "items": [e.to_dict() for e in page.items],
+        "total": page.total,
+        "counts": page.counts,
+        "listing_error": lib.listing_error,
     }
 
 
@@ -433,8 +429,7 @@ async def send_render_to_nas(video_id: str, request: Request, details: FileRende
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    entries, _ = await _library(deps.renderer)
-    entry = next((e for e in entries if e.video_id == video_id), None)
+    entry = await video_library.entry(deps.renderer, video_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="No such render on HeyGen or in our jobs")
 
@@ -474,47 +469,49 @@ async def send_render_to_nas(video_id: str, request: Request, details: FileRende
     raise HTTPException(status_code=409, detail=refusal)
 
 
+async def _download(video_id: str, request: Request) -> Download:
+    renderer = _renderer_for(await _session_config_for_request(request))
+    try:
+        return await video_library.download(renderer, video_id)
+    except NoMedia as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not fetch the render from HeyGen: {exc}") from exc
+
+
+@app.post("/video/heygen/library/{video_id}/prepare-download")
+async def prepare_render_download(video_id: str, request: Request):
+    """Make sure the video is on this server, then say where to fetch it. Two
+    steps so the page can report a failure, then let the browser stream the
+    file to disk instead of holding 30 MB in memory."""
+    await _download(video_id, request)
+    return {"url": f"/video/heygen/library/{video_id}/download"}
+
+
 @app.get("/video/heygen/library/{video_id}/download")
 async def download_render(video_id: str, request: Request):
-    """The video as a file. A job of ours that finished hands over what it filed
-    (cards and music included); anything else is the raw render from HeyGen,
-    fetched once and kept under output/heygen/_library."""
-    session = await _session_config_for_request(request)
+    """The video as a file: what a job of ours filed when we have it, otherwise
+    the raw render, fetched from HeyGen once and kept."""
+    dl = await _download(video_id, request)
+    return FileResponse(dl.path, media_type="video/mp4", filename=dl.filename)
+
+
+@app.get("/video/heygen/library/{video_id}/thumbnail")
+async def render_thumbnail(video_id: str, request: Request):
+    """The render's thumbnail: fetched from HeyGen the first time anyone asks,
+    from disk after that, and from the browser's own cache after that."""
+    renderer = _renderer_for(await _session_config_for_request(request))
     try:
-        renderer = _build_renderer(session)
-    except MissingSettingError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    entries, _ = await _library(renderer)
-    entry = next((e for e in entries if e.video_id == video_id), None)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="No such render on HeyGen or in our jobs")
-    filename = f"{entry.title or video_id}.mp4"
-
-    if entry.state == "on_nas" and entry.job_id:
-        for name in ("video_carded.mp4", "video.mp4"):
-            path = VIDEO_OUTPUT_DIR / entry.job_id / name
-            if path.is_file() and path.stat().st_size > 0:
-                return FileResponse(path, media_type="video/mp4", filename=filename)
-
-    # Only a render HeyGen lists as finished: await_render on anything else
-    # would hold this request open for as long as the render takes.
-    render = render_catalog.get(video_id)
-    if render is None or render.status != "completed":
-        raise HTTPException(status_code=409,
-                            detail=entry.reason or "HeyGen has no finished video for this yet")
-
-    cached = VIDEO_OUTPUT_DIR / "_library" / f"{video_id}.mp4"
-    if not cached.is_file():
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        part = cached.with_suffix(".part")
-        try:
-            rendered = await renderer.await_render(video_id=video_id)
-            await renderer.download(video_url=rendered.video_url, dest_path=part)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Could not fetch the render from HeyGen: {exc}") from exc
-        part.replace(cached)
-    return FileResponse(cached, media_type="video/mp4", filename=filename)
+        path = await video_library.thumbnail(renderer, video_id)
+    except (NoMedia, ValueError) as exc:
+        # Not cached: a render still processing will have one later.
+        raise HTTPException(status_code=404, detail=str(exc), headers={"Cache-Control": "no-store"}) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not fetch the thumbnail from HeyGen: {exc}",
+                            headers={"Cache-Control": "no-store"}) from exc
+    return FileResponse(path, media_type=sniff_image_type(path), headers=IMMUTABLE)
 
 
 @app.get("/video/heygen/{job_id}")
@@ -580,7 +577,9 @@ async def recover_all_failed_heygen_jobs(request: Request):
         launch=spawn,
         on_recovered=_record_recovery,
     )
-    return {"status": "recovering", "job_ids": ids, "count": len(ids)}
+    started = set(ids)
+    video_ids = [j.summary.heygen_video_id for j in await video_jobs_store.snapshot() if j.job_id in started]
+    return {"status": "recovering", "job_ids": ids, "video_ids": video_ids, "count": len(ids)}
 
 
 @app.post("/video/scripts/generate")

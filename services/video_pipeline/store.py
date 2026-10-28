@@ -35,12 +35,21 @@ class VideoJobsStore:
         self._jobs: dict[str, VideoJobState] = {}
         self._lock = asyncio.Lock()
         self._mirror: JsonStateMirror[VideoJobState] | None = None
+        # Bumped on every change, so a reader can tell "nothing changed since I
+        # last looked" without copying every job (see the library).
+        self._version = 0
         if persist_dir is not None:
             self._mirror = JsonStateMirror(persist_dir, VideoJobState, lambda s: s.job_id)
             self._load()
 
+    @property
+    def version(self) -> int:
+        return self._version
+
     # --- persistence -----------------------------------------------------
     def _write(self, state: VideoJobState) -> None:
+        # Every mutation ends here, so this is the one place to count them.
+        self._version += 1
         if self._mirror is not None:
             self._mirror.write(state)
 
@@ -128,9 +137,16 @@ class VideoJobsStore:
             logger.error("VideoJob %s → failed | %s", job_id, message)
 
     async def snapshot(self) -> list[VideoJobState]:
-        """A copy of every job, for the library to read without the lock."""
+        """A copy of every job, for the library to read without the lock.
+        Costs ~0.1s per 3,000 jobs; callers cache it against ``version``."""
         async with self._lock:
             return [s.model_copy(deep=True) for s in self._jobs.values()]
+
+    async def jobs_for_video(self, video_id: str) -> list[VideoJobState]:
+        """Copies of only the jobs that rendered ``video_id``."""
+        async with self._lock:
+            return [s.model_copy(deep=True) for s in self._jobs.values()
+                    if s.summary.heygen_video_id == video_id]
 
     # --- recovery --------------------------------------------------------
     async def list_recoverable(self) -> list[str]:

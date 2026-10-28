@@ -9,6 +9,7 @@ from services.video_pipeline.renderer import (
     RenderedVideo,
     RenderFailed,
     RenderListing,
+    RenderMedia,
     TalkingPhoto,
     UploadedAudio,
     VideoRenderer,
@@ -104,6 +105,16 @@ class HeyGenRenderer(VideoRenderer):
         return RenderedVideo(
             video_url=str(video_url),
             duration_seconds=float(duration) if isinstance(duration, (int, float)) else None,
+        )
+
+    async def render_media(self, *, video_id: str) -> RenderMedia:
+        data = await asyncio.to_thread(
+            heygen_client.get_video_status, api_key=self._api_key, video_id=video_id
+        )
+        return RenderMedia(
+            status=_LISTING_STATUS.get(str(data.get("status")), "processing"),
+            video_url=data.get("video_url") or None,
+            thumbnail_url=data.get("thumbnail_url") or None,
         )
 
     async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:

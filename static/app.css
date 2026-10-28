@@ -568,3 +568,27 @@ body{background:var(--bg);color:var(--label);font-family:var(--font);font-size:v
   /* Nothing to collapse, so the control would toggle an invisible element. */
   .sbtoggle{display:none;}
 }
+
+/* ─── video library ─────────────────────────────────────────────────────── */
+#pane-library .pane-inner{max-width:1100px;}
+.libbar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2);margin:var(--s4) 0 var(--s3);}
+.libbar .fld{min-width:180px;}
+.libbar .grow{flex:1;}
+.seg .n{color:var(--label3);font-weight:400;margin-left:3px;}
+.seg .n:empty{display:none;}
+.row.lib{align-items:flex-start;}
+.row.lib .thumb{flex:none;width:54px;height:96px;border-radius:var(--r-sm);object-fit:cover;
+  background:var(--fill);display:block;}
+.row.lib .tx{flex:1;}
+.row.lib .t.untitled{color:var(--label2);font-style:italic;}
+.row.lib .s .path{display:inline-block;vertical-align:bottom;max-width:340px;}
+.row.lib .why{color:var(--label2);margin-top:4px;}
+.row.lib .why.bad{color:var(--red-ink);}
+.row.lib .rt{padding-top:1px;}
+.libform{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:var(--s2) var(--s3);
+  padding:var(--s3) var(--s4) var(--s4);border-top:.5px solid var(--sep);background:var(--fill);}
+.libform .opts{grid-column:1 / -1;display:flex;align-items:center;gap:var(--s4);font-size:var(--t-caption);color:var(--label2);}
+.libform .opts .grow{flex:1;}
+.libform .err{grid-column:1 / -1;color:var(--red-ink);font-size:var(--t-caption);}
+.libform .err:empty{display:none;}
+@media (max-width:720px){.libform{grid-template-columns:1fr;}}

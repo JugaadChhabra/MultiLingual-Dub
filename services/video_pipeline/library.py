@@ -22,6 +22,7 @@ account's listing between page loads, since the full listing is ~30 requests.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -30,6 +31,8 @@ from typing import Literal
 from services.video_pipeline.recovery import RECOVERING, NotRecoverable, check_recoverable
 from services.video_pipeline.renderer import RenderListing, VideoRenderer
 from services.video_pipeline.types import VideoJobState
+
+logger = logging.getLogger(__name__)
 
 LibraryState = Literal["on_nas", "in_progress", "sendable", "needs_details", "rendering", "not_recoverable"]
 
@@ -145,32 +148,92 @@ def build_library(renders: list[RenderListing], jobs: list[VideoJobState]) -> li
     return entries
 
 
+STATES: tuple[LibraryState, ...] = ("on_nas", "in_progress", "sendable", "needs_details",
+                                    "rendering", "not_recoverable")
+
+
+@dataclass(frozen=True)
+class Page:
+    items: list[LibraryEntry]
+    total: int            # how many match, across every page
+    counts: dict[str, int]  # per state, across the whole library
+
+
+def page_of(entries: list[LibraryEntry], *, states: set[str] = frozenset(), ids: set[str] = frozenset(),
+            query: str = "", offset: int = 0, limit: int = 50) -> Page:
+    """One page of the library: filtered by state, by video id and by a search
+    over title, ids, date and NAS path."""
+    counts = dict.fromkeys(STATES, 0)
+    for e in entries:
+        counts[e.state] += 1
+    needle = query.strip().lower()
+    picked = [
+        e for e in entries
+        if (not states or e.state in states)
+        and (not ids or e.video_id in ids)
+        and (not needle or any(needle in (v or "").lower()
+                               for v in (e.title, e.video_id, e.job_id, e.publish_date, e.nas_path)))
+    ]
+    offset, limit = max(0, offset), max(1, limit)
+    return Page(picked[offset:offset + limit], len(picked), counts)
+
+
+def entry_for(video_id: str, render: RenderListing | None, jobs: list[VideoJobState]) -> LibraryEntry | None:
+    """The one entry for ``video_id``, from just its render and its jobs — what
+    an action on one video needs, without building the whole library."""
+    return next((e for e in build_library([render] if render else [], jobs)
+                 if e.video_id == video_id), None)
+
+
 class RenderCatalog:
     """The account's render listing, kept between page loads.
 
-    Refreshing re-lists only until it reaches renders already known to be
-    finished, so after the first load a refresh is usually one request.
+    Stale-while-revalidate: once it has a listing, a stale one is returned at
+    once and refreshed in the background, so a page load never waits on HeyGen.
+    Only the first load, and an explicit refresh, wait. A refresh re-lists only
+    until it reaches renders already known to be finished — usually one request.
+    ``version`` changes whenever the listing does.
     """
 
     def __init__(self, max_age_seconds: float = 60.0) -> None:
         self._renders: dict[str, RenderListing] = {}
+        self._order: list[RenderListing] = []
         self._fetched_at: float | None = None
         self._max_age = max_age_seconds
         self._lock = asyncio.Lock()
+        self._background: asyncio.Task | None = None
+        self.version = 0
 
     async def renders(self, renderer: VideoRenderer, *, refresh: bool = False) -> list[RenderListing]:
-        async with self._lock:
-            stale = self._fetched_at is None or time.monotonic() - self._fetched_at > self._max_age
-            if refresh or stale:
-                known = frozenset(vid for vid, r in self._renders.items() if r.status != "processing")
-                fresh = await renderer.list_renders(known=known)
-                merged = {r.video_id: r for r in fresh}
-                # Older renders the early stop skipped are still on the account.
-                for vid, r in self._renders.items():
-                    merged.setdefault(vid, r)
-                self._renders = merged
-                self._fetched_at = time.monotonic()
-            return list(self._renders.values())
+        """The listing. Raises only when there is none to fall back on."""
+        if refresh or self._fetched_at is None:
+            await self._refresh(renderer)
+        elif time.monotonic() - self._fetched_at > self._max_age and not self._refreshing():
+            self._background = asyncio.create_task(self._refresh_quietly(renderer))
+        return self._order
 
     def get(self, video_id: str) -> RenderListing | None:
         return self._renders.get(video_id)
+
+    def _refreshing(self) -> bool:
+        return self._background is not None and not self._background.done()
+
+    async def _refresh_quietly(self, renderer: VideoRenderer) -> None:
+        try:
+            await self._refresh(renderer)
+        except Exception as exc:  # the stale listing stays; the next read retries
+            logger.warning("Background refresh of the HeyGen listing failed: %s", exc)
+
+    async def _refresh(self, renderer: VideoRenderer) -> None:
+        async with self._lock:
+            known = frozenset(vid for vid, r in self._renders.items() if r.status != "processing")
+            fresh = await renderer.list_renders(known=known)
+            merged = {r.video_id: r for r in fresh}
+            # Older renders the early stop skipped are still on the account.
+            for vid, r in self._renders.items():
+                merged.setdefault(vid, r)
+            if merged != self._renders:
+                self._renders = merged
+                self._order = list(merged.values())
+                self.version += 1
+            self._fetched_at = time.monotonic()

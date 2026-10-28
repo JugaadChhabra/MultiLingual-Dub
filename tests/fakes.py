@@ -14,6 +14,7 @@ from services.video_pipeline.renderer import (
     RenderedVideo,
     RenderFailed,
     RenderListing,
+    RenderMedia,
     TalkingPhoto,
     UploadedAudio,
     VideoRenderer,
@@ -37,6 +38,7 @@ class FakeRenderer(VideoRenderer):
         self.photos = list(photos or [])
         self.list_error = list_error
         self.video_bytes = video_bytes
+        self.thumbnail_bytes = b"RIFF\x00\x00\x00\x00WEBPfake"
         self.fail_download = fail_download
         self.render_failed = render_failed
 
@@ -103,6 +105,17 @@ class FakeRenderer(VideoRenderer):
             raise RenderFailed("HeyGen render failed: fake")
         return RenderedVideo(video_url=f"https://fake.invalid/{video_id}.mp4")
 
+    async def render_media(self, *, video_id: str) -> RenderMedia:
+        self.calls.append("render_media")
+        listed = next((r for r in self.renders if r.video_id == video_id), None)
+        status = listed.status if listed else "completed"
+        done = status == "completed"
+        return RenderMedia(
+            status=status,
+            video_url=f"https://fake.invalid/{video_id}.mp4" if done else None,
+            thumbnail_url=f"https://fake.invalid/{video_id}.webp" if done else None,
+        )
+
     async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:
         self.calls.append("list_renders")
         return list(self.renders)
@@ -113,8 +126,9 @@ class FakeRenderer(VideoRenderer):
         if self.fail_download:
             raise RuntimeError("download failed: fake")
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        dest_path.write_bytes(self.video_bytes)
-        return len(self.video_bytes)
+        body = self.thumbnail_bytes if video_url.endswith(".webp") else self.video_bytes
+        dest_path.write_bytes(body)
+        return len(body)
 
 
 class FakeSpeech(SpeechSynth):

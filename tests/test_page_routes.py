@@ -14,7 +14,7 @@ def test_html_pages_are_never_heuristically_cached() -> None:
     """
     client = TestClient(api.app)
 
-    for path in ("/", "/videogen", "/story"):
+    for path in ("/", "/videogen", "/story", "/library"):
         response = client.get(path)
         assert response.status_code == 200, path
         cache_control = response.headers.get("cache-control", "")

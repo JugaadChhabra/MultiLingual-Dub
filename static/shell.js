@@ -1,17 +1,18 @@
-/* Shell — sidebar, section switching, config status, stranded renders.
+/* Shell — sidebar, section switching, config status, videos not on the NAS.
    Loads last: the panes register themselves on window before this runs. */
 (() => {
   "use strict";
   const U = window.UI, $ = U.$;
 
   let envConfigured = false;
-  const running = { audio: false, video: false, story: false };
+  const running = { audio: false, video: false, story: false, library: false };
 
   // ── sections ─────────────────────────────────────────────────────────────
   // /videogen and /story are real, linkable paths for their sections. The old
   // /heygen redirects to /videogen, so existing bookmarks still land right.
-  const PATHS = { audio: "/", video: "/videogen", story: "/story" };
-  const TITLES = { audio: "AutoDub — Audio", video: "AutoDub — Video", story: "AutoDub — Story" };
+  const PATHS = { audio: "/", video: "/videogen", story: "/story", library: "/library" };
+  const TITLES = { audio: "AutoDub — Audio", video: "AutoDub — Video", story: "AutoDub — Story",
+                   library: "AutoDub — Library" };
   function show(section, push = true) {
     document.querySelectorAll(".sbi[data-section]").forEach((b) => {
       const on = b.dataset.section === section;
@@ -20,6 +21,7 @@
     $("#pane-audio").hidden = section !== "audio";
     $("#pane-video").hidden = section !== "video";
     $("#pane-story").hidden = section !== "story";
+    $("#pane-library").hidden = section !== "library";
     document.title = TITLES[section];
     // The draft boxes size themselves to their text, which they cannot measure
     // while the pane is hidden. This is the moment it stops being hidden.
@@ -27,6 +29,7 @@
       window.PaneVideo.fitDrafts();
     }
     if (section === "story" && window.PaneStory) window.PaneStory.fitLines();
+    if (section === "library" && window.PaneLibrary) window.PaneLibrary.activate();
     if (push) history.replaceState({}, "", PATHS[section]);
   }
   document.querySelectorAll(".sbi[data-section]").forEach((b) =>
@@ -104,12 +107,13 @@
   // ── toolbar running indicator ────────────────────────────────────────────
   function setRunning(section, on, label) {
     running[section] = on;
-    const any = running.audio || running.video || running.story;
+    const any = running.audio || running.video || running.story || running.library;
     $("#tbRun").hidden = !any;
     $("#tbSep").hidden = !any;
     if (any && label) $("#tbRunText").textContent = label;
     else if (any) $("#tbRunText").textContent =
-      running.audio ? "Audio running" : running.video ? "Video rendering" : "Story splitting";
+      running.audio ? "Audio running" : running.video ? "Video rendering"
+        : running.story ? "Story splitting" : "Sending to NAS";
   }
 
   // ── a classified failure, rendered ───────────────────────────────────────
@@ -128,9 +132,9 @@
     });
   }
 
-  // ── stranded renders ─────────────────────────────────────────────────────
-  // A render that finished on HeyGen but died on the download/NAS tail is
-  // re-runnable; these endpoints previously had no way in but curl.
+  // ── videos not on the NAS ────────────────────────────────────────────────
+  // Rendered on HeyGen but never filed. The count is the cheap job-store one;
+  // the Library is where they are listed and sent.
   const recoverWrap = $("#recoverWrap"), recoverN = $("#recoverN");
   async function refreshRecoverable() {
     try {
@@ -145,26 +149,8 @@
     } catch (_) { recoverWrap.hidden = true; }
   }
   $("#recoverBtn").addEventListener("click", () => {
-    const n = recoverN.textContent;
-    U.confirm({
-      title: `Recover ${n} stranded render${n === "1" ? "" : "s"}?`,
-      message: "These rendered successfully but never reached the NAS. Recovering re-downloads them — it does not re-render, so it costs no credits.",
-      confirmLabel: "Recover", danger: false,
-      onOk: async () => {
-        show("video");
-        try {
-          const r = await U.fetchT("/video/heygen/recover-failed", { method: "POST" }, 20000);
-          if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
-          const d = await r.json();
-          U.toast(`Recovering ${d.count} render${d.count === 1 ? "" : "s"}`, { kind: "info",
-            detail: "They are being re-downloaded and filed to the NAS." });
-        } catch (e) {
-          U.banner($("#videoBanners"), { kind: "error", title: "Could not start recovery",
-            raw: String(e && e.message || e) });
-        }
-        setTimeout(refreshRecoverable, 4000);
-      },
-    });
+    show("library");
+    if (window.PaneLibrary) window.PaneLibrary.setFilter("sendable,needs_details");
   });
 
   // ── boot ─────────────────────────────────────────────────────────────────
@@ -177,7 +163,8 @@
   try { savedSidebar = localStorage.getItem(SB_KEY); } catch (_) {}
   applySidebar(savedSidebar === "rail", false);
   const p = location.pathname;
-  show(p.startsWith("/videogen") ? "video" : p.startsWith("/story") ? "story" : "audio", false);
+  show(p.startsWith("/videogen") ? "video" : p.startsWith("/story") ? "story"
+    : p.startsWith("/library") ? "library" : "audio", false);
   refreshEnv();
   setInterval(refreshEnv, 20000);
   refreshRecoverable();

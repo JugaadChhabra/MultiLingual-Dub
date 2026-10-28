@@ -272,6 +272,7 @@ def test_recover_all_recovers_exactly_the_failed_jobs_with_a_render(client, stor
     body = resp.json()
     assert body["status"] == "recovering"
     assert sorted(body["job_ids"]) == ["failed-1", "failed-2"]
+    assert sorted(body["video_ids"]) == ["video-2", "video-9"]
     assert body["count"] == 2
     assert sorted(name for name, _ in launched[1:]) == ["video-recover:failed-1", "video-recover:failed-2"]
     _run(launched)
