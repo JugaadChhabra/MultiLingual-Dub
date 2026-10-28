@@ -368,22 +368,20 @@ def test_the_rows_submitted_keep_their_item_key_so_facts_survive(client, monkeyp
     assert facts["Aries"].numbers == (17,)
 
 
-def test_a_one_off_batch_titles_are_their_own_item_keys() -> None:
-    """A batch with no zodiac titles is a one-off set: title is the key, and an
-    unknown title falls through rather than being dropped or refused."""
-    assert api._item_keys_for(["diwali_promo", "holi_promo"]) == ["diwali_promo", "holi_promo"]
+def test_a_horoscope_batch_with_an_unmapped_title_is_refused(client, monkeypatch) -> None:
+    """The writer's refusal reaches the operator as a 400, before any render."""
+    async def fake_batch(**_kwargs):
+        raise AssertionError("a refused batch must not start rendering")
 
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
 
-def test_a_horoscope_batch_maps_every_title_to_its_sign_key() -> None:
-    assert api._item_keys_for(["मेष", "वृषभ"]) == ["Aries", "Taurus"]
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": "एक", "video_title": "मेष"},
+                                  {"script": "दो", "video_title": "not-a-sign"}]),
+              "publish_date": "2026-08-17", "category": "sunsign", "language": "hi-IN"},
+    )
 
-
-def test_a_horoscope_batch_with_an_unmapped_title_fails_loud() -> None:
-    """A stray non-sign title in a zodiac batch is refused, not filed under a
-    key nothing matches — the silent history hole the old fallback allowed."""
-    from fastapi import HTTPException
-
-    with pytest.raises(HTTPException) as excinfo:
-        api._item_keys_for(["मेष", "not-a-sign"])
-    assert excinfo.value.status_code == 400
-    assert "not-a-sign" in excinfo.value.detail
+    assert resp.status_code == 400
+    assert "not-a-sign" in resp.json()["detail"]

@@ -131,6 +131,24 @@ class ScriptRequestError(ScriptWriterError):
     """
 
 
+class UnknownItemTitleError(ScriptRequestError):
+    """Submitted titles that cannot be mapped back to the item they were written as.
+
+    Raised for a batch that looks like a horoscope — some title is a sign name —
+    but carries titles that are not. Filed anyway, those rows would land under a
+    key nothing matches and drop out of the uniqueness window without a trace.
+    """
+
+    def __init__(self, titles: list[str]) -> None:
+        self.titles = titles
+        super().__init__(
+            "This looks like a horoscope batch, but these titles are not "
+            f"zodiac sign names: {', '.join(titles)}. Their scripts would "
+            "vanish from the uniqueness history. Fix the titles, or submit "
+            "them as a non-horoscope batch."
+        )
+
+
 class ScriptRepairError(ScriptWriterError):
     """A set that still repeats after its repair budget.
 
@@ -652,6 +670,16 @@ class DaySet:
     warnings: list[str] = field(default_factory=list)
 
 
+def _one_off(name: str) -> SetItem:
+    """A one-off video's item: its file name is both its key and its title.
+
+    The one rule both directions share — writing a one-off day, and mapping a
+    submitted one-off row back to its key. The name is normalised only when the
+    day is written; a submitted row already carries that normalised title.
+    """
+    return SetItem(key=name, title=name)
+
+
 def items_for(item_set: str, title: str | None) -> tuple[SetItem, ...]:
     """The set a day is written for: the twelve signs, or a one-off of one.
 
@@ -661,9 +689,32 @@ def items_for(item_set: str, title: str | None) -> tuple[SetItem, ...]:
     if item_set == "zodiac":
         return ZODIAC_SIGNS
     if item_set == "single":
-        name = Path(title or "").stem.replace(" ", "_") or "Script"
-        return (SetItem(key=name, title=name),)
+        return (_one_off(Path(title or "").stem.replace(" ", "_") or "Script"),)
     raise ScriptRequestError("item_set must be 'zodiac' or 'single'")
+
+
+_SIGN_BY_TITLE = {item.title: item for item in ZODIAC_SIGNS}
+
+
+def items_for_titles(titles: list[str]) -> list[SetItem]:
+    """The items a batch's rows were written as, one per title.
+
+    A submitted row carries only its title, because that is what names the file.
+    History is grouped by item key, so the title is mapped back through the same
+    sets a day is written from: a sign's Devanagari title to its Latin key, and
+    a one-off title to itself.
+
+    A batch with any sign title is a horoscope, and then *every* title must be a
+    sign — see :class:`UnknownItemTitleError`. A batch with none is one-offs.
+
+    :raises UnknownItemTitleError: For a horoscope batch with a title that is not a sign.
+    """
+    if not any(title in _SIGN_BY_TITLE for title in titles):
+        return [_one_off(title) for title in titles]
+    unmapped = sorted({t for t in titles if t not in _SIGN_BY_TITLE})
+    if unmapped:
+        raise UnknownItemTitleError(unmapped)
+    return [_SIGN_BY_TITLE[title] for title in titles]
 
 
 class ScriptWriter:
@@ -682,6 +733,9 @@ class ScriptWriter:
     from the requesting operator's session rather than once per process.
     ``write`` is the generation step; it is a parameter so the HTTP layer can be
     tested against real history without a model behind it.
+
+    A day that gets rendered is recorded twice: once when written, and again by
+    :meth:`record_submitted` from the rows the operator actually submitted.
     """
 
     def __init__(self, history: ScriptHistoryStore, *, write=None) -> None:
@@ -739,3 +793,49 @@ class ScriptWriter:
             publish_date=publish_date, category=category, language=language, drafts=drafts
         )
         return DaySet(drafts=drafts, warnings=warnings)
+
+    def record_submitted(
+        self,
+        *,
+        category: str | None,
+        language: str | None,
+        publish_date: str | None,
+        rows: list[tuple[str, str]],
+    ) -> bool:
+        """Record the rows an operator submitted, replacing the day's history.
+
+        This is the write that matters for tomorrow: the operator's edits are
+        what a viewer hears, so they are what later days must avoid, not the
+        drafts recorded by :meth:`write_day`.
+
+        ``rows`` are ``(title, script)`` pairs. Rows arriving without a
+        category, language and date — the fields that identify a written day —
+        cannot be filed and are not recorded; that is logged rather than
+        refused, because recording is a side effect of a run, never a
+        precondition for one. Logged loudly, because the cost is real: future
+        days will be told to avoid the generated drafts, not the aired versions.
+
+        :returns: Whether the rows were recorded.
+        :raises UnknownItemTitleError: For a horoscope batch with a non-sign title.
+        """
+        if not (category and language and publish_date):
+            logger.warning(
+                "Submitted rows not recorded to script history: category/language/"
+                "publish_date are incomplete (category=%r language=%r "
+                "publish_date=%r), so future days will avoid the drafts, not the "
+                "aired versions.",
+                category, language, publish_date,
+            )
+            return False
+
+        items = items_for_titles([title for title, _ in rows])
+        self._history.record(
+            publish_date=publish_date,
+            category=category,
+            language=language,
+            drafts=[
+                DraftScript(title=title, script=script, key=item.key)
+                for (title, script), item in zip(rows, items)
+            ],
+        )
+        return True
