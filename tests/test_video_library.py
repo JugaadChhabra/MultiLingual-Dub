@@ -13,6 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import routes as api
+from api import shared
+from api.routers import library as library_routes
 from services.nas import NasConfig
 from services.video_pipeline import pipeline
 from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
@@ -125,10 +127,10 @@ def test_the_catalog_only_relists_what_is_new() -> None:
 @pytest.fixture
 def store(tmp_path, monkeypatch) -> VideoJobsStore:
     store = VideoJobsStore(persist_dir=tmp_path / "jobs")
-    monkeypatch.setattr(api, "video_jobs_store", store)
-    monkeypatch.setattr(api, "VIDEO_OUTPUT_DIR", tmp_path / "out")
-    monkeypatch.setattr(api, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(api, "video_library", LibraryService(
+    monkeypatch.setattr(shared, "video_jobs_store", store)
+    monkeypatch.setattr(shared, "VIDEO_OUTPUT_DIR", tmp_path / "out")
+    monkeypatch.setattr(shared, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(shared, "video_library", LibraryService(
         store, jobs_dir=tmp_path / "out", cache_dir=tmp_path / "out" / "_library"))
     return store
 
@@ -136,7 +138,7 @@ def store(tmp_path, monkeypatch) -> VideoJobsStore:
 @pytest.fixture
 def batches(tmp_path, monkeypatch) -> VideoBatchJobsStore:
     batches = VideoBatchJobsStore(persist_dir=tmp_path / "batches")
-    monkeypatch.setattr(api, "video_batch_jobs_store", batches)
+    monkeypatch.setattr(shared, "video_batch_jobs_store", batches)
     return batches
 
 
@@ -145,8 +147,8 @@ def renderer(tmp_path, monkeypatch) -> FakeRenderer:
     renderer = FakeRenderer()
     nas = NasConfig(mode="local", root_path=str(tmp_path / "nas"),
                     server="", share="", username="", password="", domain="", port=445)
-    monkeypatch.setattr(api, "_build_renderer", lambda session: renderer)
-    monkeypatch.setattr(api, "_build_video_deps", lambda session: api.VideoDeps(
+    monkeypatch.setattr(shared, "build_renderer", lambda: renderer)
+    monkeypatch.setattr(shared, "build_video_deps", lambda: shared.VideoDeps(
         renderer=renderer, speech=FakeSpeech(), slots=TalkingPhotoSlots(renderer),
         heygen=None, nas=nas, email=None,
     ))
@@ -156,7 +158,7 @@ def renderer(tmp_path, monkeypatch) -> FakeRenderer:
 @pytest.fixture
 def launched(monkeypatch):
     calls: list = []
-    monkeypatch.setattr(api, "spawn", lambda coro, *, name: calls.append(coro))
+    monkeypatch.setattr(library_routes, "spawn", lambda coro, *, name: calls.append(coro))
     yield calls
     for coro in calls:
         coro.close()

@@ -11,7 +11,8 @@ moving parts and keeps each expensive thing from being done twice:
 - thumbnails and raw renders — ``MediaCache`` on disk, each fetched from HeyGen
   once. The browser is told they never change, so it asks only once too.
 
-The renderer is passed per call because it carries the session's credentials.
+The renderer is passed per call, so a missing HeyGen key fails that request
+rather than the service at start-up.
 """
 from __future__ import annotations
 

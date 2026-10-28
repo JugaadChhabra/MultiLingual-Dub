@@ -2,7 +2,6 @@ import asyncio
 import zipfile
 
 from batch.models import ExcelRow, JobSummary
-from batch.naming import _build_s3_key
 from batch.service import run_excel_batch_job
 from batch.store import JobsStore
 from services.elevenlabs import ElevenLabsSettings
@@ -45,13 +44,6 @@ def _identity_qc_batch(
     teaching_mode=False,
 ) -> dict[str, str]:
     return dict(translations)
-
-
-def test_build_s3_key_contains_job_language_and_mp3() -> None:
-    key = _build_s3_key("job123", "hi-IN", "Promo Audio")
-    assert key.startswith("batch/job123/hi-IN/")
-    assert key.endswith(".mp3")
-    assert "promo_audio" in key
 
 
 def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:

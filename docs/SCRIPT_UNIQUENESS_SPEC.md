@@ -298,7 +298,7 @@ before repair is attempted.
 
 ## 7. Brief changes
 
-The category brief in `static/pane-video.js:21` is the seed for new categories
+The category brief in `static/video/core.js` is the seed for new categories
 and needs three edits:
 
 1. **Number format** — a whole number 1–99, written in words with the digit in

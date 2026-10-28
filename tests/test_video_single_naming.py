@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import inspect
 
-from api import routes as api
+from api.routers import video as video_routes
 from services.nas import NasConfig, NasService
 from services.video_pipeline.types import VideoJobSpec
 
 
 def test_single_route_accepts_title_and_publish_date() -> None:
-    params = inspect.signature(api.create_heygen_video_job).parameters
+    params = inspect.signature(video_routes.create_heygen_video_job).parameters
     assert "video_title" in params
     assert "publish_date" in params
 

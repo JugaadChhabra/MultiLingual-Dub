@@ -3,14 +3,12 @@ from __future__ import annotations
 import io
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
 
 import boto3
 from botocore.client import BaseClient
 from services.retry import retry_call
 from services.runtime_config import (
     MissingSettingError,
-    RuntimeConfig,
     read_setting,
     require,
 )
@@ -35,9 +33,9 @@ class S3Config:
     REQUIRED = ("AWS_ACCESS_KEY", "AWS_SECRET_KEY", "AWS_BUCKET", "AWS_REGION")
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> S3Config:
+    def resolve(cls) -> S3Config:
         try:
-            values = require(cls.REQUIRED, session)
+            values = require(cls.REQUIRED)
         except MissingSettingError as exc:
             raise S3ConfigError(exc.keys) from exc
         return cls(
@@ -45,16 +43,8 @@ class S3Config:
             secret_key=values["AWS_SECRET_KEY"],
             bucket=values["AWS_BUCKET"],
             region=values["AWS_REGION"],
-            endpoint=read_setting("AWS_ENDPOINT_URL", session) or None,
+            endpoint=read_setting("AWS_ENDPOINT_URL") or None,
         )
-
-
-def validate_s3_env() -> tuple[S3Config | None, str | None]:
-    """Startup probe: report whether the process env alone can reach S3."""
-    try:
-        return S3Config.resolve(), None
-    except S3ConfigError as exc:
-        return None, str(exc)
 
 
 class S3Client:
@@ -97,13 +87,6 @@ class S3Client:
             return {"bucket": self._config.bucket, "key": key, "etag": etag}
 
         return retry_call(_call, operation=operation)
-
-    def upload_file(self, file_path: str | Path, key: str) -> dict[str, str]:
-        with Path(file_path).open("rb") as handle:
-            return self._put_object(handle, key, operation="S3 upload file")
-
-    def upload_bytes(self, audio_bytes: bytes, key: str) -> dict[str, str]:
-        return self._put_object(audio_bytes, key, operation="S3 upload bytes")
 
     def upload_language_zip(
         self, language: str, audio_files: dict[str, bytes], folder_name: str

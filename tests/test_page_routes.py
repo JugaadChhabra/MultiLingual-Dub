@@ -41,8 +41,8 @@ def test_static_assets_stay_cacheable() -> None:
     client = TestClient(api.app)
 
     for path in ("/static/app.css", "/static/ui.js", "/static/shell.js",
-                 "/static/pane-audio.js", "/static/pane-video.js",
-                 "/static/pane-story.js"):
+                 "/static/pane-audio.js", "/static/video/core.js",
+                 "/static/video/boot.js", "/static/pane-story.js"):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "no-cache" not in response.headers.get("cache-control", ""), path
@@ -53,14 +53,20 @@ def test_shared_modules_load_before_their_first_use() -> None:
     order is load-bearing — shell.js boots and must come last."""
     index = TestClient(api.app).get("/").text
 
-    for module in ("/static/ui.js", "/static/pane-audio.js", "/static/pane-video.js",
-                   "/static/pane-story.js", "/static/shell.js"):
+    for module in ("/static/ui.js", "/static/pane-audio.js", "/static/video/core.js",
+                   "/static/video/boot.js", "/static/pane-story.js", "/static/shell.js"):
         assert module in index, module
 
     assert index.index("/static/ui.js") < index.index("/static/pane-audio.js")
-    assert index.index("/static/ui.js") < index.index("/static/pane-video.js")
+    # The video pane is several files sharing window.Video: core.js makes it,
+    # boot.js runs last and needs every other file loaded.
+    assert index.index("/static/ui.js") < index.index("/static/video/core.js")
+    assert index.index("/static/video/core.js") < index.index("/static/video/boot.js")
+    for part in ("categories", "monitor", "compose", "drafts", "progress", "run"):
+        assert index.index("/static/video/core.js") < index.index(f"/static/video/{part}.js") \
+            < index.index("/static/video/boot.js"), part
     assert index.index("/static/pane-audio.js") < index.index("/static/shell.js")
-    assert index.index("/static/pane-video.js") < index.index("/static/shell.js")
+    assert index.index("/static/video/boot.js") < index.index("/static/shell.js")
     assert index.index("/static/ui.js") < index.index("/static/pane-story.js")
     assert index.index("/static/pane-story.js") < index.index("/static/shell.js")
 

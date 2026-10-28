@@ -84,8 +84,8 @@ echo "Config looks good."
 echo ""
 
 # Create necessary directories
-mkdir -p uploads output data logs
-echo "Created directories: uploads, output, data, logs"
+mkdir -p output
+echo "Created directory: output"
 
 echo ""
 echo "Pulling image: ${IMAGE}"

@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/uploads /app/output /app/data/qc
+RUN mkdir -p /app/output
 
 # Expose API port
 EXPOSE 8080

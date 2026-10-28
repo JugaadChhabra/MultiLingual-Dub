@@ -8,7 +8,7 @@ from google.genai import types
 
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, read_setting, require
+from services.runtime_config import read_setting, require
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,14 @@ class QCSettings:
     REQUIRED = ("GEMINI_API_KEY", "BATCH_ENABLE_QC")
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> QCSettings:
-        values = require(cls.REQUIRED, session)
+    def resolve(cls) -> QCSettings:
+        values = require(cls.REQUIRED)
         enabled = values["BATCH_ENABLE_QC"].strip().lower() in _TRUTHY
         if not enabled:
             raise ValueError(
                 "BATCH_ENABLE_QC must be true: audio is generated only after Gemini QC"
             )
-        raw = read_setting("GEMINI_QC_MODELS", session).strip()
+        raw = read_setting("GEMINI_QC_MODELS").strip()
         models = [item.strip() for item in raw.split(",") if item.strip()] or DEFAULT_QC_MODELS
         return cls(api_key=values["GEMINI_API_KEY"], models=models, enabled=enabled)
 

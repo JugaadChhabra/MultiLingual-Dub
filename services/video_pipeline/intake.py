@@ -18,7 +18,7 @@ from services.script_writer import MAX_SCRIPT_CHARS
 from services.video_pipeline.batch_excel import HeyGenBatchRow
 from services.video_pipeline.types import VideoJobSpec
 
-# Same character set as safeTitle / scrubTitle in static/pane-video.js: a run of
+# Same character set as safeTitle / scrubTitle in static/video/: a run of
 # them becomes one underscore, then a trailing .mp4 is dropped because the NAS
 # path adds its own.
 _UNSAFE_TITLE = re.compile(r'[\\/:*?"<>|]+')

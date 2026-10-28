@@ -14,6 +14,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import routes as api
+from api import shared
+from api.routers import library as library_routes
 from services.nas import NasConfig
 from services.runtime_config import MissingSettingError
 from services.video_pipeline.slots import TalkingPhotoSlots
@@ -26,8 +28,8 @@ from tests.fakes import FakeRenderer, FakeSpeech
 @pytest.fixture
 def store(tmp_path, monkeypatch) -> VideoJobsStore:
     store = VideoJobsStore(persist_dir=tmp_path / "jobs")
-    monkeypatch.setattr(api, "video_jobs_store", store)
-    monkeypatch.setattr(api, "VIDEO_OUTPUT_DIR", tmp_path / "out")
+    monkeypatch.setattr(shared, "video_jobs_store", store)
+    monkeypatch.setattr(shared, "VIDEO_OUTPUT_DIR", tmp_path / "out")
     return store
 
 
@@ -39,8 +41,8 @@ def renderer(tmp_path, monkeypatch) -> FakeRenderer:
         server="", share="", username="", password="", domain="", port=445,
     )
 
-    def build(session):
-        return api.VideoDeps(
+    def build():
+        return shared.VideoDeps(
             renderer=renderer,
             speech=FakeSpeech(),
             slots=TalkingPhotoSlots(renderer),
@@ -49,7 +51,7 @@ def renderer(tmp_path, monkeypatch) -> FakeRenderer:
             email=None,
         )
 
-    monkeypatch.setattr(api, "_build_video_deps", build)
+    monkeypatch.setattr(shared, "build_video_deps", build)
     return renderer
 
 
@@ -61,7 +63,7 @@ def launched(monkeypatch):
     def fake_spawn(coro, *, name):
         calls.append((name, coro))
 
-    monkeypatch.setattr(api, "spawn", fake_spawn)
+    monkeypatch.setattr(library_routes, "spawn", fake_spawn)
     yield calls
     for _, coro in calls:
         coro.close()  # any a test held back; a no-op for those it ran
@@ -185,10 +187,10 @@ def test_a_second_request_while_recovering_is_409(client, store, launched) -> No
 def test_missing_settings_are_400_and_leave_the_job_alone(client, store, launched, monkeypatch) -> None:
     _job(store, "a")
 
-    def build(session):
+    def build():
         raise MissingSettingError(["HEYGEN_ISHWARI"])
 
-    monkeypatch.setattr(api, "_build_video_deps", build)
+    monkeypatch.setattr(shared, "build_video_deps", build)
 
     one = client.post("/video/heygen/a/recover")
     every = client.post("/video/heygen/recover-failed")
@@ -288,7 +290,7 @@ def test_a_recovery_that_cannot_be_launched_releases_its_claim(client, store, mo
     def broken_spawn(coro, *, name):
         raise RuntimeError("no event loop")
 
-    monkeypatch.setattr(api, "spawn", broken_spawn)
+    monkeypatch.setattr(library_routes, "spawn", broken_spawn)
 
     with pytest.raises(RuntimeError):
         client.post("/video/heygen/a/recover")

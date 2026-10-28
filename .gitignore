@@ -211,7 +211,6 @@ __marimo__/
 # Graphify
 graphify-out/*
 .claude/*
-data/qc/*
 
 # Generated runtime state: persisted heygen/batch jobs, scripts, renders.
 # Local-only; never belongs in the repo.

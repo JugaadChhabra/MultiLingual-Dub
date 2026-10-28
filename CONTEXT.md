@@ -167,19 +167,12 @@ decision rather than a side effect.
 
 ## Configuration
 
-**Session config** — a `.env` pasted into the config panel, held per browser
-session. Raw input, not yet configuration.
-
 **Settings** — resolved configuration: a frozen object per subsystem
 (`NasConfig`, `S3Config`, `HeyGenSettings`, `QCSettings`, …), each owned by the
-module it configures and built by its own `resolve(session)`. Resolution happens
+module it configures and built by its own `resolve()` from the server's `.env`. Resolution happens
 **once, at the edge of a request**, and the result is passed down. Nothing
 deeper than a route reads a key, so a missing one fails the request that asked
 for the work rather than a batch job forty rows in.
-
-Precedence is per key: the session's value if it has a non-empty one, otherwise
-the process environment. A partial paste therefore inherits the rest from the
-environment.
 
 **Required key** — one whose absence fails its subsystem's `resolve`. The set is
 derived from the settings classes rather than listed by hand, which is what

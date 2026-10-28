@@ -38,14 +38,11 @@ App URL: `http://localhost:8080`
 - In-process translation handles `fr`, `de`, `es`, `ru`, and `pt` inside Content Hub.
 - QC and TTS flow stays the same after translation.
 
-## Runtime Browser Config
+## Configuration
 
-The web interface includes a runtime `.env` text area:
-
-- Paste full `.env` content
-- Click **Apply Config**
-- Config is session-scoped and memory-only
-- No secrets are written to repo files
+Every key is read from the `.env` file beside `docker-compose.yml`; restart the
+container after changing it. The header's config dot shows how many required
+keys were found, and hovering it lists any that are missing.
 
 ## Health and Logs
 

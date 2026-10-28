@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from sarvamai import SarvamAI
 
-from services.runtime_config import RuntimeConfig, require
+from services.runtime_config import require
 
 
 @dataclass(frozen=True)
@@ -14,8 +14,8 @@ class SarvamSettings:
     REQUIRED = ("SARVAM_API",)
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> SarvamSettings:
-        return cls(api_key=require(cls.REQUIRED, session)["SARVAM_API"])
+    def resolve(cls) -> SarvamSettings:
+        return cls(api_key=require(cls.REQUIRED)["SARVAM_API"])
 
 
 def get_sarvam_client(settings: SarvamSettings) -> SarvamAI:

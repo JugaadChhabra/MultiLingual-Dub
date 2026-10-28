@@ -38,6 +38,16 @@ FULL_ENV = {
 }
 
 
+CONFIG_KEYS = set(FULL_ENV) | {
+    "DESI_VOCAL_VOICE", "ENGLISH_VOICE", "US_VOICE_ID", "ISHWARI_VOICE_ID",
+    "AWS_ENDPOINT_URL", "GEMINI_QC_MODELS", "BATCH_ENABLE_S3_UPLOAD",
+    "BATCH_MAX_LANGUAGE_PARALLELISM", "HEYGEN_BATCH_CONCURRENCY",
+    "NAS_MODE", "NAS_ROOT_PATH", "NAS_SERVER", "NAS_SHARE", "NAS_PORT",
+    "NAS_USERNAME", "NAS_PASSWORD", "NAS_DOMAIN", "US_CHARACTER_NAS_ROOT_PATH",
+    "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "NOTIFY_EMAILS",
+}
+
+
 @pytest.fixture
 def clean_env(monkeypatch):
     """No ambient configuration.
@@ -47,42 +57,29 @@ def clean_env(monkeypatch):
     session. Without scrubbing, these tests would pass or fail depending on
     what happens to be in that file.
     """
-    for key in set(FULL_ENV) | {
-        "DESI_VOCAL_VOICE", "ENGLISH_VOICE", "US_VOICE_ID", "ISHWARI_VOICE_ID",
-        "AWS_ENDPOINT_URL", "GEMINI_QC_MODELS", "BATCH_ENABLE_S3_UPLOAD",
-        "BATCH_MAX_LANGUAGE_PARALLELISM", "HEYGEN_BATCH_CONCURRENCY",
-        "NAS_MODE", "NAS_ROOT_PATH", "NAS_SERVER", "NAS_SHARE", "NAS_PORT",
-        "NAS_USERNAME", "NAS_PASSWORD", "NAS_DOMAIN", "US_CHARACTER_NAS_ROOT_PATH",
-        "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "NOTIFY_EMAILS",
-    }:
+    for key in CONFIG_KEYS:
         monkeypatch.delenv(key, raising=False)
     return monkeypatch
 
 
-# --- precedence ------------------------------------------------------------
+def _env(monkeypatch, values: dict[str, str]) -> None:
+    """Make the environment hold exactly ``values`` among the config keys."""
+    for key in CONFIG_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
 
 
-def test_session_value_wins_over_env(clean_env) -> None:
-    clean_env.setenv("ELEVEN_LABS", "from-env")
-
-    assert read_setting("ELEVEN_LABS", {"ELEVEN_LABS": "from-session"}) == "from-session"
-
-
-def test_env_fills_in_what_the_session_omits(clean_env) -> None:
-    """Per-key fallback: a partial paste inherits the rest from the process."""
-    clean_env.setenv("SARVAM_API", "from-env")
-
-    assert read_setting("SARVAM_API", {"ELEVEN_LABS": "x"}) == "from-env"
+def _resolve(cls, monkeypatch, values: dict[str, str]):
+    _env(monkeypatch, values)
+    return cls.resolve()
 
 
-def test_an_empty_session_value_falls_back_rather_than_blanking(clean_env) -> None:
-    clean_env.setenv("SARVAM_API", "from-env")
-
-    assert read_setting("SARVAM_API", {"SARVAM_API": "   "}) == "from-env"
+# --- reading -------------------------------------------------------------
 
 
 def test_missing_everywhere_is_empty(clean_env) -> None:
-    assert read_setting("SARVAM_API", None) == ""
+    assert read_setting("SARVAM_API") == ""
 
 
 # --- failing early, and all at once ---------------------------------------
@@ -90,26 +87,26 @@ def test_missing_everywhere_is_empty(clean_env) -> None:
 
 def test_all_missing_keys_are_reported_together(clean_env) -> None:
     with pytest.raises(MissingSettingError) as exc:
-        require(("AWS_BUCKET", "AWS_REGION", "SARVAM_API"), None)
+        require(("AWS_BUCKET", "AWS_REGION", "SARVAM_API"))
 
     assert exc.value.keys == ["AWS_BUCKET", "AWS_REGION", "SARVAM_API"]
 
 
 def test_s3_reports_its_own_error_type(clean_env) -> None:
     with pytest.raises(S3ConfigError):
-        S3Config.resolve(None)
+        S3Config.resolve()
 
 
 def test_resolving_everything_fails_when_a_key_is_absent(clean_env) -> None:
-    session = dict(FULL_ENV)
-    del session["GEMINI_API_KEY"]
+    env = dict(FULL_ENV)
+    del env["GEMINI_API_KEY"]
 
     with pytest.raises(MissingSettingError, match="GEMINI_API_KEY"):
-        Settings.resolve(session)
+        _resolve(Settings, clean_env, env)
 
 
-def test_a_complete_session_resolves(clean_env) -> None:
-    settings = Settings.resolve(dict(FULL_ENV))
+def test_a_complete_env_resolves(clean_env) -> None:
+    settings = _resolve(Settings, clean_env, dict(FULL_ENV))
 
     assert settings.s3.bucket == "bucket"
     assert settings.eleven.api_key == "eleven"
@@ -123,19 +120,19 @@ def test_a_complete_session_resolves(clean_env) -> None:
 def test_qc_disabled_is_a_configuration_error(clean_env) -> None:
     """Audio is only ever generated after QC, so this is not a feature toggle.
     Used to fail a started job; now rejects it."""
-    session = dict(FULL_ENV, BATCH_ENABLE_QC="false")
+    env = dict(FULL_ENV, BATCH_ENABLE_QC="false")
 
     with pytest.raises(ValueError, match="BATCH_ENABLE_QC must be true"):
-        QCSettings.resolve(session)
+        _resolve(QCSettings, clean_env, env)
 
 
 def test_an_unreadable_qc_toggle_is_treated_as_off(clean_env) -> None:
     with pytest.raises(ValueError, match="BATCH_ENABLE_QC must be true"):
-        QCSettings.resolve(dict(FULL_ENV, BATCH_ENABLE_QC="banana"))
+        _resolve(QCSettings, clean_env, dict(FULL_ENV, BATCH_ENABLE_QC="banana"))
 
 
 def test_qc_models_fall_back_to_defaults(clean_env) -> None:
-    settings = QCSettings.resolve(dict(FULL_ENV))
+    settings = _resolve(QCSettings, clean_env, dict(FULL_ENV))
 
     assert settings.models
 
@@ -160,7 +157,7 @@ def test_non_english_targets_do_not_require_an_english_voice(clean_env) -> None:
 
 
 def test_required_keys_include_the_heygen_key() -> None:
-    """The hand-maintained list this replaced omitted it, so a session with no
+    """The hand-maintained list this replaced omitted it, so a deployment with no
     HeyGen key reported itself fully configured."""
     assert "HEYGEN_ISHWARI" in required_keys()
 
@@ -190,31 +187,32 @@ def test_every_required_key_really_is_required(clean_env, cls) -> None:
     assert cls.REQUIRED, f"{cls.__name__} declares no required keys"
 
     for key in cls.REQUIRED:
-        session = dict(FULL_ENV)
-        del session[key]
+        env = dict(FULL_ENV)
+        del env[key]
         with pytest.raises((MissingSettingError, ValueError)):
-            cls.resolve(session)
+            _resolve(cls, clean_env, env)
 
 
 def test_the_audio_bundle_does_not_demand_video_keys(clean_env) -> None:
     """An Excel batch must not be blocked by an unset HeyGen key: the video
     pipeline resolves its own settings, separately."""
-    session = dict(FULL_ENV)
-    del session["HEYGEN_ISHWARI"]
+    env = dict(FULL_ENV)
+    del env["HEYGEN_ISHWARI"]
 
-    Settings.resolve(session)  # must not raise
+    _resolve(Settings, clean_env, env)  # must not raise
 
 
 def test_missing_keys_lists_what_is_absent(clean_env) -> None:
-    assert set(missing_keys(None)) == set(required_keys())
-    assert missing_keys(dict(FULL_ENV)) == []
+    assert set(missing_keys()) == set(required_keys())
+    _env(clean_env, FULL_ENV)
+    assert missing_keys() == []
 
 
 # --- per-subsystem behaviour ----------------------------------------------
 
 
 def test_us_character_gets_its_own_nas_root(clean_env) -> None:
-    config = NasConfig.resolve({"NAS_ROOT_PATH": "/main", "US_CHARACTER_NAS_ROOT_PATH": "/us"})
+    config = _resolve(NasConfig, clean_env, {"NAS_ROOT_PATH": "/main", "US_CHARACTER_NAS_ROOT_PATH": "/us"})
 
     assert config.for_character("us").root_path == "/us"
     assert config.for_character("US").root_path == "/us"
@@ -222,22 +220,22 @@ def test_us_character_gets_its_own_nas_root(clean_env) -> None:
 
 
 def test_us_character_uses_the_default_root_when_none_is_configured(clean_env) -> None:
-    config = NasConfig.resolve({"NAS_ROOT_PATH": "/main"})
+    config = _resolve(NasConfig, clean_env, {"NAS_ROOT_PATH": "/main"})
 
     assert config.for_character("us").root_path == "/main"
 
 
 def test_an_invalid_nas_mode_falls_back_to_local(clean_env) -> None:
-    assert NasConfig.resolve({"NAS_MODE": "ftp"}).mode == "local"
+    assert _resolve(NasConfig, clean_env, {"NAS_MODE": "ftp"}).mode == "local"
 
 
 def test_a_bad_nas_port_falls_back_to_445(clean_env) -> None:
-    assert NasConfig.resolve({"NAS_PORT": "not-a-number"}).port == 445
+    assert _resolve(NasConfig, clean_env, {"NAS_PORT": "not-a-number"}).port == 445
 
 
 def test_character_voices_resolve_per_character(clean_env) -> None:
-    settings = HeyGenSettings.resolve(
-        dict(FULL_ENV, ISHWARI_VOICE_ID="voice-in", US_VOICE_ID="voice-us")
+    settings = _resolve(
+        HeyGenSettings, clean_env, dict(FULL_ENV, ISHWARI_VOICE_ID="voice-in", US_VOICE_ID="voice-us")
     )
 
     assert settings.voice_for_character("indian") == "voice-in"
@@ -247,31 +245,32 @@ def test_character_voices_resolve_per_character(clean_env) -> None:
 
 
 def test_an_unconfigured_character_voice_is_none(clean_env) -> None:
-    settings = HeyGenSettings.resolve(dict(FULL_ENV))
+    settings = _resolve(HeyGenSettings, clean_env, dict(FULL_ENV))
 
     assert settings.voice_for_character("us") is None
 
 
 def test_a_bad_batch_concurrency_falls_back(clean_env) -> None:
-    assert HeyGenSettings.resolve(dict(FULL_ENV, HEYGEN_BATCH_CONCURRENCY="lots")).batch_concurrency == 4
-    assert HeyGenSettings.resolve(dict(FULL_ENV, HEYGEN_BATCH_CONCURRENCY="0")).batch_concurrency == 1
+    assert _resolve(HeyGenSettings, clean_env, dict(FULL_ENV, HEYGEN_BATCH_CONCURRENCY="lots")).batch_concurrency == 4
+    assert _resolve(HeyGenSettings, clean_env, dict(FULL_ENV, HEYGEN_BATCH_CONCURRENCY="0")).batch_concurrency == 1
 
 
 @pytest.mark.parametrize("raw,expected", [("true", True), ("YES", True), ("1", True),
                                           ("false", False), ("", False), ("maybe", False)])
 def test_s3_upload_toggle_parsing(clean_env, raw, expected) -> None:
-    assert BatchSettings.resolve({"BATCH_ENABLE_S3_UPLOAD": raw}).upload_to_s3 is expected
+    assert _resolve(BatchSettings, clean_env, {"BATCH_ENABLE_S3_UPLOAD": raw}).upload_to_s3 is expected
 
 
 def test_email_is_only_configured_when_every_part_is_present(clean_env) -> None:
-    assert not EmailSettings.resolve({"RESEND_API_KEY": "k"}).configured
-    assert EmailSettings.resolve(
-        {"RESEND_API_KEY": "k", "RESEND_FROM_ADDRESS": "a@b.c", "NOTIFY_EMAILS": "x@y.z"}
+    assert not _resolve(EmailSettings, clean_env, {"RESEND_API_KEY": "k"}).configured
+    assert _resolve(
+        EmailSettings, clean_env,
+        {"RESEND_API_KEY": "k", "RESEND_FROM_ADDRESS": "a@b.c", "NOTIFY_EMAILS": "x@y.z"},
     ).configured
 
 
 def test_notify_emails_splits_and_trims(clean_env) -> None:
-    settings = EmailSettings.resolve({"NOTIFY_EMAILS": " a@b.c , , d@e.f "})
+    settings = _resolve(EmailSettings, clean_env, {"NOTIFY_EMAILS": " a@b.c , , d@e.f "})
 
     assert settings.to_addresses == ("a@b.c", "d@e.f")
 
@@ -312,7 +311,7 @@ def test_only_settings_resolvers_read_raw_keys() -> None:
 
 def test_config_is_not_read_from_the_environment_outside_the_allowed_modules() -> None:
     """os.getenv is likewise confined. retry.py and audio_compress.py are the
-    two deliberate exceptions — process tuning, not session config."""
+    two deliberate exceptions — process tuning, not account configuration."""
     allowed = {
         Path("services/runtime_config.py"),
         Path("services/retry.py"),

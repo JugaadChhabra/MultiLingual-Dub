@@ -7,7 +7,10 @@ upload exactly one photo?) without a network.
 """
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 from services.elevenlabs import ElevenLabsTTSConfig
 from services.video_pipeline.renderer import (
@@ -146,3 +149,11 @@ class FakeSpeech(SpeechSynth):
         if self.fail:
             raise RuntimeError("tts failed: fake")
         return self.audio
+
+
+def use_env(monkeypatch, env_text: str) -> None:
+    """Set each KEY=value line of a .env as an environment variable, for one
+    test. The app reads its configuration from the environment, nowhere else."""
+    for key, value in dotenv_values(stream=StringIO(env_text)).items():
+        if key and value is not None:
+            monkeypatch.setenv(key, value)

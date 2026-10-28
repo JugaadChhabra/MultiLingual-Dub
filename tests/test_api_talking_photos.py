@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import routes as api
+from api import shared
 from services.runtime_config import MissingSettingError
 from services.video_pipeline.renderer import TalkingPhoto
 from tests.fakes import FakeRenderer
@@ -16,7 +17,7 @@ def client() -> TestClient:
 
 
 def _use(monkeypatch, renderer: FakeRenderer) -> None:
-    monkeypatch.setattr(api, "_build_renderer", lambda session: renderer)
+    monkeypatch.setattr(shared, "build_renderer", lambda: renderer)
 
 
 def test_lists_photos_in_the_shape_the_pane_reads(client, monkeypatch) -> None:
@@ -33,9 +34,9 @@ def test_lists_photos_in_the_shape_the_pane_reads(client, monkeypatch) -> None:
 
 
 def test_missing_key_is_500(client, monkeypatch) -> None:
-    def boom(session):
+    def boom():
         raise MissingSettingError(["HEYGEN_API_KEY"])
-    monkeypatch.setattr(api, "_build_renderer", boom)
+    monkeypatch.setattr(shared, "build_renderer", boom)
     resp = client.get("/video/heygen/talking-photos")
     assert resp.status_code == 500
     assert "HEYGEN_API_KEY" in resp.json()["detail"]

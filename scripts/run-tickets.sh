@@ -179,7 +179,7 @@ UNATTENDED_NOTE='
 RUNNER NOTES (unattended run — no human is watching this session):
 - You are in a git worktree on branch ticket/__N__, cut from main. Commit your work on THIS branch. Do not merge, push, switch branches, or close/edit GitHub issues; the runner does that after its own gates pass.
 - Nobody can answer questions. Wherever the prompt says "ask me" or "tell me and stop", make the safe choice (skip the risky step, or stop) and explain it in your final message.
-- Do not start the app (no start.sh, uvicorn, main.py, docker compose) and make no real network calls to HeyGen, Gemini, ElevenLabs, S3 or the NAS. Tests use the existing fakes.
+- Do not start the app (no start.sh, uvicorn, docker compose) and make no real network calls to HeyGen, Gemini, ElevenLabs, S3 or the NAS. Tests use the existing fakes.
 - This worktree has no venv. Run tests with `__PY__ -m pytest <test files>` from the worktree root; pytest.ini puts the worktree on sys.path.
 - The runner gates on: commits on this branch, a clean worktree, every changed .py compiling and every changed .js passing `node --check`, and pytest with no NEW failures versus main (tests that already fail on main are listed at the end of these notes; leave them alone).
 - Test scope: run only the test files you add or change. Do NOT run the full suite: the runner runs it in its gate and sends you any failures. This overrides the implement skill'"'"'s "full suite at the end" step and any such line in the prompt above.

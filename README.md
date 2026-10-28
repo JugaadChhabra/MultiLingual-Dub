@@ -40,10 +40,11 @@ Open `http://localhost:8080`.
 - Additional foreign language targets (`fr`, `de`, `es`, `ru`, `pt`) use in-process translation inside the same Content Hub service.
 - QC (Gemini), batching, and audio generation flow are unchanged for all targets.
 
-## Runtime `.env` in Browser
+## Configuration
 
-The web UI supports pasting full `.env` text into a runtime config box.  
-This config is stored in memory per browser session (HTTP-only cookie), not written to files.
+All keys come from the `.env` file next to `docker-compose.yml`. The dot in the
+app's header shows how many of the required keys it found; hover it to see which
+are missing.
 
 ## Common Commands
 

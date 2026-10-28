@@ -1,10 +1,13 @@
 from io import BytesIO
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from api import routes as api
+from api.routers import audio as audio_routes
+from tests.fakes import use_env
 
 
 def _xlsx_bytes() -> bytes:
@@ -60,11 +63,10 @@ ENV_TEXT = "\n".join(
 )
 
 
-def _configure(client: TestClient) -> None:
-    """Configure the session through the real endpoint — route tests have no
-    injection point for settings, and this exercises the path users take."""
-    resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
-    assert resp.status_code == 200, resp.text
+@pytest.fixture(autouse=True)
+def _configured(monkeypatch) -> None:
+    """Every key set, as the server's .env would have them."""
+    use_env(monkeypatch, ENV_TEXT)
 
 
 def _poll_until_done(client: TestClient, job_id: str, retries: int = 20) -> dict:
@@ -81,7 +83,6 @@ def _poll_until_done(client: TestClient, job_id: str, retries: int = 20) -> dict
 
 def test_create_excel_job_rejects_non_xlsx() -> None:
     client = TestClient(api.app)
-    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={"file": ("bad.txt", b"hello", "text/plain")},
@@ -93,7 +94,6 @@ def test_create_excel_job_rejects_non_xlsx() -> None:
 
 def test_create_excel_job_rejects_invalid_parallelism() -> None:
     client = TestClient(api.app)
-    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={
@@ -110,10 +110,9 @@ def test_create_excel_job_rejects_invalid_parallelism() -> None:
 
 
 def test_create_and_get_excel_job(monkeypatch) -> None:
-    monkeypatch.setattr(api, "run_excel_batch_job", _fake_job_runner)
+    monkeypatch.setattr(audio_routes, "run_excel_batch_job", _fake_job_runner)
 
     client = TestClient(api.app)
-    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files={
@@ -135,10 +134,9 @@ def test_create_and_get_excel_job(monkeypatch) -> None:
 
 
 def test_create_excel_job_deduplicates_repeated_target_languages(monkeypatch) -> None:
-    monkeypatch.setattr(api, "run_excel_batch_job", _fake_job_runner)
+    monkeypatch.setattr(audio_routes, "run_excel_batch_job", _fake_job_runner)
 
     client = TestClient(api.app)
-    _configure(client)
     response = client.post(
         "/batch/excel-jobs",
         files=[
@@ -170,7 +168,7 @@ def test_get_excel_job_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
+def test_create_excel_job_resolves_its_settings_from_the_env(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     async def fake_runner(
@@ -200,10 +198,9 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
             mode=mode,
         )
 
-    monkeypatch.setattr(api, "run_excel_batch_job", fake_runner)
+    monkeypatch.setattr(audio_routes, "run_excel_batch_job", fake_runner)
     client = TestClient(api.app)
 
-    _configure(client)
 
     response = client.post(
         "/batch/excel-jobs",
@@ -221,7 +218,7 @@ def test_create_excel_job_uses_session_runtime_config(monkeypatch) -> None:
     _poll_until_done(client, job_id)
     settings = captured.get("settings")
     assert settings is not None
-    # The pasted session values reach the job as resolved settings.
+    # The .env values reach the job as resolved settings.
     assert settings.sarvam.api_key == "test-sarvam"
     assert settings.s3.bucket == "test-bucket"
     assert settings.eleven.english_voice_id == "v3"

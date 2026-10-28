@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
-from services.runtime_config import RuntimeConfig, read_setting
+from services.runtime_config import read_setting
 
 logger = logging.getLogger(__name__)
 
@@ -34,26 +34,26 @@ class NasConfig:
     REQUIRED: tuple[str, ...] = ()
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> NasConfig:
-        mode = read_setting("NAS_MODE", session) or "local"
+    def resolve(cls) -> NasConfig:
+        mode = read_setting("NAS_MODE") or "local"
         if mode not in ("local", "smb"):
             logger.warning("Invalid NAS_MODE '%s', falling back to 'local'", mode)
             mode = "local"
-        port_raw = read_setting("NAS_PORT", session) or "445"
+        port_raw = read_setting("NAS_PORT") or "445"
         try:
             port = int(port_raw)
         except ValueError:
             port = 445
         return cls(
             mode=mode,
-            root_path=read_setting("NAS_ROOT_PATH", session) or "./nas_data",
-            server=read_setting("NAS_SERVER", session),
-            share=read_setting("NAS_SHARE", session),
-            username=read_setting("NAS_USERNAME", session),
-            password=read_setting("NAS_PASSWORD", session),
-            domain=read_setting("NAS_DOMAIN", session),
+            root_path=read_setting("NAS_ROOT_PATH") or "./nas_data",
+            server=read_setting("NAS_SERVER"),
+            share=read_setting("NAS_SHARE"),
+            username=read_setting("NAS_USERNAME"),
+            password=read_setting("NAS_PASSWORD"),
+            domain=read_setting("NAS_DOMAIN"),
             port=port,
-            us_character_root_path=read_setting("US_CHARACTER_NAS_ROOT_PATH", session),
+            us_character_root_path=read_setting("US_CHARACTER_NAS_ROOT_PATH"),
         )
 
     def for_character(self, character: str | None) -> NasConfig:

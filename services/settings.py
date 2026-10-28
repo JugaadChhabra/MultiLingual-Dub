@@ -23,7 +23,7 @@ from services.email import EmailSettings
 from services.google_translate import GoogleTranslateSettings
 from services.nas import NasConfig
 from services.qc import QCSettings
-from services.runtime_config import RuntimeConfig, read_setting
+from services.runtime_config import read_setting
 from services.s3 import S3Config
 from services.sarvam import SarvamSettings
 from services.script_writer import ScriptWriterSettings
@@ -42,22 +42,22 @@ class BatchSettings:
     REQUIRED: tuple[str, ...] = ()
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> BatchSettings:
-        raw = read_setting("BATCH_MAX_LANGUAGE_PARALLELISM", session)
+    def resolve(cls) -> BatchSettings:
+        raw = read_setting("BATCH_MAX_LANGUAGE_PARALLELISM")
         try:
             parallelism = int(raw) if raw else None
         except ValueError:
             parallelism = None
         return cls(
-            upload_to_s3=read_setting("BATCH_ENABLE_S3_UPLOAD", session).lower() in _TRUTHY,
+            upload_to_s3=read_setting("BATCH_ENABLE_S3_UPLOAD").lower() in _TRUTHY,
             max_language_parallelism=parallelism,
         )
 
 
-# Every settings class that contributes to "is this session configured?".
+# Every settings class that contributes to "is the app configured?".
 # Adding a class here — or a key to one of their REQUIRED tuples — updates the
 # status endpoint automatically. The list it replaced was maintained by hand and
-# had drifted: it omitted HEYGEN_ISHWARI entirely, so a session with no HeyGen
+# had drifted: it omitted HEYGEN_ISHWARI entirely, so a deployment with no HeyGen
 # key at all reported itself as fully configured.
 _SETTINGS_CLASSES = (
     S3Config,
@@ -82,8 +82,8 @@ def required_keys() -> list[str]:
     return keys
 
 
-def missing_keys(session: RuntimeConfig | None = None) -> list[str]:
-    return [key for key in required_keys() if not read_setting(key, session)]
+def missing_keys() -> list[str]:
+    return [key for key in required_keys() if not read_setting(key)]
 
 
 @dataclass(frozen=True)
@@ -104,19 +104,19 @@ class Settings:
     batch: BatchSettings
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> Settings:
+    def resolve(cls) -> Settings:
         """Resolve every subsystem. Raises if any required key is missing.
 
         Callers that need only part of this should resolve only that part —
         an Excel batch has no business failing because the NAS is unset.
         """
         return cls(
-            s3=S3Config.resolve(session),
-            eleven=ElevenLabsSettings.resolve(session),
-            qc=QCSettings.resolve(session),
-            sarvam=SarvamSettings.resolve(session),
-            google_translate=GoogleTranslateSettings.resolve(session),
-            nas=NasConfig.resolve(session),
-            email=EmailSettings.resolve(session),
-            batch=BatchSettings.resolve(session),
+            s3=S3Config.resolve(),
+            eleven=ElevenLabsSettings.resolve(),
+            qc=QCSettings.resolve(),
+            sarvam=SarvamSettings.resolve(),
+            google_translate=GoogleTranslateSettings.resolve(),
+            nas=NasConfig.resolve(),
+            email=EmailSettings.resolve(),
+            batch=BatchSettings.resolve(),
         )

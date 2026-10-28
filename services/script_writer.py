@@ -21,7 +21,7 @@ from services.errors import TOP_UP_URLS, classify
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.openrouter import OpenRouterClient
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, require
+from services.runtime_config import require
 from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_parse import ScriptFacts, parse_script
 from services.script_validate import (
@@ -211,8 +211,8 @@ class ScriptWriterSettings:
     REQUIRED = ("OPENROUTER_API_KEY",)
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> ScriptWriterSettings:
-        values = require(cls.REQUIRED, session)
+    def resolve(cls) -> ScriptWriterSettings:
+        values = require(cls.REQUIRED)
         return cls(api_key=values["OPENROUTER_API_KEY"], models=list(SCRIPT_MODELS))
 
 
@@ -766,9 +766,9 @@ class ScriptWriter:
     said it, so tomorrow has to avoid it, and the operator is better served by
     twelve drafts and a warning than by nothing.
 
-    Settings arrive per call, not at construction, because they are resolved
-    from the requesting operator's session rather than once per process.
-    ``write`` is the generation step; it is a parameter so the HTTP layer can be
+    Settings arrive per call, not at construction, so a missing key fails
+    the request that needed it rather than the process at start-up.
+    ``write is the generation step; it is a parameter so the HTTP layer can be
     tested against real history without a model behind it.
 
     A day that gets rendered is recorded twice: once when written, and again by

@@ -5,7 +5,7 @@ from elevenlabs.types import VoiceSettings
 import httpx
 
 from services.retry import retry_call
-from services.runtime_config import RuntimeConfig, read_setting, require
+from services.runtime_config import read_setting, require
 
 
 DEFAULT_MODEL_ID = "eleven_v3"
@@ -33,12 +33,12 @@ class ElevenLabsSettings:
     REQUIRED = ("ELEVEN_LABS",)
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> ElevenLabsSettings:
-        values = require(cls.REQUIRED, session)
+    def resolve(cls) -> ElevenLabsSettings:
+        values = require(cls.REQUIRED)
         return cls(
             api_key=values["ELEVEN_LABS"],
-            desi_voice_id=read_setting("DESI_VOCAL_VOICE", session) or FALLBACK_DESI_VOICE_ID,
-            english_voice_id=read_setting("ENGLISH_VOICE", session),
+            desi_voice_id=read_setting("DESI_VOCAL_VOICE") or FALLBACK_DESI_VOICE_ID,
+            english_voice_id=read_setting("ENGLISH_VOICE"),
         )
 
     def voice_for_language(self, language_code: str) -> str:

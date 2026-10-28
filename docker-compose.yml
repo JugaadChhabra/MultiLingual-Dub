@@ -7,12 +7,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # What the container writes and must keep across a restart. Each of these
-      # is a path the code actually uses: uploads is api.routes.UPLOAD_DIR,
-      # output holds renders and the script history, data holds QC artefacts.
-      - ./uploads:/app/uploads
+      # What the container writes and must keep across a restart: renders,
+      # persisted jobs and the script history all live under output.
       - ./output:/app/output
-      - ./data:/app/data
     environment:
       ISHWARI_VOICE_ID: ${ISHWARI_VOICE_ID}
       HEYGEN_ISHWARI: ${HEYGEN_ISHWARI}

@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from api import routes as api
+from api import shared
+from api.routers import video_batch as video_batch_routes
 from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_validate import Violation
 from services.script_writer import (
@@ -25,6 +27,7 @@ from services.script_writer import (
     ScriptWriter,
     ScriptWriterError,
 )
+from tests.fakes import use_env
 
 ENV_TEXT = "\n".join(
     [
@@ -55,11 +58,10 @@ def client(tmp_path, monkeypatch) -> TestClient:
     # History is per-deployment state on disk; point it at a temp dir so a test
     # run neither reads nor writes the developer's real output/ folder.
     store = ScriptHistoryStore(tmp_path / "scripts")
-    monkeypatch.setattr(api, "script_history", store)
-    monkeypatch.setattr(api, "script_writer", ScriptWriter(store))
+    monkeypatch.setattr(shared, "script_history", store)
+    monkeypatch.setattr(shared, "script_writer", ScriptWriter(store))
     client = TestClient(api.app)
-    resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
-    assert resp.status_code == 200, resp.text
+    use_env(monkeypatch, ENV_TEXT)
     return client
 
 
@@ -69,7 +71,7 @@ def _swap_writer(monkeypatch, write) -> None:
     Only the generation step is faked, so the history the writer reads and
     records is the same store the batch route records the operator's rows to.
     """
-    monkeypatch.setattr(api, "script_writer", ScriptWriter(api.script_history, write=write))
+    monkeypatch.setattr(shared, "script_writer", ScriptWriter(shared.script_history, write=write))
 
 
 def _stub_writer(monkeypatch, captured: dict | None = None):
@@ -220,7 +222,7 @@ def test_batch_accepts_reviewed_rows_instead_of_a_spreadsheet(client, monkeypatc
     async def fake_batch(**kwargs):
         started["rows"] = kwargs["rows"]
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     rows = [{"script": "मेष का राशिफल", "video_title": "Aries"},
             {"script": "वृषभ का राशिफल", "video_title": "Taurus"}]
@@ -244,14 +246,14 @@ def test_the_rows_submitted_replace_the_drafts_in_the_history(client, monkeypatc
     async def fake_batch(**_kwargs):
         pass
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     client.post(
         "/video/scripts/generate",
         data={"brief": "Daily horoscope", "publish_date": "2026-08-17",
               "language": "hi-IN", "category": "sunsign"},
     )
-    assert [d.script for d in api.script_history.recent(
+    assert [d.script for d in shared.script_history.recent(
         category="sunsign", language="hi-IN")] == [f"{s.key} script" for s in ZODIAC_SIGNS]
 
     resp = client.post(
@@ -262,7 +264,7 @@ def test_the_rows_submitted_replace_the_drafts_in_the_history(client, monkeypatc
     )
     assert resp.status_code == 202, resp.text
 
-    recorded = api.script_history.recent(category="sunsign", language="hi-IN")
+    recorded = shared.script_history.recent(category="sunsign", language="hi-IN")
     assert [(d.title, d.script) for d in recorded] == [("2026-08-17 मेष", "मैंने इसे बदल दिया")]
 
 
@@ -270,7 +272,7 @@ def test_history_records_the_title_intake_scrubbed(client, monkeypatch) -> None:
     async def fake_batch(**_kwargs):
         pass
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -283,7 +285,7 @@ def test_history_records_the_title_intake_scrubbed(client, monkeypatch) -> None:
     state = client.get(f"/video/heygen/batch/{resp.json()['batch_id']}").json()
     scrubbed = state["rows"][0]["video_title"]
     assert scrubbed != "promo: one"
-    recorded = api.script_history.recent(category="sunsign", language="hi-IN")
+    recorded = shared.script_history.recent(category="sunsign", language="hi-IN")
     assert [d.key for d in recorded] == [scrubbed.replace(" ", "_")]
 
 
@@ -293,7 +295,7 @@ def test_a_spreadsheet_batch_records_no_history(client, monkeypatch) -> None:
     async def fake_batch(**_kwargs):
         pass
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -306,7 +308,7 @@ def test_a_spreadsheet_batch_records_no_history(client, monkeypatch) -> None:
     )
 
     assert resp.status_code == 202, resp.text
-    assert api.script_history.recent(category="sunsign", language="hi-IN") == []
+    assert shared.script_history.recent(category="sunsign", language="hi-IN") == []
 
 
 def test_rows_without_a_history_key_still_render(client, monkeypatch) -> None:
@@ -314,7 +316,7 @@ def test_rows_without_a_history_key_still_render(client, monkeypatch) -> None:
     async def fake_batch(**_kwargs):
         pass
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -370,7 +372,7 @@ def test_the_rows_submitted_keep_their_item_key_so_facts_survive(client, monkeyp
     async def fake_batch(**_kwargs):
         pass
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     script = (
         "[warm] मेष राशि के जातकों... आज नई शुरुआत, ऊर्जा और नेतृत्व!\n\n"
@@ -387,7 +389,7 @@ def test_the_rows_submitted_keep_their_item_key_so_facts_survive(client, monkeyp
     )
     assert resp.status_code == 202, resp.text
 
-    facts = api.script_history.facts(category="sunsign", language="hi-IN")
+    facts = shared.script_history.facts(category="sunsign", language="hi-IN")
     assert "Aries" in facts, "the Devanagari title must map back to the item key"
     assert facts["Aries"].colours == ("लाल",)
     assert facts["Aries"].numbers == (17,)
@@ -398,7 +400,7 @@ def test_a_horoscope_batch_with_an_unmapped_title_is_refused(client, monkeypatch
     async def fake_batch(**_kwargs):
         raise AssertionError("a refused batch must not start rendering")
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -419,7 +421,7 @@ def test_a_batch_with_duplicate_titles_is_refused_and_records_nothing(client, mo
     async def fake_batch(**kwargs):
         started.append(kwargs)
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -432,7 +434,7 @@ def test_a_batch_with_duplicate_titles_is_refused_and_records_nothing(client, mo
     assert resp.status_code == 400
     assert "मेष" in resp.json()["detail"]
     assert started == []
-    assert api.script_history.recent(category="sunsign", language="hi-IN") == []
+    assert shared.script_history.recent(category="sunsign", language="hi-IN") == []
 
 
 def test_a_refused_batch_names_every_bad_row_in_its_detail(client, monkeypatch) -> None:
@@ -440,7 +442,7 @@ def test_a_refused_batch_names_every_bad_row_in_its_detail(client, monkeypatch) 
     async def fake_batch(**_kwargs):
         raise AssertionError("a refused batch must not start rendering")
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -463,7 +465,7 @@ def test_the_batch_overlay_and_music_settings_reach_every_spec(client, monkeypat
     async def fake_batch(**kwargs):
         started.append(kwargs)
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -484,7 +486,7 @@ def test_a_batch_with_a_picked_photo_and_no_image_is_accepted(client, monkeypatc
     async def fake_batch(**kwargs):
         started.append(kwargs)
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",
@@ -507,7 +509,7 @@ def test_a_batch_with_no_photo_is_refused_as_a_single_video_is(client, monkeypat
     async def fake_batch(**kwargs):
         started.append(kwargs)
 
-    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+    monkeypatch.setattr(video_batch_routes, "run_video_batch_job", fake_batch)
 
     resp = client.post(
         "/video/heygen/batch",

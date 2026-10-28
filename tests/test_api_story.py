@@ -1,14 +1,20 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from api import routes as api
+from api.routers import story as story_routes
 from services.story import MAX_LINE_CHARS, STORY_EMOTIONS, StoryGeminiError, StoryLine, StorySplitError
-from tests.test_api_batch import _configure
+from tests.fakes import use_env
+from tests.test_api_batch import ENV_TEXT
+
+
+@pytest.fixture(autouse=True)
+def _configured(monkeypatch) -> None:
+    use_env(monkeypatch, ENV_TEXT)
 
 
 def _client() -> TestClient:
-    client = TestClient(api.app)
-    _configure(client)
-    return client
+    return TestClient(api.app)
 
 
 def test_split_returns_the_activity_name_and_lines(monkeypatch) -> None:
@@ -21,7 +27,7 @@ def test_split_returns_the_activity_name_and_lines(monkeypatch) -> None:
             StoryLine(text="Moti barked.", emotion="Narrative"),
         ]
 
-    monkeypatch.setattr(api, "split_story", fake_split)
+    monkeypatch.setattr(story_routes, "split_story", fake_split)
 
     response = _client().post("/batch/story/split", json={
         "title": "The boy who followed the stream",
@@ -37,7 +43,7 @@ def test_split_returns_the_activity_name_and_lines(monkeypatch) -> None:
     ]
     assert body["emotions"] == STORY_EMOTIONS
     assert body["max_line_chars"] == MAX_LINE_CHARS
-    # the session's Gemini key reached the split
+    # the .env's Gemini key reached the split
     assert seen == {"text": "Hi there! Moti barked.", "api_key": "test-google"}
 
 
@@ -45,7 +51,7 @@ def test_split_refuses_empty_text(monkeypatch) -> None:
     def fake_split(text, *, settings):
         raise AssertionError("Gemini must not be called for an empty story")
 
-    monkeypatch.setattr(api, "split_story", fake_split)
+    monkeypatch.setattr(story_routes, "split_story", fake_split)
 
     response = _client().post("/batch/story/split", json={"title": "T", "text": "  \n "})
 
@@ -57,7 +63,7 @@ def test_split_maps_a_rejected_split_to_400(monkeypatch) -> None:
     def fake_split(text, *, settings):
         raise StorySplitError("This story is too long for one run: the limit is 120 lines.")
 
-    monkeypatch.setattr(api, "split_story", fake_split)
+    monkeypatch.setattr(story_routes, "split_story", fake_split)
 
     response = _client().post("/batch/story/split", json={"title": "T", "text": "Once upon a time."})
 
@@ -69,7 +75,7 @@ def test_split_maps_gemini_being_down_to_502(monkeypatch) -> None:
     def fake_split(text, *, settings):
         raise StoryGeminiError("Gemini story split failed after 3 models")
 
-    monkeypatch.setattr(api, "split_story", fake_split)
+    monkeypatch.setattr(story_routes, "split_story", fake_split)
 
     response = _client().post("/batch/story/split", json={"title": "T", "text": "Once upon a time."})
 
@@ -112,7 +118,7 @@ def test_xlsx_rejects_bad_input() -> None:
 
 # ── story job creation ───────────────────────────────────────────────────────
 
-from tests.test_api_batch import ENV_TEXT, _poll_until_done  # noqa: E402
+from tests.test_api_batch import _poll_until_done  # noqa: E402
 
 
 async def _fake_story_runner(
@@ -140,7 +146,7 @@ def _job(client, **overrides):
 
 
 def test_story_job_is_created_and_pollable(monkeypatch) -> None:
-    monkeypatch.setattr(api, "run_story_job", _fake_story_runner)
+    monkeypatch.setattr(story_routes, "run_story_job", _fake_story_runner)
     client = _client()
 
     response = _job(client, target_languages=["hi-IN", "ta-IN", "hi-IN"])
@@ -164,7 +170,7 @@ def _refused(monkeypatch, client, **overrides):
     async def runner(**_kwargs):
         raise AssertionError("a refused story job must not start")
 
-    monkeypatch.setattr(api, "run_story_job", runner)
+    monkeypatch.setattr(story_routes, "run_story_job", runner)
     response = _job(client, **overrides)
     assert response.status_code == 400, response.text
     return response.json()["detail"]
@@ -199,8 +205,6 @@ def test_story_job_refuses_no_target_languages(monkeypatch) -> None:
 def test_story_job_needs_an_english_voice_for_english(monkeypatch) -> None:
     monkeypatch.delenv("ENGLISH_VOICE", raising=False)
     client = TestClient(api.app)
-    env = "\n".join(line for line in ENV_TEXT.splitlines() if not line.startswith("ENGLISH_VOICE"))
-    assert client.post("/config/session-env", json={"env_text": env}).status_code == 200
 
     assert "ENGLISH_VOICE" in _refused(monkeypatch, client, target_languages=["hi-IN", "en-IN"])
 
@@ -209,7 +213,7 @@ def test_story_job_is_cancelled_through_the_batch_endpoint(monkeypatch) -> None:
     async def never_finishes(*, job_id, jobs_store, **_kwargs):
         await jobs_store.start(job_id)
 
-    monkeypatch.setattr(api, "run_story_job", never_finishes)
+    monkeypatch.setattr(story_routes, "run_story_job", never_finishes)
     client = _client()
     job_id = _job(client).json()["job_id"]
 

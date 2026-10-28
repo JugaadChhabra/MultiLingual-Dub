@@ -9,18 +9,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import routes as api
+from api import shared
+from api.routers import video as video_routes
 from services.script_writer import MAX_SCRIPT_CHARS
 from services.video_pipeline.store import VideoJobsStore
+from tests.fakes import use_env
 from tests.test_api_script_generation import ENV_TEXT
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch) -> TestClient:
     # Jobs persist to disk; keep them out of the real output/ folder.
-    monkeypatch.setattr(api, "video_jobs_store", VideoJobsStore(persist_dir=tmp_path / "jobs"))
+    monkeypatch.setattr(shared, "video_jobs_store", VideoJobsStore(persist_dir=tmp_path / "jobs"))
     client = TestClient(api.app)
-    resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
-    assert resp.status_code == 200, resp.text
+    use_env(monkeypatch, ENV_TEXT)
     return client
 
 
@@ -31,7 +33,7 @@ def launched(monkeypatch) -> list[dict]:
     async def fake_job(**kwargs):
         calls.append(kwargs)
 
-    monkeypatch.setattr(api, "run_video_job", fake_job)
+    monkeypatch.setattr(video_routes, "run_video_job", fake_job)
     return calls
 
 

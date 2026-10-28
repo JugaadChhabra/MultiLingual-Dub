@@ -7,7 +7,7 @@ from pathlib import Path
 
 from services.email import EmailSettings, send_batch_summary_email
 from services.nas import NasConfig
-from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
+from services.video_pipeline.batch_store import VideoBatchJobsStore
 from services.video_pipeline.control import JobCancelled, JobControl
 from services.video_pipeline.pipeline import run_video_job
 from services.video_pipeline.renderer import VideoRenderer

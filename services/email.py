@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from services.runtime_config import RuntimeConfig, read_setting
+from services.runtime_config import read_setting
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +24,11 @@ class EmailSettings:
     REQUIRED: tuple[str, ...] = ()
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> EmailSettings:
-        raw_recipients = read_setting("NOTIFY_EMAILS", session)
+    def resolve(cls) -> EmailSettings:
+        raw_recipients = read_setting("NOTIFY_EMAILS")
         return cls(
-            api_key=read_setting("RESEND_API_KEY", session),
-            from_address=read_setting("RESEND_FROM_ADDRESS", session),
+            api_key=read_setting("RESEND_API_KEY"),
+            from_address=read_setting("RESEND_FROM_ADDRESS"),
             to_addresses=tuple(a.strip() for a in raw_recipients.split(",") if a.strip()),
         )
 

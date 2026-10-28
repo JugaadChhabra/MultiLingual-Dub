@@ -1,6 +1,6 @@
 """Pin the Video batch status vocabulary.
 
-The Video pane (static/pane-video.js) matches on these exact strings to pick
+The Video pane (static/video/progress.js and run.js) matches on these exact strings to pick
 the live bar, the amber badge and the terminal states of the poll. Renaming a
 value here is a cross-file change: update the pane in the same commit.
 """

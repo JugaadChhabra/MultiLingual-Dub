@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from services.runtime_config import RuntimeConfig, read_setting, require
+from services.runtime_config import read_setting, require
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +86,9 @@ class HeyGenSettings:
     REQUIRED = ("HEYGEN_ISHWARI",)
 
     @classmethod
-    def resolve(cls, session: RuntimeConfig | None = None) -> HeyGenSettings:
-        values = require(cls.REQUIRED, session)
-        raw = read_setting("HEYGEN_BATCH_CONCURRENCY", session)
+    def resolve(cls) -> HeyGenSettings:
+        values = require(cls.REQUIRED)
+        raw = read_setting("HEYGEN_BATCH_CONCURRENCY")
         try:
             concurrency = int(raw) if raw else _DEFAULT_BATCH_CONCURRENCY
         except (TypeError, ValueError):
@@ -96,7 +96,7 @@ class HeyGenSettings:
         return cls(
             api_key=values["HEYGEN_ISHWARI"],
             character_voice_ids={
-                character: read_setting(key, session)
+                character: read_setting(key)
                 for character, key in CHARACTER_VOICE_ENV.items()
             },
             batch_concurrency=max(1, concurrency),
