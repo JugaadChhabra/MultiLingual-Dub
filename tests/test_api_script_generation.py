@@ -52,7 +52,9 @@ ENV_TEXT = "\n".join(
 def client(tmp_path, monkeypatch) -> TestClient:
     # History is per-deployment state on disk; point it at a temp dir so a test
     # run neither reads nor writes the developer's real output/ folder.
-    monkeypatch.setattr(api, "script_history", ScriptHistoryStore(tmp_path / "scripts"))
+    store = ScriptHistoryStore(tmp_path / "scripts")
+    monkeypatch.setattr(api, "script_history", store)
+    monkeypatch.setattr(api, "script_writer", ScriptWriter(store))
     client = TestClient(api.app)
     resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
     assert resp.status_code == 200, resp.text

@@ -16,7 +16,6 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import google.genai as genai
 from google.genai import types
@@ -640,9 +639,6 @@ def _collect(written: object, items: tuple[SetItem, ...]) -> dict[str, str]:
     return scripts
 
 
-ItemSet = Literal["zodiac", "single"]
-
-
 @dataclass(frozen=True)
 class DaySet:
     """A day's drafts, and what is still wrong with them.
@@ -699,11 +695,14 @@ class ScriptWriter:
         language: str,
         publish_date: str,
         brief: str,
-        item_set: ItemSet,
+        item_set: str,
         title: str | None = None,
         settings: ScriptWriterSettings,
     ) -> DaySet:
         """Write, record and return one day's set for a category.
+
+        ``item_set`` is ``"zodiac"`` or ``"single"``; it arrives unchecked from
+        the request, and anything else is refused here.
 
         :raises ScriptRequestError: For an empty brief or an unknown item set.
         :raises ScriptWriterError: If no model produced a usable set.
