@@ -235,7 +235,8 @@ English loanwords kept), keeps names, pronouns and forms of address consistent
 across lines, keeps each line's meaning inside that line, and carries over only
 QC's script-hygiene rule. Returns fixed text keyed by line id. A line it leaves
 out or empties, or every line of a language whose fix fails or returns nothing
-usable, falls back to per-row QC of its draft (`qc_row`) and is counted in
+usable, falls back to per-row QC of its draft (`qc_row`; "the line-by-line fix" in
+the UI) and is counted in
 `story_fix_fallback_lines`, with the language named in `story_fix_warning`. A
 fixed line far shorter or longer than its draft (outside 0.4×–2.5×) is still
 used, but counted in `story_fix_flagged_lines`.

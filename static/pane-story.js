@@ -294,8 +294,9 @@
     window.Shell.setRunning("story", false);
     if (summary) U.jobProgress(els, summary, status, state.targets.length || SEL.size);
     summarise();
-    if (report) U.jobEnded({ banners: els.banners, status, summary, cause, name: "Story audio" });
-    if (report) storyFixReport(summary);
+    if (!report) return;
+    U.jobEnded({ banners: els.banners, status, summary, cause, name: "Story audio" });
+    storyFixReport(summary);
   }
 
   // Lines the story fix could not cover got the line-by-line fix instead, and
@@ -309,7 +310,8 @@
       flagged && `${flagged} line${flagged === 1 ? "" : "s"} changed length a lot — worth a listen`,
     ].filter(Boolean).join(" · ");
     U.banner(els.banners, { kind: "warn", id: "story-fix", title: "Some lines were fixed differently",
-      detail: [counts, s.story_fix_warning].filter(Boolean).map(U.esc).join("<br>") });
+      detail: [counts, s.story_fix_warning, "Listen to these lines in the ZIP before publishing."]
+        .filter(Boolean).map(U.esc).join("<br>") });
   }
 
   // ── survive a reload ─────────────────────────────────────────────────────

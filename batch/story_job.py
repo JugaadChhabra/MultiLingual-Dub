@@ -5,8 +5,9 @@ from a sheet. It differs from an Excel batch in its order: every row is
 translated into a raw draft first, then one *story fix* per language rewrites
 all of that language's drafts at once with the whole story in view, and only
 then is anything spoken. Lines a language's fix fails or leaves out fall back
-to the Excel batch's per-row QC of their drafts, and are counted. The tally, activity buffer, retry-then-upload tail and
-job-status shape are the Excel batch's own, from batch.service.
+to the Excel batch's per-row QC of their drafts, and are counted. The tally,
+activity buffer, retry-then-upload tail and job-status shape are the Excel
+batch's own, from batch.service.
 """
 from __future__ import annotations
 
@@ -145,13 +146,14 @@ async def _fix_languages(
     fallback: dict[int, dict[str, str]] = defaultdict(dict)
     for (language, (story, story_drafts)), result in zip(requests.items(), results):
         prefix = f"Job {job_id} | story fix {language} | "
-        fixed_by_id = {} if isinstance(result, BaseException) else result
         if isinstance(result, BaseException):
             logger.error("%sfailed, falling back to per-row QC: %s", prefix, result)
-        missing = [line_id for line_id in story if not fixed_by_id.get(line_id)]
+            result = {}
+        missing: list[str] = []
         for line_id in story:
-            fixed = fixed_by_id.get(line_id)
+            fixed = result.get(line_id)
             if not fixed:
+                missing.append(line_id)
                 fallback[int(line_id)][language] = story_drafts[line_id]
                 continue
             if _length_is_suspect(fixed, story_drafts[line_id]):
