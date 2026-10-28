@@ -4,15 +4,16 @@ import asyncio
 import hashlib
 import json
 import logging
+import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from services.elevenlabs import ElevenLabsTTSConfig
 from services.nas import NasConfig, NasService
 from services.video_pipeline.image_geometry import clamp_for_render, dimensions
 from services.video_pipeline.overlay import burn_cards
 from services.video_pipeline.recovery import NotRecoverable
-from services.video_pipeline.renderer import VideoRenderer
+from services.video_pipeline.renderer import RenderFailed, VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.speech import SpeechSynth
 from services.video_pipeline.store import VideoJobsStore
@@ -171,7 +172,7 @@ async def run_video_job(
 
         # 4. Wait for it
         await jobs_store.set_status(job_id, "polling", f"Polling render status (video_id={video_id})")
-        rendered = await renderer.await_render(video_id=video_id)
+        rendered = await _await_render(job_id, video_id, jobs_store=jobs_store, renderer=renderer)
 
         # 5 + 6. Download the render, then upload to NAS. Factored out so the
         # exact same tail can be re-run by recover_video_job for a job that got
@@ -188,6 +189,17 @@ async def run_video_job(
     except Exception as exc:
         logger.exception("Video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)
+
+
+async def _await_render(job_id: str, video_id: str, *, jobs_store: VideoJobsStore,
+                        renderer: VideoRenderer):
+    """Wait for the render, recording on the job when HeyGen failed it — that
+    is what takes the job off Recovery's list."""
+    try:
+        return await renderer.await_render(video_id=video_id)
+    except RenderFailed:
+        await jobs_store.patch_summary(job_id, render_failed=True)
+        raise
 
 
 async def _finalize_video(
@@ -255,6 +267,14 @@ async def _finalize_video(
 
 
 Launch = Callable[..., Any]
+# Told about a job once Recovery has filed it, e.g. to mark its batch row done.
+OnRecovered = Callable[[VideoJobState], Awaitable[None]]
+
+# Recover-all claims every stranded job at once. Running them all at once too
+# meant N downloads and N ffmpeg burns side by side, which is what makes the CDN
+# drop connections. Claimed jobs wait here, in 'recovering', for a turn.
+RECOVERY_CONCURRENCY = 2
+_recovery_slots = asyncio.Semaphore(RECOVERY_CONCURRENCY)
 
 
 async def start_recovery(
@@ -265,6 +285,7 @@ async def start_recovery(
     renderer: VideoRenderer,
     nas_config: NasConfig,
     launch: Launch,
+    on_recovered: OnRecovered | None = None,
 ) -> None:
     """Claim one job for Recovery, then hand its run to ``launch`` (called as
     ``launch(coro, name=...)``, i.e. ``spawn``).
@@ -273,15 +294,49 @@ async def start_recovery(
     recovered now, including when a recovery of it is already under way.
     """
     state = await jobs_store.claim_recovery(job_id)
+    await _launch_claimed(state, jobs_store=jobs_store, output_dir=output_dir, renderer=renderer,
+                          nas_config=nas_config, launch=launch, on_recovered=on_recovered)
+
+
+async def start_filing_render(
+    *,
+    video_id: str,
+    spec: VideoJobSpec,
+    jobs_store: VideoJobsStore,
+    output_dir: Path,
+    renderer: VideoRenderer,
+    nas_config: NasConfig,
+    launch: Launch,
+) -> str:
+    """File a finished render that no usable job of ours accounts for — made
+    before jobs kept their spec, or outside this app — under the title and date
+    the operator supplied. It becomes a job like any other, claimed for
+    Recovery from the start. Returns the new job's id."""
+    state = await jobs_store.adopt_render(uuid.uuid4().hex, video_id=video_id, spec=spec)
+    await _launch_claimed(state, jobs_store=jobs_store, output_dir=output_dir, renderer=renderer,
+                          nas_config=nas_config, launch=launch, on_recovered=None)
+    return state.job_id
+
+
+async def _launch_claimed(
+    state: VideoJobState,
+    *,
+    jobs_store: VideoJobsStore,
+    output_dir: Path,
+    renderer: VideoRenderer,
+    nas_config: NasConfig,
+    launch: Launch,
+    on_recovered: OnRecovered | None,
+) -> None:
     coro = _recover_claimed(state, jobs_store=jobs_store, output_dir=output_dir,
-                            renderer=renderer, nas_config=nas_config)
+                            renderer=renderer, nas_config=nas_config, on_recovered=on_recovered)
     try:
-        launch(coro, name=f"video-recover:{job_id}")
+        launch(coro, name=f"video-recover:{state.job_id}")
     except BaseException as exc:
         # Nothing will run the recovery, so release the claim — or the job
         # sits in 'recovering' and refuses every retry until a restart.
         coro.close()
-        await jobs_store.fail(job_id, f"Recovery could not be started: {exc}", exc=exc)
+        await jobs_store.fail(state.job_id, f"Recovery could not be started: {exc}", exc=exc)
         raise
 
 
@@ -292,6 +347,7 @@ async def start_recovery_of_failed(
     renderer: VideoRenderer,
     nas_config: NasConfig,
     launch: Launch,
+    on_recovered: OnRecovered | None = None,
 ) -> list[str]:
     """Start a recovery for every recoverable job; return the ids started.
 
@@ -304,6 +360,7 @@ async def start_recovery_of_failed(
             await start_recovery(
                 job_id=job_id, jobs_store=jobs_store, output_dir=output_dir,
                 renderer=renderer, nas_config=nas_config, launch=launch,
+                on_recovered=on_recovered,
             )
         except NotRecoverable as exc:
             logger.info("Skipping recovery of video job %s: %s", job_id, exc.reason)
@@ -334,6 +391,7 @@ async def _recover_claimed(
     output_dir: Path,
     renderer: VideoRenderer,
     nas_config: NasConfig,
+    on_recovered: OnRecovered | None = None,
 ) -> None:
     """Re-run the download + NAS-upload tail for a job whose render finished but
     which failed afterward (transient download/NAS error that exhausted retries,
@@ -345,22 +403,23 @@ async def _recover_claimed(
     job_id = state.job_id
     video_id = state.summary.heygen_video_id
     try:
-        # Re-fetch: the stored URL expires (~7 days) and this also confirms the
-        # render is still available. await_render returns at once if done.
-        await jobs_store.set_status(job_id, "polling", f"Re-fetching render (video_id={video_id})")
-        rendered = await renderer.await_render(video_id=video_id)
+        async with _recovery_slots:
+            # Re-fetch: the stored URL expires (~7 days) and this also confirms the
+            # render is still available. await_render returns at once if done.
+            await jobs_store.set_status(job_id, "polling", f"Re-fetching render (video_id={video_id})")
+            rendered = await _await_render(job_id, video_id, jobs_store=jobs_store, renderer=renderer)
 
-        job_dir = output_dir / job_id
-        job_dir.mkdir(parents=True, exist_ok=True)
-        await _finalize_video(
-            job_id=job_id,
-            spec=state.spec,
-            video_url=rendered.video_url,
-            job_dir=job_dir,
-            jobs_store=jobs_store,
-            renderer=renderer,
-            nas_config=nas_config,
-        )
+            job_dir = output_dir / job_id
+            job_dir.mkdir(parents=True, exist_ok=True)
+            await _finalize_video(
+                job_id=job_id,
+                spec=state.spec,
+                video_url=rendered.video_url,
+                job_dir=job_dir,
+                jobs_store=jobs_store,
+                renderer=renderer,
+                nas_config=nas_config,
+            )
         logger.info("Recovered video job %s", job_id)
     except (Exception, asyncio.CancelledError) as exc:
         # Cancellation too: a job left in 'downloading' is not 'failed', so it
@@ -368,3 +427,11 @@ async def _recover_claimed(
         logger.exception("Recovery of video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)
         raise
+
+    if on_recovered is not None:
+        # The video is on the NAS whatever this does; a bookkeeping hiccup
+        # must not report the recovery as failed.
+        try:
+            await on_recovered(await jobs_store.get(job_id))
+        except Exception:
+            logger.exception("Recovered video job %s, but could not record it", job_id)

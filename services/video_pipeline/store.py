@@ -127,6 +127,11 @@ class VideoJobsStore:
             self._write(state)
             logger.error("VideoJob %s → failed | %s", job_id, message)
 
+    async def snapshot(self) -> list[VideoJobState]:
+        """A copy of every job, for the library to read without the lock."""
+        async with self._lock:
+            return [s.model_copy(deep=True) for s in self._jobs.values()]
+
     # --- recovery --------------------------------------------------------
     async def list_recoverable(self) -> list[str]:
         """job_ids of jobs Recovery would accept now: failed, with a HeyGen
@@ -155,3 +160,16 @@ class VideoJobsStore:
             self._jobs[job_id] = claimed
             logger.info("VideoJob %s → %s", job_id, RECOVERING)
             return claimed.model_copy(deep=True)
+
+    async def adopt_render(self, job_id: str, *, video_id: str, spec: VideoJobSpec) -> VideoJobState:
+        """Create a job for a render none of ours accounts for, already claimed
+        for Recovery (see pipeline.start_filing_render). Returns a copy."""
+        async with self._lock:
+            state = VideoJobState(
+                job_id=job_id, status=RECOVERING, stage_message="Recovery queued",
+                summary=VideoJobSummary(heygen_video_id=video_id), spec=spec,
+            )
+            self._jobs[job_id] = state
+            self._write(state)
+            logger.info("VideoJob %s adopts render %s → %s", job_id, video_id, RECOVERING)
+            return state.model_copy(deep=True)

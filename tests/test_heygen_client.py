@@ -215,6 +215,54 @@ def test_a_server_ignoring_our_range_does_not_duplicate_the_prefix(
     assert dest.read_bytes() == full
 
 
+def test_a_file_already_fully_on_disk_is_not_downloaded_again(transport, tmp_path) -> None:
+    """Recovery re-downloads into the job's folder, where a job that died on
+    the NAS step left the whole video. Asking for the bytes after the end gets a
+    416 from the CDN, which used to be retried six times and then fail the
+    recovery of exactly the jobs recovery exists for."""
+    full = b"0123456789"
+    calls: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.headers.get("range"))
+        return httpx.Response(416, headers={"content-range": f"bytes */{len(full)}"})
+
+    transport(handler)
+    dest = tmp_path / "video.mp4"
+    dest.write_bytes(full)
+
+    size = heygen_client.download_video("https://cdn.invalid/v.mp4", str(dest))
+
+    assert size == len(full)
+    assert dest.read_bytes() == full
+    assert calls == ["bytes=10-"]
+
+
+def test_a_stale_file_the_cdn_cannot_resume_is_downloaded_from_scratch(
+    transport, tmp_path
+) -> None:
+    """A 416 for a file whose size does not match the render's means what's on
+    disk is not a prefix of it. Start over rather than fail."""
+    full = b"0123456789"
+    calls: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.headers.get("range"))
+        if request.headers.get("range"):
+            return httpx.Response(416, headers={"content-range": f"bytes */{len(full)}"})
+        return httpx.Response(200, headers={"content-length": str(len(full))}, content=full)
+
+    transport(handler)
+    dest = tmp_path / "video.mp4"
+    dest.write_bytes(b"stale-and-longer-than-the-render")
+
+    size = heygen_client.download_video("https://cdn.invalid/v.mp4", str(dest))
+
+    assert size == len(full)
+    assert dest.read_bytes() == full
+    assert calls == ["bytes=32-", None]
+
+
 def test_a_download_that_never_completes_raises(transport, tmp_path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down", request=request)
@@ -265,3 +313,40 @@ def test_hitting_the_photo_cap_rotates_the_oldest_and_retries(transport) -> None
     assert photo_id == "tp-new"
     assert deleted == ["g-old"], "the oldest photo group is the one that gets rotated out"
     assert uploads == 2
+
+
+# --- render listing ----------------------------------------------------------
+
+
+def _listing_handler(pages: list[list[str]], requested: list[str | None]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        token = request.url.params.get("token")
+        requested.append(token)
+        i = int(token) if token else 0
+        nxt = str(i + 1) if i + 1 < len(pages) else None
+        return httpx.Response(200, json={"data": {
+            "videos": [{"video_id": v, "status": "completed", "created_at": 1} for v in pages[i]],
+            "token": nxt,
+        }})
+    return handler
+
+
+def test_listing_follows_the_page_token_to_the_end(transport) -> None:
+    requested: list[str | None] = []
+    transport(_listing_handler([["a", "b"], ["c"], ["d"]], requested))
+
+    videos = heygen_client.list_videos(api_key="k")
+
+    assert [v["video_id"] for v in videos] == ["a", "b", "c", "d"]
+    assert requested == [None, "1", "2"]
+
+
+def test_listing_stops_at_a_page_it_already_knows(transport) -> None:
+    """2,700 renders is 28 pages. A refresh only needs what is new."""
+    requested: list[str | None] = []
+    transport(_listing_handler([["new"], ["old1", "old2"], ["older"]], requested))
+
+    videos = heygen_client.list_videos(api_key="k", known=frozenset({"old1", "old2", "older"}))
+
+    assert [v["video_id"] for v in videos] == ["new", "old1", "old2"]
+    assert requested == [None, "1"]

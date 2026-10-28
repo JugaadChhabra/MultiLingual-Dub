@@ -84,7 +84,7 @@ def spec_from_single(fields: SingleSubmission) -> VideoJobSpec:
     # The title is the NAS filename. One that scrubs to nothing would be filed as
     # ".mp4" — and falling back to the shared default would overwrite the day's
     # previous render — so it is refused, as the pane refuses it.
-    title = _scrub_title(fields.video_title)
+    title = scrub_title(fields.video_title)
     if not title:
         raise IntakeError("video_title must name the file so it does not overwrite an earlier render")
 
@@ -152,7 +152,7 @@ def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[
     for row in rows:
         # A row refused for its script still names a file once that is fixed,
         # so its title takes part in the duplicate check.
-        title = _scrub_title(row.video_title)
+        title = scrub_title(row.video_title)
         if title:
             titles.append(title)
         try:
@@ -196,7 +196,7 @@ def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[
     return items
 
 
-def _scrub_title(raw: str) -> str:
+def scrub_title(raw: str) -> str:
     return _MP4_SUFFIX.sub("", _UNSAFE_TITLE.sub("_", raw.strip()))
 
 

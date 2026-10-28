@@ -36,6 +36,8 @@ class VideoJobSummary(BaseModel):
     video_url: str | None = None
     video_path: str | None = None
     nas_path: str | None = None
+    # HeyGen reported the render itself failed: there is no video to recover.
+    render_failed: bool = False
     started_at: datetime | None = None
     finished_at: datetime | None = None
     duration_ms: int | None = None

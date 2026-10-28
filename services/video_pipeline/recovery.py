@@ -2,8 +2,8 @@
 
 A render is paid for at submission, so a job that failed after its render
 finished is worth re-running from the download onward. That is only safe for a
-job that has actually failed, still has its render id and spec, and is not
-already being recovered — recovering a completed job would file it to the NAS a
+job that has actually failed, still has its render id and spec, whose render
+HeyGen did not fail, and is not already being recovered — recovering a completed job would file it to the NAS a
 second time, and two recoveries at once would race each other there.
 
 These rules live here and nowhere else. The store applies them under its lock
@@ -44,6 +44,10 @@ def check_recoverable(state: VideoJobState | None) -> None:
         )
     if not state.summary.heygen_video_id:
         raise NotRecoverable("Job has no HeyGen render to recover")
+    if state.summary.render_failed:
+        raise NotRecoverable(
+            "HeyGen's render failed, so there is no video to recover; re-run it instead"
+        )
     if state.spec is None:
         raise NotRecoverable("Job has no persisted spec to recover from")
 

@@ -10,7 +10,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from services.elevenlabs import ElevenLabsTTSConfig
-from services.video_pipeline.renderer import RenderedVideo, TalkingPhoto, UploadedAudio, VideoRenderer
+from services.video_pipeline.renderer import (
+    RenderedVideo,
+    RenderFailed,
+    RenderListing,
+    TalkingPhoto,
+    UploadedAudio,
+    VideoRenderer,
+)
 from services.video_pipeline.speech import SpeechSynth
 
 
@@ -23,7 +30,10 @@ class FakeRenderer(VideoRenderer):
         render_failed: bool = False,
         photos: list[TalkingPhoto] | None = None,
         list_error: Exception | None = None,
+        renders: list[RenderListing] | None = None,
     ) -> None:
+        # What list_renders reports as on the account, newest first.
+        self.renders = list(renders or [])
         self.photos = list(photos or [])
         self.list_error = list_error
         self.video_bytes = video_bytes
@@ -90,8 +100,12 @@ class FakeRenderer(VideoRenderer):
     async def await_render(self, *, video_id: str) -> RenderedVideo:
         self.calls.append("await_render")
         if self.render_failed:
-            raise RuntimeError("render failed: fake")
+            raise RenderFailed("HeyGen render failed: fake")
         return RenderedVideo(video_url=f"https://fake.invalid/{video_id}.mp4")
+
+    async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:
+        self.calls.append("list_renders")
+        return list(self.renders)
 
     async def download(self, *, video_url: str, dest_path: Path) -> int:
         self.calls.append("download")

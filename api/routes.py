@@ -19,6 +19,7 @@ from api.background import spawn
 from api.logging import get_important_logs as _get_important_logs, install_log_handler
 from api.models import (
     ElevenLabsTTSRequest,
+    FileRenderRequest,
     FinalizeTextRequest,
     SessionEnvConfigRequest,
     SessionEnvConfigResponse,
@@ -42,6 +43,9 @@ from services.video_pipeline import (
     start_recovery,
     start_recovery_of_failed,
 )
+from services.video_pipeline.library import RenderCatalog, build_library
+from services.video_pipeline.pipeline import start_filing_render
+from services.video_pipeline.types import VideoJobSpec, VideoJobState
 from services.email import EmailSettings
 from services.nas import NasConfig, NasService
 from services.script_history import ScriptHistoryStore
@@ -65,6 +69,7 @@ from services.video_pipeline.intake import (
     BatchSettings,
     IntakeError,
     SingleSubmission,
+    scrub_title,
     spec_from_single,
     specs_from_batch,
 )
@@ -132,6 +137,9 @@ session_config_store = SessionConfigStore()
 
 VIDEO_OUTPUT_DIR = OUTPUT_DIR / "heygen"
 VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# The HeyGen account's render listing, kept between library page loads.
+render_catalog = RenderCatalog()
 
 # Generated scripts, kept so the writer can be shown what it already said. Not a
 # job store: nothing here is in flight, and every read comes off disk.
@@ -222,6 +230,12 @@ def videogen_page() -> FileResponse:
 @app.get("/story")
 def story_page() -> FileResponse:
     """The Story section's own linkable path, like /videogen."""
+    return index()
+
+
+@app.get("/library")
+def library_page() -> FileResponse:
+    """The video library's own linkable path, like /videogen."""
     return index()
 
 
@@ -340,6 +354,169 @@ async def create_heygen_video_job(
     return {"job_id": job_id, "status": "queued"}
 
 
+# --- library ---------------------------------------------------------------
+# Declared before /video/heygen/{job_id}, which would otherwise take "library"
+# for a job id.
+
+LIBRARY_STATES = ("on_nas", "in_progress", "sendable", "needs_details", "rendering", "not_recoverable")
+
+
+async def _library(renderer: VideoRenderer, *, refresh: bool = False):
+    """The library, and why HeyGen's half of it is missing if it is: a listing
+    failure still shows every job we know of rather than an empty page."""
+    listing_error = None
+    try:
+        renders = await render_catalog.renders(renderer, refresh=refresh)
+    except Exception as exc:
+        logging.warning("HeyGen render listing failed: %s", exc)
+        renders, listing_error = [], f"Could not list renders on HeyGen: {exc}"
+    return build_library(renders, await video_jobs_store.snapshot()), listing_error
+
+
+async def _record_recovery(state: VideoJobState) -> None:
+    """A recovered job's batch row, if it has one, is done now too."""
+    video_path = state.summary.video_path
+    await video_batch_jobs_store.row_recovered(
+        state.job_id,
+        nas_path=state.summary.nas_path,
+        video_local_url=to_output_url(video_path, OUTPUT_DIR) if video_path else None,
+    )
+
+
+@app.get("/video/heygen/library")
+async def get_video_library(
+    request: Request,
+    refresh: bool = False,
+    state: str | None = None,
+    q: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+):
+    """Every render on the HeyGen account, newest first, each with what can be
+    done with it. ``counts`` covers the whole library; ``items`` the filtered page."""
+    session = await _session_config_for_request(request)
+    try:
+        renderer = _build_renderer(session)
+    except MissingSettingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    entries, listing_error = await _library(renderer, refresh=refresh)
+
+    counts = {s: 0 for s in LIBRARY_STATES}
+    for e in entries:
+        counts[e.state] += 1
+    wanted = set((state or "").split(",")) - {""}
+    needle = (q or "").strip().lower()
+    picked = [
+        e for e in entries
+        if (not wanted or e.state in wanted)
+        and (not needle or any(needle in (v or "").lower()
+                               for v in (e.title, e.video_id, e.job_id, e.publish_date, e.nas_path)))
+    ]
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return {
+        "items": [e.to_dict() for e in picked[offset:offset + limit]],
+        "total": len(picked),
+        "counts": counts,
+        "listing_error": listing_error,
+    }
+
+
+@app.post("/video/heygen/library/{video_id}/send-to-nas", status_code=202)
+async def send_render_to_nas(video_id: str, request: Request, details: FileRenderRequest | None = None):
+    """File a finished render to the NAS without re-rendering it. A render one
+    of our jobs made is recovered from that job's own details; one we know
+    nothing about needs ``details`` (title, publish date, character)."""
+    session = await _session_config_for_request(request)
+    try:
+        deps = _build_video_deps(session)
+    except MissingSettingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    entries, _ = await _library(deps.renderer)
+    entry = next((e for e in entries if e.video_id == video_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No such render on HeyGen or in our jobs")
+
+    if entry.state == "sendable":
+        try:
+            await start_recovery(
+                job_id=entry.job_id, jobs_store=video_jobs_store, output_dir=VIDEO_OUTPUT_DIR,
+                renderer=deps.renderer, nas_config=deps.nas, launch=spawn,
+                on_recovered=_record_recovery,
+            )
+        except NotRecoverable as exc:
+            raise HTTPException(status_code=409, detail=exc.reason) from exc
+        return {"video_id": video_id, "job_id": entry.job_id, "status": "recovering"}
+
+    if entry.state == "needs_details":
+        if details is None:
+            raise HTTPException(status_code=422, detail="This render has no title or date on file; send them with it")
+        title = scrub_title(details.title)
+        if not title:
+            raise HTTPException(status_code=422, detail="title is empty once unsafe characters are removed")
+        spec = VideoJobSpec(
+            script="", video_title=title, character=details.character.strip().lower() or "indian",
+            publish_date=details.publish_date, include_overlay=details.include_overlay,
+            include_music=details.include_music,
+        )
+        job_id = await start_filing_render(
+            video_id=video_id, spec=spec, jobs_store=video_jobs_store, output_dir=VIDEO_OUTPUT_DIR,
+            renderer=deps.renderer, nas_config=deps.nas, launch=spawn,
+        )
+        return {"video_id": video_id, "job_id": job_id, "status": "recovering"}
+
+    refusal = {
+        "on_nas": f"Already on the NAS at {entry.nas_path}",
+        "in_progress": "Already being worked on",
+        "rendering": "Still rendering on HeyGen; try again when it finishes",
+    }.get(entry.state, entry.reason)
+    raise HTTPException(status_code=409, detail=refusal)
+
+
+@app.get("/video/heygen/library/{video_id}/download")
+async def download_render(video_id: str, request: Request):
+    """The video as a file. A job of ours that finished hands over what it filed
+    (cards and music included); anything else is the raw render from HeyGen,
+    fetched once and kept under output/heygen/_library."""
+    session = await _session_config_for_request(request)
+    try:
+        renderer = _build_renderer(session)
+    except MissingSettingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    entries, _ = await _library(renderer)
+    entry = next((e for e in entries if e.video_id == video_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No such render on HeyGen or in our jobs")
+    filename = f"{entry.title or video_id}.mp4"
+
+    if entry.state == "on_nas" and entry.job_id:
+        for name in ("video_carded.mp4", "video.mp4"):
+            path = VIDEO_OUTPUT_DIR / entry.job_id / name
+            if path.is_file() and path.stat().st_size > 0:
+                return FileResponse(path, media_type="video/mp4", filename=filename)
+
+    # Only a render HeyGen lists as finished: await_render on anything else
+    # would hold this request open for as long as the render takes.
+    render = render_catalog.get(video_id)
+    if render is None or render.status != "completed":
+        raise HTTPException(status_code=409,
+                            detail=entry.reason or "HeyGen has no finished video for this yet")
+
+    cached = VIDEO_OUTPUT_DIR / "_library" / f"{video_id}.mp4"
+    if not cached.is_file():
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        part = cached.with_suffix(".part")
+        try:
+            rendered = await renderer.await_render(video_id=video_id)
+            await renderer.download(video_url=rendered.video_url, dest_path=part)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Could not fetch the render from HeyGen: {exc}") from exc
+        part.replace(cached)
+    return FileResponse(cached, media_type="video/mp4", filename=filename)
+
+
 @app.get("/video/heygen/{job_id}")
 async def get_heygen_video_job(job_id: str):
     state = await video_jobs_store.get(job_id)
@@ -377,6 +554,7 @@ async def recover_heygen_video_job(job_id: str, request: Request):
             renderer=deps.renderer,
             nas_config=deps.nas,
             launch=spawn,
+            on_recovered=_record_recovery,
         )
     except NotRecoverable as exc:
         status = 404 if exc.kind == "not_found" else 409
@@ -400,6 +578,7 @@ async def recover_all_failed_heygen_jobs(request: Request):
         renderer=deps.renderer,
         nas_config=deps.nas,
         launch=spawn,
+        on_recovered=_record_recovery,
     )
     return {"status": "recovering", "job_ids": ids, "count": len(ids)}
 

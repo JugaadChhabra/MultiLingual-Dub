@@ -410,6 +410,35 @@ def create_avatar_iv_video(
     raise last_exc
 
 
+class HeyGenRenderFailed(RuntimeError):
+    """HeyGen reports the render itself failed: there is no video to fetch."""
+
+
+def list_videos(*, api_key: str, known: frozenset[str] = frozenset(), page_size: int = 100) -> list[dict]:
+    """Every render on the account, newest first, following video.list's page
+    token. Stops early at a page whose ids are all in ``known`` — everything
+    older is something the caller already has."""
+    headers = {"X-Api-Key": api_key}
+    videos: list[dict] = []
+    token: str | None = None
+    while True:
+        params: dict = {"limit": page_size}
+        if token:
+            params["token"] = token
+        resp = _send(
+            "GET", f"{HEYGEN_API_BASE}/v1/video.list", timeout=DEFAULT_TIMEOUT,
+            what="video.list", headers=headers, params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data") or {}
+        page = data.get("videos") or []
+        videos.extend(page)
+        token = data.get("token")
+        ids = {str(v.get("video_id") or v.get("id") or "") for v in page}
+        if not token or not page or (known and ids <= known):
+            return videos
+
+
 def get_video_status(*, api_key: str, video_id: str) -> dict:
     headers = {"X-Api-Key": api_key}
     resp = _send(
@@ -450,7 +479,7 @@ async def poll_until_done(
             return data
         if status == "failed":
             err = data.get("error") or "unknown error"
-            raise RuntimeError(f"HeyGen render failed: {err}")
+            raise HeyGenRenderFailed(f"HeyGen render failed: {err}")
         await asyncio.sleep(interval_seconds)
         elapsed += interval_seconds
     raise TimeoutError(f"HeyGen render did not complete within {timeout_seconds}s")
@@ -470,6 +499,12 @@ def _expected_size(resp: httpx.Response, already_have: int) -> int | None:
         return None
     body = int(cl)
     return already_have + body if resp.status_code == 206 else body
+
+
+def _range_total(resp: httpx.Response) -> int | None:
+    """The full size a 416 reports in its ``Content-Range: bytes */N``."""
+    _, _, total = (resp.headers.get("content-range") or "").rpartition("/")
+    return int(total) if total.isdigit() else None
 
 
 def download_video(url: str, dest_path: str) -> int:
@@ -494,6 +529,20 @@ def download_video(url: str, dest_path: str) -> int:
                 timeout=DOWNLOAD_TIMEOUT, follow_redirects=True, transport=_transport
             ) as client:
                 with client.stream("GET", url, headers=headers) as resp:
+                    # Nothing after byte `have`. If that is the whole render the
+                    # file is already done — recovery re-downloads into a folder
+                    # where a job that died on the NAS step left it complete.
+                    # Otherwise what's on disk is not a prefix of this render.
+                    if have and resp.status_code == 416:
+                        total = _range_total(resp)
+                        if total == have:
+                            return have
+                        logger.warning(
+                            "Video on disk (%d bytes) does not match the render (%s bytes); "
+                            "downloading it again", have, total if total is not None else "?",
+                        )
+                        os.remove(dest_path)
+                        continue
                     # Server ignored our Range and is resending the whole file:
                     # truncate so we don't append a duplicate prefix.
                     if have and resp.status_code == 200:

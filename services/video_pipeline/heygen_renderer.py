@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 from services.video_pipeline import heygen_client
-from services.video_pipeline.renderer import RenderedVideo, TalkingPhoto, UploadedAudio, VideoRenderer
+from services.video_pipeline.renderer import (
+    RenderedVideo,
+    RenderFailed,
+    RenderListing,
+    TalkingPhoto,
+    UploadedAudio,
+    VideoRenderer,
+)
+
+# HeyGen's own statuses, folded into the three the library tells apart.
+_LISTING_STATUS = {"completed": "completed", "failed": "failed"}
 
 
 class HeyGenRenderer(VideoRenderer):
@@ -82,7 +93,10 @@ class HeyGenRenderer(VideoRenderer):
     async def await_render(self, *, video_id: str) -> RenderedVideo:
         # poll_until_done is already async (it sleeps between polls rather than
         # pinning a thread for the ~25 minutes a render can take).
-        data = await heygen_client.poll_until_done(api_key=self._api_key, video_id=video_id)
+        try:
+            data = await heygen_client.poll_until_done(api_key=self._api_key, video_id=video_id)
+        except heygen_client.HeyGenRenderFailed as exc:
+            raise RenderFailed(str(exc)) from exc
         video_url = data.get("video_url")
         if not video_url:
             raise RuntimeError("HeyGen reported the render complete but returned no video_url")
@@ -91,6 +105,22 @@ class HeyGenRenderer(VideoRenderer):
             video_url=str(video_url),
             duration_seconds=float(duration) if isinstance(duration, (int, float)) else None,
         )
+
+    async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:
+        raw = await asyncio.to_thread(heygen_client.list_videos, api_key=self._api_key, known=known)
+        listings = []
+        for item in raw:
+            video_id = item.get("video_id") or item.get("id")
+            if not video_id:
+                continue
+            created = item.get("created_at")
+            listings.append(RenderListing(
+                video_id=str(video_id),
+                status=_LISTING_STATUS.get(str(item.get("status")), "processing"),
+                created_at=(datetime.fromtimestamp(created, tz=timezone.utc)
+                            if isinstance(created, (int, float)) else None),
+            ))
+        return listings
 
     async def download(self, *, video_url: str, dest_path: Path) -> int:
         return await asyncio.to_thread(

@@ -211,6 +211,47 @@ def test_a_failed_recovery_leaves_the_job_recoverable(client, store, renderer, l
     assert client.get("/video/heygen/jobs/recoverable").json()["recoverable"] == ["a"]
 
 
+def test_a_render_heygen_failed_is_not_recoverable(client, store, renderer, launched) -> None:
+    """Recovery re-fetches a render; if HeyGen failed it there is nothing to
+    fetch. It used to stay on offer and fail every time it was tried."""
+    _job(store, "a")
+    renderer.render_failed = True
+
+    client.post("/video/heygen/a/recover")
+    with pytest.raises(RuntimeError):
+        _run(launched)
+
+    state = asyncio.run(store.get("a"))
+    assert state.status == "failed"
+    assert state.summary.render_failed is True
+    assert client.get("/video/heygen/jobs/recoverable").json()["count"] == 0
+    again = client.post("/video/heygen/a/recover")
+    assert again.status_code == 409
+    assert "HeyGen's render failed" in again.json()["detail"]
+
+
+def test_a_job_whose_render_failed_first_time_is_never_offered(store, renderer, tmp_path) -> None:
+    from services.video_pipeline import run_video_job
+    from services.video_pipeline.slots import TalkingPhotoSlots
+    renderer.render_failed = True
+
+    async def _go():
+        await store.create("a")
+        await run_video_job(
+            job_id="a", spec=_spec(), image_bytes=b"img", image_filename="i.jpg",
+            output_dir=tmp_path / "out", jobs_store=store, renderer=renderer,
+            speech=FakeSpeech(), slots=TalkingPhotoSlots(renderer),
+            nas_config=None, voice_id="v",
+        )
+        return await store.get("a")
+
+    state = asyncio.run(_go())
+
+    assert state.status == "failed"
+    assert state.summary.render_failed is True
+    assert asyncio.run(store.list_recoverable()) == []
+
+
 # --- recover all -----------------------------------------------------------
 
 

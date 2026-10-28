@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TranslateRequest(BaseModel):
@@ -56,3 +56,13 @@ class StoryJobRequest(BaseModel):
     target_languages: list[str]
     # Context for the story fix only; nothing is named after it.
     title: str = ""
+
+
+class FileRenderRequest(BaseModel):
+    """What the library needs to file a render no job of ours accounts for:
+    the NAS path is DD-MM-YYYY/<title>.mp4, and the character picks its root."""
+    title: str = Field(min_length=1)
+    publish_date: str = Field(pattern=r"^\d{2}-\d{2}-\d{4}$")
+    character: str = "indian"
+    include_overlay: bool = True
+    include_music: bool = True

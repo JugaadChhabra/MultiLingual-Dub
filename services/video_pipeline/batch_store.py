@@ -170,3 +170,31 @@ class VideoBatchJobsStore:
                 "VideoBatch %s → %s (%d succeeded, %d failed)",
                 batch_id, state.status, state.done, state.failed_count,
             )
+
+    async def row_recovered(self, job_id: str, *, nas_path: str | None,
+                            video_local_url: str | None) -> bool:
+        """Mark the failed row whose video job ``job_id`` was since recovered
+        as done, and re-settle a finished batch's status and cause to match.
+        Returns whether any row was rendered by that job."""
+        async with self._lock:
+            for state in self._jobs.values():
+                row = next((r for r in state.rows
+                            if r.job_id == job_id and r.status == "failed"), None)
+                if row is None:
+                    continue
+                row.status = "completed"
+                row.nas_path = nas_path
+                row.video_local_url = video_local_url
+                row.error = None
+                row.cause = None
+                state.done += 1
+                state.failed_count = max(0, state.failed_count - 1)
+                if state.finished_at is not None:
+                    state.status = ("completed" if state.failed_count == 0
+                                    else "failed" if state.done == 0 else "partial")
+                    state.cause = batch_cause(state)
+                self._write(state)
+                logger.info("VideoBatch %s | row %d recovered (job %s) → %s",
+                            state.batch_id, row.row_index, job_id, state.status)
+                return True
+            return False

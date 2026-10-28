@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,21 @@ class RenderedVideo:
     ``await_render`` later."""
     video_url: str
     duration_seconds: float | None = None
+
+
+class RenderFailed(RuntimeError):
+    """The provider reports the render itself failed. Unlike a timeout or a
+    dropped poll, there will never be a video to fetch, so the job cannot be
+    recovered — only re-run."""
+
+
+@dataclass(frozen=True)
+class RenderListing:
+    """One render on the account, as the provider lists it. ``status`` is
+    'processing' for anything not yet finished one way or the other."""
+    video_id: str
+    status: Literal["completed", "failed", "processing"]
+    created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -89,8 +106,17 @@ class VideoRenderer(ABC):
         Returns immediately for a render that is already complete, which is what
         makes this double as "re-fetch a fresh URL for an old render".
 
-        Raises if the provider reports the render failed, or if it finishes
-        without a usable URL.
+        Raises RenderFailed if the provider reports the render failed, and
+        another error if it finishes without a usable URL.
+        """
+
+    @abstractmethod
+    async def list_renders(self, *, known: frozenset[str] = frozenset()) -> list[RenderListing]:
+        """Every render on the account, newest first.
+
+        ``known`` holds ids the caller already has in a final state. Listing
+        may stop at the first page made only of those, so a caller refreshing
+        its copy fetches only what is new.
         """
 
     @abstractmethod
