@@ -348,3 +348,44 @@ def test_cancelling_while_speaking_uploads_the_clips_already_spoken(monkeypatch)
     assert len(fakes.tts) == 1
     [(_, files, folder)] = fakes.uploads
     assert folder == ACTIVITY and sorted(files) == [f"{ACTIVITY}1.mp3"]
+
+
+class RecordingStore(JobsStore):
+    """A jobs store that keeps every summary it was asked to persist."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.summaries = []
+
+    async def update_summary(self, job_id, summary) -> None:
+        self.summaries.append(summary.model_copy(deep=True))
+        await super().update_summary(job_id, summary)
+
+
+def test_progress_moves_through_translating_fixing_then_voicing(monkeypatch) -> None:
+    Fakes(monkeypatch)
+    store = RecordingStore()
+
+    state = _run(["hi-IN", "ta-IN"], store=store)
+
+    assert state.status == "completed", state.error
+    stages = [s.story_stage for s in store.summaries]
+    # each stage appears, in order, and never comes back
+    seen = [stage for i, stage in enumerate(stages) if stage and stage != stages[i - 1]]
+    assert seen == ["translating", "fixing", "voicing"]
+    translating = [s.story_rows_translated for s in store.summaries if s.story_stage == "translating"]
+    assert translating[0] == 0 and translating[-1] == len(LINES)
+    fixing = [s for s in store.summaries if s.story_stage == "fixing"]
+    assert {s.story_languages_to_fix for s in fixing} == {2}
+    assert fixing[-1].story_languages_fixed == 2
+    voicing = [s for s in store.summaries if s.story_stage == "voicing"]
+    assert voicing[0].rows_processed == 0 and voicing[0].stage_started_at is not None
+
+
+def test_an_english_only_story_goes_straight_to_voicing(monkeypatch) -> None:
+    Fakes(monkeypatch)
+    store = RecordingStore()
+
+    _run(["en-IN"], store=store)
+
+    assert {s.story_stage for s in store.summaries} - {None} == {"voicing"}

@@ -110,6 +110,7 @@ async def _fix_languages(
     failures: dict[int, list[TaskFailure]],
     deps: VoiceoverDeps,
     tally: BatchTally,
+    jobs_store: JobsStore,
 ) -> None:
     """One story fix per language, fanned out as wide as translations are.
 
@@ -122,9 +123,13 @@ async def _fix_languages(
 
     async def _fix(language: str, story: dict[str, StoryLine], story_drafts: dict[str, str]):
         async with semaphore:
-            return await asyncio.to_thread(
-                fix_story, title, story, story_drafts, language, settings=deps.qc
-            )
+            try:
+                return await asyncio.to_thread(
+                    fix_story, title, story, story_drafts, language, settings=deps.qc
+                )
+            finally:
+                tally.story_language_fixed()
+                await jobs_store.update_summary(job_id, tally.summary)
 
     # Lines whose translation failed have no draft, and are left out of the fix.
     # Per language: the lines to fix and their drafts, both keyed by line id.
@@ -137,6 +142,9 @@ async def _fix_languages(
                 {str(row.row_index): drafts[row.row_index][language] for row in drafted},
             )
 
+    if requests:
+        tally.story_stage("fixing", languages_to_fix=len(requests))
+        await jobs_store.update_summary(job_id, tally.summary)
     results = await asyncio.gather(
         *(_fix(language, story, story_drafts) for language, (story, story_drafts) in requests.items()),
         return_exceptions=True,
@@ -221,6 +229,9 @@ async def _run_story_job_impl(
 
     try:
         # 1. Translate every row into raw drafts, with no per-row QC.
+        if translated:
+            tally.story_stage("translating")
+            await jobs_store.update_summary(job_id, tally.summary)
         for row in rows:
             if await _cancelled():
                 return
@@ -233,6 +244,9 @@ async def _run_story_job_impl(
             except Exception as exc:
                 crashed.add(row.row_index)
                 logger.exception("%sunexpected translation failure: %s", prefix, exc)
+            if translated:
+                tally.story_row_translated()
+                await jobs_store.update_summary(job_id, tally.summary)
 
         # 2. One story fix per language, over every line that has a draft.
         if await _cancelled():
@@ -248,9 +262,12 @@ async def _run_story_job_impl(
             failures=failures,
             deps=deps,
             tally=tally,
+            jobs_store=jobs_store,
         )
 
         # 3. Speak each row with its fixed text.
+        tally.story_stage("voicing")
+        await jobs_store.update_summary(job_id, tally.summary)
         buffer = ActivityBuffer(target_languages)
         activity_failures: dict[int, list[TaskFailure]] = defaultdict(list)
         for row in rows:

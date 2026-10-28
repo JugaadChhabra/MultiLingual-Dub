@@ -283,6 +283,8 @@
   }
   function shortProgress(s) {
     s = s || {};
+    if (s.story_stage === "translating") return `Story: translating ${s.story_rows_translated || 0}/${s.total_rows || 0}`;
+    if (s.story_stage === "fixing") return `Story: rewriting ${s.story_languages_fixed || 0}/${s.story_languages_to_fix || 0}`;
     return s.total_rows ? `Story ${s.rows_processed || 0}/${s.total_rows}` : "Story audio running";
   }
 

@@ -46,6 +46,15 @@ class JobSummary(BaseModel):
     story_fix_fallback_lines: int = 0
     story_fix_flagged_lines: int = 0
     story_fix_warning: str | None = None
+    # Story jobs only: the stage the job is in ("translating", "fixing",
+    # "voicing") and how far the first two have got; voicing progress is
+    # rows_processed. stage_started_at times the current stage, so the ETA for
+    # voicing isn't skewed by the minutes spent translating and fixing.
+    story_stage: str | None = None
+    story_rows_translated: int = 0
+    story_languages_fixed: int = 0
+    story_languages_to_fix: int = 0
+    stage_started_at: datetime | None = None
     archive_downloads: list[ArchiveDownload] = Field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None

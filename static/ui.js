@@ -283,11 +283,30 @@
     setBar(els, { total, uploaded, rendered, failed, live: status === "running" });
 
     const rows = s.total_rows || 0, processed = s.rows_processed || 0;
-    const left = status === "running" ? eta(s.started_at, processed, rows) : null;
+    els.started.textContent = s.started_at ? `Started ${clock(s.started_at)}` : "";
+
+    // A story job translates and rewrites every line before the first clip is
+    // spoken, which can take minutes. Until voicing starts, the bar tracks that
+    // stage instead of sitting empty at 0 clips.
+    if (status === "running" && (s.story_stage === "translating" || s.story_stage === "fixing")) {
+      const fixing = s.story_stage === "fixing";
+      const done = fixing ? s.story_languages_fixed || 0 : s.story_rows_translated || 0;
+      const of = fixing ? s.story_languages_to_fix || 0 : rows;
+      els.clips.innerHTML = fixing
+        ? `Rewriting the story <small>${done} of ${of} language${of === 1 ? "" : "s"}</small>`
+        : `Translating <small>line ${done} of ${of}</small>`;
+      setBar(els, { total: of, uploaded: 0, rendered: done, failed: 0, live: true });
+      els.detail.textContent = fixing
+        ? "Step 2 of 3 · Gemini reads the whole story per language; voicing starts next"
+        : "Step 1 of 3 · then the whole-story rewrite, then voicing";
+      return;
+    }
+
+    const left = status === "running"
+      ? eta(s.stage_started_at || s.started_at, processed, rows) : null;
     els.detail.textContent = status === "running"
       ? [`Row ${processed} of ${rows}`, left].filter(Boolean).join(" · ")
       : `Finished ${rows} rows`;
-    els.started.textContent = s.started_at ? `Started ${clock(s.started_at)}` : "";
   }
 
   // The toast, notification and banner for a job that has ended. `name` is

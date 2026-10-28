@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 from batch.models import ArchiveDownload, JobSummary
 from batch.voiceover import RowOutcome
@@ -140,6 +140,20 @@ class BatchTally:
         message = f"story fix {what} for {language} — used line-by-line fix"
         current = self._summary.story_fix_warning
         self._summary.story_fix_warning = f"{current}; {message}" if current else message
+
+    def story_stage(self, stage: str, *, languages_to_fix: int = 0) -> None:
+        """A story job moved on to ``stage``: translating, fixing or voicing."""
+        self._summary.story_stage = stage
+        self._summary.stage_started_at = datetime.now(timezone.utc)
+        if stage == "fixing":
+            self._summary.story_languages_to_fix = languages_to_fix
+
+    def story_row_translated(self) -> None:
+        self._summary.story_rows_translated += 1
+
+    def story_language_fixed(self) -> None:
+        """One language's story fix returned, whether or not it worked."""
+        self._summary.story_languages_fixed += 1
 
     def story_fix_flagged(self) -> None:
         """One fixed line whose length moved too far from its draft's."""
