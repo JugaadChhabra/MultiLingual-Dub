@@ -30,8 +30,21 @@ _TRUE = {"1", "true", "t", "on", "yes", "y"}
 _FALSE = {"0", "false", "f", "off", "no", "n"}
 
 
+# A refused batch lists its problems one per line; past this many the rest are
+# counted, so a spreadsheet gone wrong throughout stays readable.
+_MAX_PROBLEM_LINES = 20
+
+
 class IntakeError(ValueError):
-    """A submission that cannot become a video job. The message is for the operator."""
+    """A submission that cannot become a video job. The message is for the operator.
+
+    ``problems`` holds each problem on its own; the message lists them one per
+    line (a batch's row lines capped), so ``str(exc)`` is what the operator sees.
+    """
+
+    def __init__(self, message: str, problems: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.problems = problems if problems is not None else [message]
 
 
 @dataclass(frozen=True)
@@ -115,8 +128,31 @@ class BatchItem:
 
 
 def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[BatchItem]:
+    """Every row is checked before the batch is refused, so one refusal names
+    every bad row and a single fix-up pass is enough. Any problem still refuses
+    the whole batch: renders are paid for at submission."""
+    # A bad shared toggle is wrong for every row alike, so it is said once, up
+    # front, and the rows are still checked as if it were left blank.
+    setting_problems: list[str] = []
+    toggles: dict[str, str | None] = {}
+    for name, raw in (("include_overlay", shared.include_overlay),
+                      ("include_music", shared.include_music)):
+        try:
+            _toggle(name, raw)
+            toggles[name] = raw
+        except IntakeError as exc:
+            setting_problems.append(str(exc))
+            toggles[name] = None
+
     items: list[BatchItem] = []
+    row_problems: list[str] = []
+    titles: list[str] = []
     for row in rows:
+        # A row refused for its script still names a file once that is fixed,
+        # so its title takes part in the duplicate check.
+        title = _scrub_title(row.video_title)
+        if title:
+            titles.append(title)
         try:
             spec = spec_from_single(SingleSubmission(
                 script=row.script,
@@ -124,25 +160,35 @@ def specs_from_batch(rows: list[HeyGenBatchRow], shared: BatchSettings) -> list[
                 character=shared.character,
                 motion_prompt=shared.motion_prompt,
                 publish_date=shared.publish_date,
-                include_overlay=shared.include_overlay,
-                include_music=shared.include_music,
+                include_overlay=toggles["include_overlay"],
+                include_music=toggles["include_music"],
             ))
         except IntakeError as exc:
             # The index is the spreadsheet row; the title is what an Auto
             # operator recognises, since their drafts have no row numbers.
-            raise IntakeError(f"row {row.row_index} ({row.video_title!r}): {exc}") from exc
+            row_problems.append(f"row {row.row_index} ({row.video_title!r}): {exc}")
+            continue
         items.append(BatchItem(row_index=row.row_index, spec=spec))
 
     # Each title is a file in the same NAS folder, so two rows with one title
     # means one render overwrites the other. Compared after scrubbing, and
     # without case, as the share and the pane compare them.
-    titles = [item.spec.video_title for item in items]
     counts = Counter(t.casefold() for t in titles)
     dupes = sorted({t for t in titles if counts[t.casefold()] > 1})
-    if dupes:
+    dupe_problems = [
+        "video titles must be unique, or one render overwrites another: "
+        + ", ".join(dupes)
+    ] if dupes else []
+
+    if setting_problems or row_problems or dupe_problems:
+        # Only the row lines are capped: the shared-setting and duplicate lines
+        # are one each, and hiding them would cost the operator another resubmit.
+        shown_rows = row_problems[:_MAX_PROBLEM_LINES]
+        if len(row_problems) > _MAX_PROBLEM_LINES:
+            shown_rows.append(f"…and {len(row_problems) - _MAX_PROBLEM_LINES} more")
         raise IntakeError(
-            "video titles must be unique, or one render overwrites another: "
-            + ", ".join(dupes)
+            "\n".join(setting_problems + shown_rows + dupe_problems),
+            problems=setting_problems + row_problems + dupe_problems,
         )
     return items
 

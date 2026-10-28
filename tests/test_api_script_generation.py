@@ -19,6 +19,7 @@ from api import routes as api
 from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_validate import Violation
 from services.script_writer import (
+    MAX_SCRIPT_CHARS,
     ZODIAC_SIGNS,
     ScriptRepairError,
     ScriptWriter,
@@ -408,6 +409,28 @@ def test_a_batch_with_duplicate_titles_is_refused_and_records_nothing(client, mo
     assert "मेष" in resp.json()["detail"]
     assert started == []
     assert api.script_history.recent(category="sunsign", language="hi-IN") == []
+
+
+def test_a_refused_batch_names_every_bad_row_in_its_detail(client, monkeypatch) -> None:
+    """One fix-up pass, not one resubmit per bad row."""
+    async def fake_batch(**_kwargs):
+        raise AssertionError("a refused batch must not start rendering")
+
+    monkeypatch.setattr(api, "run_video_batch_job", fake_batch)
+
+    resp = client.post(
+        "/video/heygen/batch",
+        files=_image(),
+        data={"rows": json.dumps([{"script": "x" * (MAX_SCRIPT_CHARS + 1), "video_title": "Aries"},
+                                  {"script": "एक", "video_title": "Taurus"},
+                                  {"script": "दो", "video_title": ".mp4"}])},
+    )
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "'Aries'" in detail and str(MAX_SCRIPT_CHARS) in detail
+    assert "'.mp4'" in detail and "video_title" in detail
+    assert "Taurus" not in detail
 
 
 def test_the_batch_overlay_and_music_settings_reach_every_spec(client, monkeypatch) -> None:
