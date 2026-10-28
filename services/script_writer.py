@@ -131,7 +131,7 @@ class ScriptRequestError(ScriptWriterError):
     """
 
 
-class UnknownItemTitle(ScriptRequestError):
+class UnknownItemTitleError(ScriptRequestError):
     """Submitted titles that cannot be mapped back to the item they were written as.
 
     Raised for a batch that looks like a horoscope — some title is a sign name —
@@ -674,7 +674,8 @@ def _one_off(name: str) -> SetItem:
     """A one-off video's item: its file name is both its key and its title.
 
     The one rule both directions share — writing a one-off day, and mapping a
-    submitted one-off row back to its key — so the two cannot drift apart.
+    submitted one-off row back to its key. The name is normalised only when the
+    day is written; a submitted row already carries that normalised title.
     """
     return SetItem(key=name, title=name)
 
@@ -704,15 +705,15 @@ def items_for_titles(titles: list[str]) -> list[SetItem]:
     a one-off title to itself.
 
     A batch with any sign title is a horoscope, and then *every* title must be a
-    sign — see :class:`UnknownItemTitle`. A batch with none is one-offs.
+    sign — see :class:`UnknownItemTitleError`. A batch with none is one-offs.
 
-    :raises UnknownItemTitle: For a horoscope batch with a title that is not a sign.
+    :raises UnknownItemTitleError: For a horoscope batch with a title that is not a sign.
     """
     if not any(title in _SIGN_BY_TITLE for title in titles):
         return [_one_off(title) for title in titles]
     unmapped = sorted({t for t in titles if t not in _SIGN_BY_TITLE})
     if unmapped:
-        raise UnknownItemTitle(unmapped)
+        raise UnknownItemTitleError(unmapped)
     return [_SIGN_BY_TITLE[title] for title in titles]
 
 
@@ -811,14 +812,13 @@ class ScriptWriter:
         category, language and date — the fields that identify a written day —
         cannot be filed and are not recorded; that is logged rather than
         refused, because recording is a side effect of a run, never a
-        precondition for one.
+        precondition for one. Logged loudly, because the cost is real: future
+        days will be told to avoid the generated drafts, not the aired versions.
 
         :returns: Whether the rows were recorded.
-        :raises UnknownItemTitle: For a horoscope batch with a non-sign title.
+        :raises UnknownItemTitleError: For a horoscope batch with a non-sign title.
         """
         if not (category and language and publish_date):
-            # Loud rather than silent, because the cost is real — future days
-            # will be told to avoid the generated drafts, not the aired versions.
             logger.warning(
                 "Submitted rows not recorded to script history: category/language/"
                 "publish_date are incomplete (category=%r language=%r "

@@ -42,7 +42,7 @@ from services.script_writer import (
     ScriptWriter,
     ScriptWriterError,
     ScriptWriterSettings,
-    UnknownItemTitle,
+    UnknownItemTitleError,
 )
 from services.video_pipeline.batch_excel import (
     BatchExcelError,
@@ -501,7 +501,7 @@ async def create_heygen_batch_job(
                 publish_date=publish_date,
                 rows=[(r.video_title, r.script) for r in batch_rows_parsed],
             )
-        except UnknownItemTitle as exc:
+        except UnknownItemTitleError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:

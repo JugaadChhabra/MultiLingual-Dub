@@ -755,7 +755,7 @@ def test_a_horoscope_batch_with_an_unmapped_title_is_refused(tmp_path) -> None:
     key nothing matches — the silent history hole the old fallback allowed."""
     store = ScriptHistoryStore(tmp_path)
 
-    with pytest.raises(script_writer.UnknownItemTitle) as excinfo:
+    with pytest.raises(script_writer.UnknownItemTitleError) as excinfo:
         _submit(script_writer.ScriptWriter(store), [("मेष", "एक"), ("not-a-sign", "दो")])
 
     assert excinfo.value.titles == ["not-a-sign"]
@@ -764,7 +764,7 @@ def test_a_horoscope_batch_with_an_unmapped_title_is_refused(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("missing", ["category", "language", "publish_date"])
-def test_rows_without_a_full_history_key_are_not_recorded(tmp_path, missing) -> None:
+def test_rows_without_a_full_history_key_are_not_recorded(tmp_path, caplog, missing) -> None:
     """Without category, language and date there is nothing to file the day
     under. Not an error — the batch still renders — but nothing is recorded,
     and an unknown title is not refused, since no mapping is attempted."""
@@ -775,6 +775,7 @@ def test_rows_without_a_full_history_key_are_not_recorded(tmp_path, missing) -> 
 
     assert recorded is False
     assert store.recent(category="sunsign", language="hi-IN") == []
+    assert "not recorded to script history" in caplog.text
 
 
 def test_edited_and_submitted_scripts_are_what_the_next_day_avoids(
