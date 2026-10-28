@@ -11,6 +11,7 @@ import json
 import pytest
 
 from services import script_writer
+from services.script_history import ScriptHistoryStore
 from services.script_validate import ALL_TAGS, HistoryFacts
 from services.script_writer import (
     MAX_SCRIPT_CHARS,
@@ -570,3 +571,116 @@ def test_the_prompt_asks_for_less_than_the_check_accepts(monkeypatch) -> None:
     # would just make it write to the wider band.
     for text in (captured["system"], captured["contents"]):
         assert str(ACCEPT_CHARS_HIGH) not in text
+
+
+# --- a day for a category, through the writer's own interface ---------------
+
+
+def _day(writer: script_writer.ScriptWriter, publish_date: str, **overrides):
+    return writer.write_day(**{
+        "category": "sunsign",
+        "language": "hi-IN",
+        "publish_date": publish_date,
+        "brief": "Daily horoscope",
+        "item_set": "zodiac",
+        "settings": _settings(),
+        **overrides,
+    })
+
+
+def test_a_clean_day_is_recorded_to_history(monkeypatch, tmp_path) -> None:
+    _install(monkeypatch, _zodiac_body())
+    store = ScriptHistoryStore(tmp_path)
+
+    day = _day(script_writer.ScriptWriter(store), "2026-08-17")
+
+    assert [d.title for d in day.drafts] == HINDI_TITLES
+    assert day.warnings == []
+    recorded = store.recent(category="sunsign", language="hi-IN")
+    assert [d.title for d in recorded] == [f"2026-08-17 {t}" for t in HINDI_TITLES]
+    assert store.facts(category="sunsign", language="hi-IN")["Aries"].colours == (COLOURS[0],)
+
+
+def test_the_second_day_is_told_the_first_days_facts(monkeypatch, tmp_path) -> None:
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    _install(monkeypatch, _zodiac_body())
+    _day(writer, "2026-08-16")
+
+    # The next day reuses no colour or number, so it passes on the first call
+    # and the prompt captured is the one that carried the history.
+    next_day = json.dumps(
+        {sign.key: valid_script(colour=COLOURS[(i + 1) % 12], number=30 + i)
+         for i, sign in enumerate(ZODIAC_SIGNS)},
+        ensure_ascii=False,
+    )
+    captured: dict = {}
+    _install(monkeypatch, next_day, captured)
+    day = _day(writer, "2026-08-17")
+
+    assert day.warnings == []
+    assert f"colours used: {COLOURS[0]}" in captured["contents"]
+    assert "numbers used: 10" in captured["contents"]
+    assert "2026-08-16 मेष" in captured["contents"]
+
+
+def test_a_day_does_not_avoid_its_own_earlier_attempt(monkeypatch, tmp_path) -> None:
+    """Regenerating a day replaces it, and is not told to avoid what it replaces."""
+    store = ScriptHistoryStore(tmp_path)
+    writer = script_writer.ScriptWriter(store)
+    _install(monkeypatch, _zodiac_body())
+    _day(writer, "2026-08-17")
+
+    captured: dict = {}
+    _install(monkeypatch, _zodiac_body(), captured)
+    day = _day(writer, "2026-08-17")
+
+    assert day.warnings == []
+    assert "colours used" not in captured["contents"]
+    assert len(store.recent(category="sunsign", language="hi-IN")) == len(ZODIAC_SIGNS)
+
+
+def test_a_partial_repair_is_recorded_and_returned_with_warnings(monkeypatch, tmp_path) -> None:
+    clashing = json.loads(_zodiac_body())
+    clashing["Taurus"] = valid_script(colour=COLOURS[0], number=10)  # मेष's colour + number
+    _install(monkeypatch, json.dumps(clashing, ensure_ascii=False))
+    store = ScriptHistoryStore(tmp_path)
+
+    day = _day(script_writer.ScriptWriter(store), "2026-08-17")
+
+    assert [d.key for d in day.drafts] == [sign.key for sign in ZODIAC_SIGNS]
+    assert day.warnings and any("Taurus" in w for w in day.warnings)
+    # The model said it, so tomorrow must avoid it — clash and all.
+    facts = store.facts(category="sunsign", language="hi-IN")
+    assert facts["Taurus"].colours == (COLOURS[0],)
+
+
+def test_a_failed_day_records_nothing(monkeypatch, tmp_path) -> None:
+    _install(monkeypatch, "not json")
+    store = ScriptHistoryStore(tmp_path)
+
+    with pytest.raises(ScriptWriterError):
+        _day(script_writer.ScriptWriter(store), "2026-08-17")
+    assert store.recent(category="sunsign", language="hi-IN") == []
+
+
+def test_a_single_item_day_is_filed_under_the_operators_title(monkeypatch, tmp_path) -> None:
+    _install(monkeypatch, json.dumps({"diwali_promo": valid_script(colour="लाल", number=21)},
+                                     ensure_ascii=False))
+    store = ScriptHistoryStore(tmp_path)
+
+    day = _day(script_writer.ScriptWriter(store), "2026-08-17",
+               item_set="single", title="diwali promo")
+
+    assert [(d.key, d.title) for d in day.drafts] == [("diwali_promo", "diwali_promo")]
+
+
+@pytest.mark.parametrize("overrides", [{"brief": "  "}, {"item_set": "weekly"}])
+def test_a_bad_request_is_refused_before_any_model_call(monkeypatch, tmp_path, overrides) -> None:
+    def explode(api_key):
+        raise AssertionError("no model should be called")
+
+    monkeypatch.setattr("services.script_writer.genai.Client", explode)
+
+    with pytest.raises(script_writer.ScriptRequestError):
+        _day(script_writer.ScriptWriter(ScriptHistoryStore(tmp_path)), "2026-08-17", **overrides)

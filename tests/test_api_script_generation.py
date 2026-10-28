@@ -16,7 +16,14 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from api import routes as api
-from services.script_writer import ZODIAC_SIGNS, DraftScript, ScriptWriterError
+from services.script_history import DraftScript, ScriptHistoryStore
+from services.script_validate import Violation
+from services.script_writer import (
+    ZODIAC_SIGNS,
+    ScriptRepairError,
+    ScriptWriter,
+    ScriptWriterError,
+)
 
 ENV_TEXT = "\n".join(
     [
@@ -45,11 +52,22 @@ ENV_TEXT = "\n".join(
 def client(tmp_path, monkeypatch) -> TestClient:
     # History is per-deployment state on disk; point it at a temp dir so a test
     # run neither reads nor writes the developer's real output/ folder.
-    monkeypatch.setattr(api, "script_history", type(api.script_history)(tmp_path / "scripts"))
+    store = ScriptHistoryStore(tmp_path / "scripts")
+    monkeypatch.setattr(api, "script_history", store)
+    monkeypatch.setattr(api, "script_writer", ScriptWriter(store))
     client = TestClient(api.app)
     resp = client.post("/config/session-env", json={"env_text": ENV_TEXT})
     assert resp.status_code == 200, resp.text
     return client
+
+
+def _swap_writer(monkeypatch, write) -> None:
+    """A real ScriptWriter over the test's history, with no model behind it.
+
+    Only the generation step is faked, so the history the writer reads and
+    records is the same store the batch route records the operator's rows to.
+    """
+    monkeypatch.setattr(api, "script_writer", ScriptWriter(api.script_history, write=write))
 
 
 def _stub_writer(monkeypatch, captured: dict | None = None):
@@ -64,7 +82,7 @@ def _stub_writer(monkeypatch, captured: dict | None = None):
             for item in items
         ]
 
-    monkeypatch.setattr(api, "write_daily_scripts", fake)
+    _swap_writer(monkeypatch, fake)
 
 
 def test_generate_returns_twelve_drafts_and_starts_nothing(client, monkeypatch) -> None:
@@ -130,7 +148,7 @@ def test_a_failed_generation_surfaces_as_a_bad_gateway(client, monkeypatch) -> N
     def fake(**_kwargs):
         raise ScriptWriterError("Gemini said no")
 
-    monkeypatch.setattr(api, "write_daily_scripts", fake)
+    _swap_writer(monkeypatch, fake)
 
     resp = client.post(
         "/video/scripts/generate",
@@ -138,6 +156,41 @@ def test_a_failed_generation_surfaces_as_a_bad_gateway(client, monkeypatch) -> N
     )
     assert resp.status_code == 502
     assert "Gemini said no" in resp.json()["detail"]
+
+
+def test_an_unrepaired_set_comes_back_with_its_clashes_as_warnings(client, monkeypatch) -> None:
+    """The Video pane shows the twelve and the warnings, so the operator fixes
+    the one clash rather than re-running the day."""
+    def fake(*, items, **_kwargs):
+        raise ScriptRepairError(
+            "still clashing",
+            drafts=[DraftScript(title=i.title, script=f"{i.key} script", key=i.key)
+                    for i in items],
+            violations=[Violation(item_key="Taurus", rule="colour_repeat",
+                                  detail="colour लाल already used today", hard=True)],
+        )
+
+    _swap_writer(monkeypatch, fake)
+
+    resp = client.post(
+        "/video/scripts/generate",
+        data={"brief": "Daily horoscope", "publish_date": "2026-08-17"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["items"]) == len(ZODIAC_SIGNS)
+    assert len(body["warnings"]) == 1 and "Taurus" in body["warnings"][0]
+
+
+def test_an_unknown_item_set_is_refused(client, monkeypatch) -> None:
+    _stub_writer(monkeypatch)
+
+    resp = client.post(
+        "/video/scripts/generate",
+        data={"brief": "Daily horoscope", "publish_date": "2026-08-17", "item_set": "weekly"},
+    )
+    assert resp.status_code == 400
 
 
 # --- reviewed rows into the batch -----------------------------------------

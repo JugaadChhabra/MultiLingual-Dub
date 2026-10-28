@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 
 import google.genai as genai
 from google.genai import types
@@ -22,6 +23,7 @@ from google.genai import types
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
 from services.retry import retry_call
 from services.runtime_config import RuntimeConfig, read_setting, require
+from services.script_history import DraftScript, ScriptHistoryStore
 from services.script_parse import ScriptFacts, parse_script
 from services.script_validate import (
     HISTORY_DAYS,
@@ -121,6 +123,14 @@ class ScriptWriterError(Exception):
     pass
 
 
+class ScriptRequestError(ScriptWriterError):
+    """A request the writer refuses before any model is called.
+
+    Separate from a generation failure because the fix is the operator's — add
+    a brief, pick a real item set — not a retry against Gemini.
+    """
+
+
 class ScriptRepairError(ScriptWriterError):
     """A set that still repeats after its repair budget.
 
@@ -148,22 +158,6 @@ class ScriptRepairError(ScriptWriterError):
         super().__init__(message)
         self.drafts = drafts or []
         self.violations = violations or []
-
-
-@dataclass(frozen=True)
-class DraftScript:
-    """One generated video: what it is called, and what gets spoken.
-
-    ``title`` becomes the NAS filename downstream, so it travels with the script
-    from the moment it is written rather than being derived twice. ``key`` is
-    the item key the model answered under, carried so history can be grouped per
-    item without re-deriving the mapping; it defaults empty because callers that
-    only read a draft have no use for it.
-    """
-
-    title: str
-    script: str
-    key: str = ""
 
 
 @dataclass(frozen=True)
@@ -643,3 +637,105 @@ def _collect(written: object, items: tuple[SetItem, ...]) -> dict[str, str]:
             raise ScriptWriterError(f"model returned no script for {item.key}")
         scripts[item.key] = value.strip()
     return scripts
+
+
+@dataclass(frozen=True)
+class DaySet:
+    """A day's drafts, and what is still wrong with them.
+
+    ``warnings`` is empty for a clean set. It is non-empty only when the repair
+    budget ran out: every draft is present, and the warnings name the clashes
+    the operator has to fix by hand before running.
+    """
+
+    drafts: list[DraftScript]
+    warnings: list[str] = field(default_factory=list)
+
+
+def items_for(item_set: str, title: str | None) -> tuple[SetItem, ...]:
+    """The set a day is written for: the twelve signs, or a one-off of one.
+
+    A one-off video is its own set of one — the operator's file name is both the
+    key the model answers under and the name the render is filed as.
+    """
+    if item_set == "zodiac":
+        return ZODIAC_SIGNS
+    if item_set == "single":
+        name = Path(title or "").stem.replace(" ", "_") or "Script"
+        return (SetItem(key=name, title=name),)
+    raise ScriptRequestError("item_set must be 'zodiac' or 'single'")
+
+
+class ScriptWriter:
+    """Writes a day for a category, and keeps Script history while doing it.
+
+    The one place generation and history meet. A day is read from history in
+    the two shapes the writer needs — prose excerpts for phrasing, per-item facts
+    for the colour, number, area and tag rules — written, then recorded under
+    its day, category and language, replacing any earlier attempt at that day.
+
+    A set whose repair budget ran out is still recorded and returned: the model
+    said it, so tomorrow has to avoid it, and the operator is better served by
+    twelve drafts and a warning than by nothing.
+
+    Settings arrive per call, not at construction, because they are resolved
+    from the requesting operator's session rather than once per process.
+    ``write`` is the generation step; it is a parameter so the HTTP layer can be
+    tested against real history without a model behind it.
+    """
+
+    def __init__(self, history: ScriptHistoryStore, *, write=None) -> None:
+        self._history = history
+        self._write = write or write_daily_scripts
+
+    def write_day(
+        self,
+        *,
+        category: str,
+        language: str,
+        publish_date: str,
+        brief: str,
+        item_set: str,
+        title: str | None = None,
+        settings: ScriptWriterSettings,
+    ) -> DaySet:
+        """Write, record and return one day's set for a category.
+
+        ``item_set`` is ``"zodiac"`` or ``"single"``; it arrives unchecked from
+        the request, and anything else is refused here.
+
+        :raises ScriptRequestError: For an empty brief or an unknown item set.
+        :raises ScriptWriterError: If no model produced a usable set.
+        """
+        if not brief.strip():
+            raise ScriptRequestError(
+                "This category has no script brief. Add one in the category editor."
+            )
+        items = items_for(item_set, title)
+
+        # ``before`` keeps the day being written out of its own history, so a
+        # regeneration is not told to avoid the draft it is replacing.
+        recent = self._history.recent(category=category, language=language, before=publish_date)
+        facts = self._history.facts(category=category, language=language, before=publish_date)
+
+        warnings: list[str] = []
+        try:
+            drafts = self._write(
+                brief=brief,
+                language=language,
+                publish_date=publish_date,
+                items=items,
+                recent=recent,
+                history=facts,
+                settings=settings,
+            )
+        except ScriptRepairError as exc:
+            if not exc.drafts:
+                raise
+            drafts = exc.drafts
+            warnings = [str(v) for v in exc.violations]
+
+        self._history.record(
+            publish_date=publish_date, category=category, language=language, drafts=drafts
+        )
+        return DaySet(drafts=drafts, warnings=warnings)

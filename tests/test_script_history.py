@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from services.script_history import ScriptHistoryStore
-from services.script_writer import DraftScript
+from services.script_history import DraftScript, ScriptHistoryStore
 
 
 def _drafts(*titles: str) -> list[DraftScript]:
