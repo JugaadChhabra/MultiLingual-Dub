@@ -20,13 +20,24 @@
   // A banner always states a cause, an impact and a way out. `raw` is the
   // provider's own words, kept behind a disclosure so it is available for
   // debugging without being the thing the operator reads first.
-  const ICONS = { error: "!", warn: "!", info: "i", ok: "✓" };
+  // ── icons ───────────────────────────────────────────────────────────────
+  // Remix Icon symbols from one sprite, so a glyph is the same shape wherever it
+  // appears and always takes the colour of the text around it. Bump the version
+  // when the sprite changes; the stylesheet caches it like any static asset.
+  const SPRITE = "/static/icons.svg?v=1";
+  const icon = (name, cls = "") =>
+    `<svg class="ri${cls ? " " + cls : ""}" aria-hidden="true"><use href="${SPRITE}#${name}"/></svg>`;
+  // A button's text with its icon in front — textContent would drop the icon.
+  const label = (btn, text, name) => { btn.innerHTML = (name ? icon(name) : "") + esc(text); };
+
+  const ICONS = { error: icon("warning-fill"), warn: icon("alert-fill"),
+                  info: icon("info-fill"), ok: icon("done-fill") };
   function banner(host, { kind = "error", title, detail, raw, actions = [], id }) {
     const el = document.createElement("div");
     el.className = "banner" + (kind === "error" ? "" : " " + kind);
     if (id) el.dataset.id = id;
     el.innerHTML =
-      `<span class="ic" aria-hidden="true">${ICONS[kind] || "!"}</span>` +
+      `<span class="ic" aria-hidden="true">${ICONS[kind] || ICONS.error}</span>` +
       `<span class="tx"><div class="h">${esc(title)}</div>` +
       (detail ? `<div class="d">${detail}</div>` : "") +
       (raw ? `<details class="raw"><summary>Show what the server said</summary><pre>${esc(raw)}</pre></details>` : "") +
@@ -98,10 +109,10 @@
     el.className = "toast " + kind;
     if (id) el.dataset.id = id;
     el.innerHTML =
-      `<span class="ic" aria-hidden="true">${ICONS[kind] || "i"}</span>` +
+      `<span class="ic" aria-hidden="true">${ICONS[kind] || ICONS.info}</span>` +
       `<span class="tx"><span class="h">${esc(title)}</span>` +
       (detail ? `<span class="d">${detail}</span>` : "") + `</span>` +
-      `<button type="button" class="iconbtn x" aria-label="Dismiss">✕</button>`;
+      `<button type="button" class="iconbtn x" aria-label="Dismiss">${icon("close")}</button>`;
     host.appendChild(el);
     // Two frames: adding the class in the same frame as the insert can skip
     // the transition entirely, since no style recalc separates them.
@@ -467,7 +478,7 @@
     return sel;
   }
 
-  window.UI = { $, esc, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
+  window.UI = { $, esc, icon, label, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
                 JOB_ENDED, pollJob, jobProgress, jobEnded, bindJobCancel, resetJobCancel,
                 notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone, langPicker };
 })();

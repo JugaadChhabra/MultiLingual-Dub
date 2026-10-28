@@ -135,13 +135,13 @@
       pen.type = "button"; pen.className = "pen";
       pen.setAttribute("aria-label", `Edit ${c.label} prompts`);
       pen.title = `Edit ${c.label} prompts`;
-      pen.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+      pen.innerHTML = U.icon("edit");
       pen.addEventListener("click", () => openEditor(c.id));
       wrap.append(chip, pen);
       els.cats.appendChild(wrap);
     });
     const add = document.createElement("button");
-    add.type = "button"; add.className = "token add"; add.textContent = "+ New";
+    add.type = "button"; add.className = "token add"; U.label(add, "New", "add");
     add.setAttribute("aria-label", "New prompt category");
     add.addEventListener("click", () => openEditor(null));
     els.cats.appendChild(add);
@@ -324,7 +324,7 @@
     }
     state.excel = file; state.excelProblem = null;
     els.drop.classList.remove("empty"); els.drop.dataset.state = "ok";
-    els.drop.querySelector(".ic").textContent = "✓";
+    els.drop.querySelector(".ic").innerHTML = U.icon("check");
     els.dropTitle.textContent = file.name; els.dropSub.textContent = "Reading…";
     refreshRun();
     try {
@@ -335,7 +335,7 @@
       const headers = (rows[0] || []).map((h) => String(h).trim().toLowerCase());
       if (!headers.includes("script")) {
         state.excelProblem = "Missing column: script";
-        els.drop.dataset.state = "bad"; els.drop.querySelector(".ic").textContent = "!";
+        els.drop.dataset.state = "bad"; els.drop.querySelector(".ic").innerHTML = U.icon("warning");
         els.dropSub.textContent = state.excelProblem;
       } else {
         els.dropSub.textContent = `${Math.max(0, rows.length - 1)} rows · headers ok`;
@@ -374,9 +374,9 @@
   // The button names its consequence: twelve paid renders is worth reading before
   // pressing, and "Generate batch" never said how many.
   function refreshRunLabel() {
-    if (state.mode === "single") { els.run.textContent = "Generate video"; return; }
+    if (state.mode === "single") { U.label(els.run, "Generate video", "play"); return; }
     const n = state.mode === "auto" ? state.drafts.length : 0;
-    els.run.textContent = n ? `Render ${n} video${n === 1 ? "" : "s"}` : "Generate batch";
+    U.label(els.run, n ? `Render ${n} video${n === 1 ? "" : "s"}` : "Generate batch", "play");
   }
 
   function refreshGen() {
@@ -385,7 +385,8 @@
     const zodiac = state.set === "zodiac";
     els.gen.disabled = state.writing || state.running || !brief
       || (!zodiac && !els.autoTitle.value.trim());
-    els.gen.textContent = state.writing ? "Writing…" : state.drafts.length ? "Rewrite scripts" : "Write scripts";
+    U.label(els.gen, state.writing ? "Writing…" : state.drafts.length ? "Rewrite scripts" : "Write scripts",
+      "sparkle");
     els.genSub.textContent = !c ? "Pick a category first"
       : !brief ? `“${c.label}” has no script brief — add one in the category editor`
       : !zodiac && !els.autoTitle.value.trim() ? "Name the file first"
@@ -531,7 +532,7 @@
   function renderDrafts() {
     els.draftsN.textContent = state.drafts.length || "";
     if (!state.drafts.length) {
-      els.drafts.innerHTML = `<div class="empty"><div class="g" aria-hidden="true">✎</div>
+      els.drafts.innerHTML = `<div class="empty">${U.icon("edit", "g")}
         <div class="t">No drafts yet</div>
         <div class="s">Written scripts appear here to read and edit before anything renders</div></div>`;
       return;
@@ -542,8 +543,10 @@
       const el = document.createElement("div");
       el.className = "draft";
       el.innerHTML = `<div class="hd">
+          <span class="i">${i + 1}</span>
           <input type="text" class="fld" maxlength="80" value="${U.esc(draft.video_title)}"
             aria-label="File name for draft ${i + 1}" />
+          <span class="ext">.mp4</span>
           <span class="counter"></span>
         </div>
         <textarea class="area${nat}" maxlength="${MAX_SCRIPT}"

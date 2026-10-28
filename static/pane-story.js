@@ -1,6 +1,7 @@
 /* Story pane — a pasted story, broken into voiceover lines for review, then
-   voiced. Paste → Review → Generate. Nothing before Generate spends
-   text-to-speech credits. */
+   voiced. The story and its lines sit side by side, so the split is read
+   against what was pasted and can be redone without leaving either. Nothing
+   before Generate spends text-to-speech credits. */
 (() => {
   "use strict";
   const U = window.UI, $ = U.$;
@@ -11,7 +12,8 @@
     langs: $("#sLangs"), selN: $("#sSelN"), groups: $("#sGroups"),
     split: $("#sSplit"), msg: $("#sMsg"), live: $("#storyLive"),
     lines: $("#sLines"), lineN: $("#sLineN"), reviewActivity: $("#sReviewActivity"),
-    back: $("#sBack"), download: $("#sDownload"), reviewMsg: $("#sReviewMsg"),
+    actWrap: document.querySelector("#sReview .actwrap"),
+    download: $("#sDownload"), reviewMsg: $("#sReviewMsg"),
     generate: $("#sGenerate"), cancel: $("#sCancel"),
     // the progress block, shaped as U.jobProgress expects
     progress: $("#storyProgress"), clips: $("#spClips"), detail: $("#spDetail"), started: $("#spStarted"),
@@ -26,7 +28,7 @@
   const JOB_KEY = "autodub_story_job";
 
   const SEL = U.langPicker({ tokens: els.langs, groups: els.groups, count: els.selN,
-                             onChange: () => { if (!els.review.hidden) summarise(); } });
+                             onChange: () => summarise() });
 
   // ── paste ────────────────────────────────────────────────────────────────
   // The same rule the server applies; shown live so the operator can see and
@@ -50,7 +52,7 @@
     return null;
   }
   function refreshRun() {
-    if (state.splitting) { els.split.disabled = true; return; }
+    if (state.splitting || state.running) { els.split.disabled = true; return; }
     const why = blocker();
     els.split.disabled = Boolean(why);
     els.msg.textContent = why || "";
@@ -99,32 +101,37 @@
       });
     } finally {
       state.splitting = false;
-      els.split.textContent = "Break into lines";
+      labelSplit();
       els.live.hidden = true;
       window.Shell.setRunning("story", false);
       refreshRun();
     }
   });
 
+  // Once there are lines, the same button redoes the split from the story as
+  // it now stands — the story is still on screen beside them.
+  const labelSplit = () => U.label(els.split, state.lines.length ? "Split again" : "Break into lines", "split");
+
   // ── review ───────────────────────────────────────────────────────────────
   function showReview() {
-    els.paste.hidden = true;
-    els.review.hidden = false;
     els.reviewActivity.textContent = els.activity.value.trim();
+    els.actWrap.hidden = !els.reviewActivity.textContent;
     renderLines();
   }
-  els.back.addEventListener("click", () => {
-    els.review.hidden = true;
-    els.paste.hidden = false;
-    els.text.focus();
-  });
 
   const tagged = (l) => `[${l.emotion}] ${l.text}`.length;
   const fit = (area) => { area.style.height = "auto"; area.style.height = area.scrollHeight + "px"; };
 
   function renderLines() {
     els.lines.innerHTML = "";
-    els.lineN.textContent = state.lines.length;
+    els.lineN.textContent = state.lines.length || "";
+    if (!state.lines.length) {
+      els.lines.innerHTML = `<div class="empty">${U.icon("split", "g")}
+        <div class="t">No lines yet</div>
+        <div class="s">Break the story into lines to read each one and its emotion here</div></div>`;
+      summarise();
+      return;
+    }
     const options = state.emotions.map((e) => `<option value="${U.esc(e)}">${U.esc(e)}</option>`).join("");
     state.lines.forEach((line, i) => {
       const row = document.createElement("div");
@@ -133,8 +140,8 @@
         `<span class="i">${i + 1}</span>` +
         `<textarea class="area" rows="1" aria-label="Line ${i + 1} text"></textarea>` +
         `<select class="fld" aria-label="Line ${i + 1} emotion">${options}</select>` +
-        `<span class="tools"><button type="button" class="btn" data-act="split" title="Split this line at the cursor">Split</button>` +
-        `<button type="button" class="btn" data-act="merge" title="Merge with the next line"${i === state.lines.length - 1 ? " disabled" : ""}>Merge</button></span>`;
+        `<span class="tools"><button type="button" class="btn sm" data-act="split" title="Split this line at the cursor">${U.icon("split")}Split</button>` +
+        `<button type="button" class="btn sm" data-act="merge" title="Merge with the next line"${i === state.lines.length - 1 ? " disabled" : ""}>${U.icon("merge")}Merge</button></span>`;
       const area = row.querySelector("textarea"), pick = row.querySelector("select");
       area.value = line.text;
       pick.value = line.emotion;
@@ -210,7 +217,12 @@
     const problems = [];
     if (empty) problems.push(`${empty} empty line${empty === 1 ? "" : "s"}`);
     if (long) problems.push(`${long} line${long === 1 ? "" : "s"} over ${state.maxLineChars} characters`);
-    if (!state.lines.length) problems.push("no lines");
+    // Before the first split there is nothing to report, only nothing to run.
+    if (!state.lines.length) {
+      if (!state.running) { els.reviewMsg.textContent = ""; els.reviewMsg.classList.remove("err"); }
+      refreshGenerate(true);
+      return;
+    }
     if (!SEL.size) problems.push("pick at least one target language on the story step");
     if (!window.Shell.configured()) problems.push("runtime config is not ready");
     if (!state.running) {
@@ -227,7 +239,8 @@
   function refreshGenerate(blocked) {
     els.cancel.hidden = !state.running;
     els.generate.disabled = state.running || state.splitting || blocked;
-    els.back.disabled = state.running;
+    els.download.disabled = state.running || !state.lines.length;
+    els.split.disabled = state.running || state.splitting || Boolean(blocker());
   }
 
   els.generate.addEventListener("click", generate);
@@ -330,7 +343,6 @@
       if (U.JOB_ENDED.includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.jobId = id; state.targets = [...SEL];
       els.live.hidden = false;
-      // the cancel button lives on the review step
       showReview();
       els.reviewMsg.textContent = "Running…"; els.reviewMsg.classList.remove("err");
       window.Shell.setRunning("story", true, "Story audio running");
@@ -344,7 +356,7 @@
   // while the pane is hidden.
   function fitLines() { els.lines.querySelectorAll("textarea").forEach(fit); }
 
-  refreshRun(); reattach();
+  labelSplit(); renderLines(); refreshRun(); reattach();
   window.PaneStory = { refreshRun, fitLines, isSplitting: () => state.splitting,
                        isRunning: () => state.running };
 })();

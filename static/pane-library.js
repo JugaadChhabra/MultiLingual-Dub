@@ -137,7 +137,7 @@
     els.more.hidden = items.length >= total;
 
     if (!items.length) {
-      els.list.innerHTML = `<div class="empty"><div class="g" aria-hidden="true">▦</div>
+      els.list.innerHTML = `<div class="empty">${U.icon("library", "g")}
         <div class="t">${query || filter ? "Nothing matches" : "No renders yet"}</div>
         <div class="s">${query || filter ? "Try another filter or search." : "Videos rendered on HeyGen appear here."}</div></div>`;
       return;

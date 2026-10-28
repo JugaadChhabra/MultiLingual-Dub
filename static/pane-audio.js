@@ -15,7 +15,7 @@
     upN: $("#apUpN"), doneN: $("#apDoneN"), badN: $("#apBadN"), queueN: $("#apQueueN"),
     drop: $("#aDrop"), file: $("#aFile"), dropTitle: $("#aDropTitle"), dropSub: $("#aDropSub"),
     teach: $("#aTeach"), append: $("#aAppend"), langs: $("#aLangs"), selN: $("#aSelN"),
-    groups: $("#aGroups"), run: $("#aRun"), cancel: $("#aCancel"), msg: $("#aMsg"),
+    groups: $("#aGroups"), run: $("#aRun"), cancel: $("#aCancel"), msg: $("#aMsg"), sum: $("#aClips"),
     live: $("#audioLive"),
   };
 
@@ -62,7 +62,7 @@
     els.drop.classList.toggle("empty", kind === "empty");
     els.dropTitle.textContent = title;
     els.dropSub.textContent = sub;
-    els.drop.querySelector(".ic").textContent = kind === "ok" ? "✓" : kind === "bad" ? "!" : "▤";
+    els.drop.querySelector(".ic").innerHTML = U.icon(kind === "ok" ? "check" : kind === "bad" ? "warning" : "sheet");
   }
 
   // ── what blocks a run, in the order it should be fixed ───────────────────
@@ -78,10 +78,15 @@
     els.cancel.hidden = true;
     const why = blocker();
     els.run.disabled = Boolean(why);
-    els.run.textContent = "Run pipeline";
+    U.label(els.run, "Run pipeline", "play");
+    // What the run will make, said on the card that holds the button that
+    // makes it — the count is the cost, so it is the biggest thing there.
+    const clips = !why && state.rows && SEL.size ? state.rows * SEL.size : 0;
+    els.sum.hidden = !clips;
+    els.sum.textContent = clips ? `${clips} clips` : "";
     if (!els.msg.classList.contains("err")) {
-      els.msg.textContent = why || (state.rows && SEL.size
-        ? `${state.rows} rows × ${SEL.size} languages = ${state.rows * SEL.size} clips`
+      els.msg.textContent = why || (clips
+        ? `${state.rows} rows × ${SEL.size} language${SEL.size === 1 ? "" : "s"} → S3`
         : "");
     }
   }
