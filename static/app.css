@@ -255,15 +255,11 @@ select.fld{padding-right:4px;}
 .token.add{background:none;box-shadow:inset 0 0 0 1px var(--label4);color:var(--label2);}
 .token.add:hover{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent-ink);}
 
-/* Tiles: the same tokens laid out as a grid, English name over native script,
-   both always shown — there is room for both, so nothing needs to morph. */
+/* Tiles: the same tokens laid out as a grid, with the same English-to-native
+   morph as the pills; the tick on the right marks what is picked. */
 .tokens.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s2);}
 .tokens.tiles .token{height:auto;justify-content:flex-start;padding:10px 12px;border-radius:var(--r-lg);
   background:var(--card);box-shadow:var(--shadow-1);text-align:left;position:relative;}
-.tokens.tiles .token .morph{display:flex;flex-direction:column;align-items:flex-start;gap:2px;}
-.tokens.tiles .token .morph > span{grid-area:auto;opacity:1;transform:none;filter:none;transition:none;}
-.tokens.tiles .token .nat{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--label2);
-  font-weight:var(--w-regular);}
 .tokens.tiles .token::after{content:"";position:absolute;right:12px;top:50%;width:16px;height:16px;
   margin-top:-8px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--label4);}
 .tokens.tiles .token[aria-pressed="true"]{background:var(--card);color:var(--label);
