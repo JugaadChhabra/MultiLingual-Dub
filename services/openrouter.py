@@ -2,8 +2,9 @@
 
 OpenRouter puts many providers' models behind one OpenAI-shaped endpoint and one
 credit balance, so a model can be swapped from .env without new code or a new
-account. Only what the script writer needs is here — a system prompt, a user
-prompt, and a JSON schema the reply has to satisfy.
+account. Only what its callers need is here — a system prompt, a user prompt,
+and a JSON schema the reply has to satisfy. The script writer, translation QC
+and story mode all go through it.
 """
 from __future__ import annotations
 
@@ -43,11 +44,14 @@ class OpenRouterClient:
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    def complete_json(self, *, model: str, system: str, prompt: str, schema: dict) -> str:
+    def complete_json(
+        self, *, model: str, system: str, prompt: str, schema: dict, name: str = "scripts"
+    ) -> str:
         """The reply text, which the schema constrains to a JSON object.
 
         ``require_parameters`` keeps OpenRouter from routing to a provider for
         this model that would silently ignore the schema and return free text.
+        ``name`` labels the schema for the provider and has no other effect.
         """
         response = httpx.post(
             API_URL,
@@ -60,7 +64,7 @@ class OpenRouterClient:
                 ],
                 "response_format": {
                     "type": "json_schema",
-                    "json_schema": {"name": "scripts", "strict": True, "schema": schema},
+                    "json_schema": {"name": name, "strict": True, "schema": schema},
                 },
                 "provider": {"require_parameters": True},
             },

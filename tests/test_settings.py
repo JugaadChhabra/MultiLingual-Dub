@@ -27,7 +27,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FULL_ENV = {
     "ELEVEN_LABS": "eleven",
     "SARVAM_API": "sarvam",
-    "GEMINI_API_KEY": "gemini",
     "OPENROUTER_API_KEY": "openrouter",
     "HEYGEN_ISHWARI": "heygen",
     "AWS_ACCESS_KEY": "ak",
@@ -40,7 +39,7 @@ FULL_ENV = {
 
 CONFIG_KEYS = set(FULL_ENV) | {
     "DESI_VOCAL_VOICE", "ENGLISH_VOICE", "US_VOICE_ID", "ISHWARI_VOICE_ID",
-    "AWS_ENDPOINT_URL", "GEMINI_QC_MODELS", "BATCH_ENABLE_S3_UPLOAD",
+    "AWS_ENDPOINT_URL", "BATCH_ENABLE_S3_UPLOAD",
     "BATCH_MAX_LANGUAGE_PARALLELISM", "HEYGEN_BATCH_CONCURRENCY",
     "NAS_MODE", "NAS_ROOT_PATH", "NAS_SERVER", "NAS_SHARE", "NAS_PORT",
     "NAS_USERNAME", "NAS_PASSWORD", "NAS_DOMAIN", "US_CHARACTER_NAS_ROOT_PATH",
@@ -99,9 +98,9 @@ def test_s3_reports_its_own_error_type(clean_env) -> None:
 
 def test_resolving_everything_fails_when_a_key_is_absent(clean_env) -> None:
     env = dict(FULL_ENV)
-    del env["GEMINI_API_KEY"]
+    del env["OPENROUTER_API_KEY"]
 
-    with pytest.raises(MissingSettingError, match="GEMINI_API_KEY"):
+    with pytest.raises(MissingSettingError, match="OPENROUTER_API_KEY"):
         _resolve(Settings, clean_env, env)
 
 
@@ -110,7 +109,7 @@ def test_a_complete_env_resolves(clean_env) -> None:
 
     assert settings.s3.bucket == "bucket"
     assert settings.eleven.api_key == "eleven"
-    assert settings.qc.api_key == "gemini"
+    assert settings.qc.api_key == "openrouter"
     assert settings.sarvam.api_key == "sarvam"
 
 

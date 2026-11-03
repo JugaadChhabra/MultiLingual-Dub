@@ -21,7 +21,7 @@ if [ ! -f .env ]; then
     cat > .env <<'EOF'
 # Fill all required values before running start.sh again.
 SARVAM_API=
-GEMINI_API_KEY=
+OPENROUTER_API_KEY=
 AWS_ACCESS_KEY=
 AWS_SECRET_KEY=
 AWS_BUCKET=
@@ -36,7 +36,7 @@ EOF
     echo ""
     echo "Edit .env and add all required keys:"
     echo "  - SARVAM_API"
-    echo "  - GEMINI_API_KEY"
+    echo "  - OPENROUTER_API_KEY"
     echo "  - AWS_ACCESS_KEY"
     echo "  - AWS_SECRET_KEY"
     echo "  - AWS_BUCKET"
@@ -53,7 +53,7 @@ fi
 
 required_keys=(
   "SARVAM_API"
-  "GEMINI_API_KEY"
+  "OPENROUTER_API_KEY"
   "AWS_ACCESS_KEY"
   "AWS_SECRET_KEY"
   "AWS_BUCKET"

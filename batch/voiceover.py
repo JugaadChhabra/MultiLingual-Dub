@@ -12,8 +12,8 @@ turns that text into audio. ``voice_row`` is simply one followed by the other.
 ``qc_row`` is the QC half on its own, for drafts translated earlier.
 The split lets a caller fix every row's text before any of it is spoken.
 
-QC is called ONCE for the whole row rather than per language: Gemini prices
-per request and the system instruction is identical across a row's languages,
+QC is called ONCE for the whole row rather than per language: the system
+instruction is identical across a row's languages and is billed on every call,
 so batching them is a real cost difference on a sheet with hundreds of rows.
 """
 from __future__ import annotations
@@ -155,7 +155,7 @@ async def translate_row(
 
     Returns (text by language, failures). A language appears in exactly one of
     the two. With ``qc=False`` the raw translation drafts come back untouched and
-    Gemini is never called — for a caller that fixes the text some other way.
+    QC is never called — for a caller that fixes the text some other way.
     Never raises for a per-language problem.
     """
     failures: list[TaskFailure] = []
@@ -201,7 +201,7 @@ async def qc_row(
     *,
     log_prefix: str = "",
 ) -> tuple[dict[str, str], list[TaskFailure]]:
-    """QC one row's translation drafts, every language in a single Gemini call.
+    """QC one row's translation drafts, every language in a single model call.
 
     Returns (text by language, failures); a language appears in exactly one of
     the two, and a failure here is always a 'qc' one. Never raises for a

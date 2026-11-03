@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from api import routes as api
 from api.routers import story as story_routes
-from services.story import MAX_LINE_CHARS, STORY_EMOTIONS, StoryGeminiError, StoryLine, StorySplitError
+from services.story import MAX_LINE_CHARS, STORY_EMOTIONS, StoryLine, StoryModelError, StorySplitError
 from tests.fakes import use_env
 from tests.test_api_batch import ENV_TEXT
 
@@ -43,13 +43,13 @@ def test_split_returns_the_activity_name_and_lines(monkeypatch) -> None:
     ]
     assert body["emotions"] == STORY_EMOTIONS
     assert body["max_line_chars"] == MAX_LINE_CHARS
-    # the .env's Gemini key reached the split
-    assert seen == {"text": "Hi there! Moti barked.", "api_key": "test-google"}
+    # the .env's OpenRouter key reached the split
+    assert seen == {"text": "Hi there! Moti barked.", "api_key": "test-openrouter"}
 
 
 def test_split_refuses_empty_text(monkeypatch) -> None:
     def fake_split(text, *, settings):
-        raise AssertionError("Gemini must not be called for an empty story")
+        raise AssertionError("No model may be called for an empty story")
 
     monkeypatch.setattr(story_routes, "split_story", fake_split)
 
@@ -71,9 +71,9 @@ def test_split_maps_a_rejected_split_to_400(monkeypatch) -> None:
     assert "too long" in response.json()["detail"]
 
 
-def test_split_maps_gemini_being_down_to_502(monkeypatch) -> None:
+def test_split_maps_the_model_being_down_to_502(monkeypatch) -> None:
     def fake_split(text, *, settings):
-        raise StoryGeminiError("Gemini story split failed after 3 models")
+        raise StoryModelError("Story split failed after 2 models")
 
     monkeypatch.setattr(story_routes, "split_story", fake_split)
 

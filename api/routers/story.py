@@ -23,7 +23,7 @@ from services.settings import Settings
 from services.story import (
     MAX_LINE_CHARS,
     STORY_EMOTIONS,
-    StoryGeminiError,
+    StoryModelError,
     StoryLine,
     StorySplitError,
     activity_name as story_activity_name,
@@ -37,7 +37,7 @@ router = APIRouter()
 @router.post("/batch/story/split")
 async def split_story_route(payload: StorySplitRequest):
     """Break a pasted story into voiceover lines with emotions, for review.
-    Synchronous: one Gemini call (two if the first split fails validation)."""
+    Synchronous: one model call (two if the first split fails validation)."""
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail="Paste a story first: the text is empty")
     try:
@@ -49,7 +49,7 @@ async def split_story_route(payload: StorySplitRequest):
         lines = await asyncio.to_thread(split_story, payload.text, settings=settings)
     except StorySplitError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except StoryGeminiError as exc:
+    except StoryModelError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return {

@@ -115,7 +115,7 @@ are not.
 `video_prompt` and `motion_prompt`, which are how they look and move. The input
 to the script writer. A category without one cannot generate.
 
-**Script writer** — Gemini authoring a day's scripts from a brief, a date and an
+**Script writer** — a model (via OpenRouter) authoring a day's scripts from a brief, a date and an
 item list. The author, not a translator or an extractor: nothing is fetched and
 no source text exists. Twelve signs come back from one call so they can be varied
 against each other.
@@ -217,7 +217,7 @@ translating the surrounding explanation, for English-learning content.
 zips instead of creating fresh ones. Requires the folders to already exist.
 
 **Story** — a pasted plain-text story that becomes one activity, instead of a
-sheet. `services/story.py` owns it. `split_story` has Gemini break it into
+sheet. `services/story.py` owns it. `split_story` has a model (via OpenRouter) break it into
 *story lines*, and accepts the split only if joining the lines gives back the
 operator's wording (whitespace and quote style aside), every emotion is in
 `STORY_EMOTIONS`, and no line is over `MAX_LINE_CHARS` with its emotion tag. A
@@ -232,14 +232,14 @@ the operator reviews it.
 titled the activity name plus its 1-based line number. Unlike an Excel batch it
 works phase by phase: translate every row into drafts with no per-row QC, then
 one *story fix* per language, then speak each row with its fixed text. English
-targets get the source lines verbatim — no translation, no Gemini. Shares the
+targets get the source lines verbatim — no translation, no story fix. Shares the
 Excel batch's tally, activity buffer, retry-then-upload tail (`_close_activity`)
 and job endpoints; its retry pass re-speaks a failed voiceover from its fixed
 text and re-QCs a failed fallback from its draft, re-translating only a failed
 translation. Being one activity, nothing uploads until
 the end, so a cancel while speaking uploads the clips already spoken first.
 
-**Story fix** — one Gemini call per language that sees every line's English,
+**Story fix** — one model call per language that sees every line's English,
 emotion and draft at once, and rewrites the drafts so the story sounds told, not
 translated (`fix_story`). Separate from per-row QC: its own prompt sets the
 register (Hindi: everyday spoken, as a parent tells a bedtime story, common

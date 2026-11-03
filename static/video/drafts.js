@@ -58,7 +58,7 @@
 
   // Drafts survive a reload. They are the operator's unsaved work — twelve
   // scripts they may have spent ten minutes editing — and losing them to a
-  // refresh cost a full Gemini run and every edit made since.
+  // refresh cost a full script-writer run and every edit made since.
   const today = () => new Date().toISOString().slice(0, 10);
   function saveDrafts() {
     try {
@@ -131,7 +131,7 @@
     fd.append("publish_date", els.date.value);
 
     try {
-      // A dozen scripts in one Gemini call; slower than a normal request, so the
+      // A dozen scripts in one model call; slower than a normal request, so the
       // timeout is generous rather than the shared default.
       const r = await U.fetchT("/video/scripts/generate", { method: "POST", body: fd }, 180000);
       const body = await r.json().catch(() => ({}));

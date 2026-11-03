@@ -13,8 +13,7 @@ touch .env
 Fill all required keys in `.env`:
 
 - `SARVAM_API`
-- `GEMINI_API_KEY`
-- `OPENROUTER_API_KEY` (script writer)
+- `OPENROUTER_API_KEY` (script writer, translation QC, story mode)
 - `AWS_ACCESS_KEY`
 - `AWS_SECRET_KEY`
 - `AWS_BUCKET`
@@ -38,7 +37,7 @@ Open `http://localhost:8080`.
 
 - Existing Indian language targets (`bn-IN`, `en-IN`, `gu-IN`, `hi-IN`, `kn-IN`, `ml-IN`, `mr-IN`, `od-IN`, `pa-IN`, `ta-IN`, `te-IN`) continue to use Sarvam.
 - Additional foreign language targets (`fr`, `de`, `es`, `ru`, `pt`) use in-process translation inside the same Content Hub service.
-- QC (Gemini), batching, and audio generation flow are unchanged for all targets.
+- QC (via OpenRouter), batching, and audio generation flow are unchanged for all targets.
 
 ## Configuration
 

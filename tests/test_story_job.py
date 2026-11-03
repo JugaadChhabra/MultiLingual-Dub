@@ -15,7 +15,7 @@ ACTIVITY = "thestreamstory"
 
 
 class Fakes:
-    """Translation, Gemini (story fix and per-row QC), TTS and S3, all faked."""
+    """Translation, the model (story fix and per-row QC), TTS and S3, all faked."""
 
     def __init__(self, monkeypatch, *, fix=None, on_translate=None):
         self.translations: list[tuple[str, str]] = []
@@ -125,7 +125,7 @@ def test_one_story_fix_per_non_english_language_seeing_the_whole_story(monkeypat
     assert fakes.qc_calls == []
 
 
-def test_english_is_voiced_verbatim_without_translation_or_gemini(monkeypatch) -> None:
+def test_english_is_voiced_verbatim_without_translation_or_story_fix(monkeypatch) -> None:
     fakes = Fakes(monkeypatch)
 
     state = _run(["en-IN"])
@@ -144,7 +144,7 @@ def test_english_is_voiced_verbatim_without_translation_or_gemini(monkeypatch) -
 def test_a_failed_story_fix_falls_back_to_per_row_qc_for_that_language(monkeypatch) -> None:
     def fix(title, lines, drafts, language, *, settings):
         if language == "ta-IN":
-            raise RuntimeError("gemini down")
+            raise RuntimeError("model down")
         return {line_id: f"fixed:{line.text}" for line_id, line in lines.items()}
 
     fakes = Fakes(monkeypatch, fix=fix)
@@ -286,7 +286,7 @@ def test_a_failed_fallback_qc_is_retried_from_the_draft_without_re_translating(m
         calls["n"] += 1
         fakes.qc_calls.append((original_text, dict(translations)))
         if calls["n"] == 1:
-            raise RuntimeError("gemini down")
+            raise RuntimeError("model down")
         return {language: f"qc:{text}" for language, text in translations.items()}
 
     monkeypatch.setattr("batch.voiceover.qc_translations_batch", flaky_qc)

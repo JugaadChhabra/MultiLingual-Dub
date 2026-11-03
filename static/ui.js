@@ -308,7 +308,7 @@
         : `Translating <small>line ${done} of ${of}</small>`;
       setBar(els, { total: of, uploaded: 0, rendered: done, failed: 0, live: true });
       els.detail.textContent = fixing
-        ? "Step 2 of 3 · Gemini reads the whole story per language; voicing starts next"
+        ? "Step 2 of 3 · the model reads the whole story per language; voicing starts next"
         : "Step 1 of 3 · then the whole-story rewrite, then voicing";
       return;
     }

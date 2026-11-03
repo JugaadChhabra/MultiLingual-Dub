@@ -1,5 +1,6 @@
 from services import qc
 from services.qc import QCSettings
+from tests.fakes import patch_openrouter
 
 
 def test_qc_model_fallback(monkeypatch) -> None:
@@ -23,11 +24,7 @@ def test_qc_model_fallback(monkeypatch) -> None:
                 raise RuntimeError("429 rate limit")
             return FakeResponse('{"hi-IN": "namaste"}')
 
-    class FakeClient:
-        def __init__(self, api_key: str):
-            self.models = FakeModels()
-
-    monkeypatch.setattr("services.qc.genai.Client", FakeClient)
+    patch_openrouter(monkeypatch, "services.qc.OpenRouterClient", FakeModels)
 
     result = qc.qc_translations_batch(
         "hello",
@@ -60,11 +57,7 @@ def test_qc_prompt_emphasizes_no_unnecessary_english_in_indic_outputs(monkeypatc
             captured_prompt["system"] = getattr(config, "system_instruction", "") or ""
             return FakeResponse('{"hi-IN": "योग को ५ बनाओ"}')
 
-    class FakeClient:
-        def __init__(self, api_key: str):
-            self.models = FakeModels()
-
-    monkeypatch.setattr("services.qc.genai.Client", FakeClient)
+    patch_openrouter(monkeypatch, "services.qc.OpenRouterClient", FakeModels)
 
     result = qc.qc_translations_batch(
         "Make the sum 5",
@@ -78,3 +71,21 @@ def test_qc_prompt_emphasizes_no_unnecessary_english_in_indic_outputs(monkeypatc
     assert "Do NOT keep unnecessary English (Latin-script) words." in prompt
     assert "If both localized and English forms of the same term appear together" in prompt
     assert "For English targets (en-*), keep fluent English and do not transliterate." in prompt
+
+
+def test_qc_reply_is_held_to_the_rows_language_keys(monkeypatch) -> None:
+    monkeypatch.setenv("API_RETRY_MAX_ATTEMPTS", "1")
+    settings = QCSettings(api_key="test-key", models=["model-a"], enabled=True)
+    seen: dict = {}
+
+    class FakeModels:
+        def generate_content(self, model: str, contents: str, config=None):
+            seen["schema"] = config.response_schema
+            return type("R", (), {"text": '{"hi-IN": "a", "ta-IN": "b"}'})()
+
+    patch_openrouter(monkeypatch, "services.qc.OpenRouterClient", FakeModels)
+
+    qc.qc_translations_batch("hi", {"hi-IN": "x", "ta-IN": "y"}, ["hi-IN", "ta-IN"], settings=settings)
+
+    assert seen["schema"]["required"] == ["hi-IN", "ta-IN"]
+    assert seen["schema"]["properties"]["ta-IN"] == {"type": "string"}

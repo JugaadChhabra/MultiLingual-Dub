@@ -15,6 +15,8 @@ from services.story import (
     split_story,
 )
 
+from tests.fakes import patch_openrouter
+
 SHEET = Path(__file__).resolve().parent.parent / "the_boy_who_followed_the_stream_voiceoversheet.xlsx"
 
 
@@ -35,7 +37,7 @@ def _reply(lines: list[tuple[str, str]]) -> str:
     return json.dumps({"lines": [{"text": t, "emotion": e} for t, e in lines]})
 
 
-class FakeGemini:
+class FakeModel:
     """Hands out one queued reply per call; records what was asked."""
 
     def __init__(self, monkeypatch, replies: list[str]):
@@ -53,35 +55,33 @@ class FakeGemini:
                     "model": model,
                     "contents": contents,
                     "system": getattr(config, "system_instruction", "") or "",
+                    "schema": getattr(config, "response_schema", None),
                 })
                 return FakeResponse(fake.replies.pop(0))
 
-        class FakeClient:
-            def __init__(self, api_key: str):
-                self.models = FakeModels()
-
         monkeypatch.setenv("API_RETRY_MAX_ATTEMPTS", "1")
-        monkeypatch.setattr("services.story.genai.Client", FakeClient)
+        monkeypatch.setattr("services.story.STORY_MODELS", ["model-a", "model-b"])
+        patch_openrouter(monkeypatch, "services.story.OpenRouterClient", FakeModels)
 
 
 def test_happy_split_returns_the_lines_and_emotions(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [_reply(REFERENCE)])
+    model = FakeModel(monkeypatch, [_reply(REFERENCE)])
 
     lines = split_story(STORY, settings=SETTINGS)
 
     assert lines == [StoryLine(text=t, emotion=e) for t, e in REFERENCE]
-    assert len(gemini.calls) == 1
-    # the story goes to Gemini, and the allowed emotions are spelled out for it
-    assert "Moti wagged his tail and barked." in gemini.calls[0]["contents"]
+    assert len(model.calls) == 1
+    # the story goes to the model, and the allowed emotions are spelled out for it
+    assert "Moti wagged his tail and barked." in model.calls[0]["contents"]
     for emotion in STORY_EMOTIONS:
-        assert emotion in gemini.calls[0]["system"]
+        assert emotion in model.calls[0]["system"]
 
 
 def test_quote_style_and_whitespace_do_not_count_as_changed_wording(monkeypatch) -> None:
-    # Gemini straightens the curly apostrophe in "Let’s" and the source has
+    # The model straightens the curly apostrophe in "Let’s" and the source has
     # stray line breaks; neither is a change to what gets voiced.
     source = "Hi there!   Let’s follow Kiran.\n\n“Moti, look,” said Kiran."
-    FakeGemini(monkeypatch, [_reply([
+    FakeModel(monkeypatch, [_reply([
         ("Hi there! Let's follow Kiran.", "Cheerful"),
         ('"Moti, look," said Kiran.', "Narrative"),
     ])])
@@ -93,13 +93,13 @@ def test_quote_style_and_whitespace_do_not_count_as_changed_wording(monkeypatch)
 
 def test_emotion_case_and_typography_are_not_held_against_the_split(monkeypatch) -> None:
     source = "Moti barked… and ran."
-    FakeGemini(monkeypatch, [_reply([("Moti barked... and ran.", "narrative")])])
+    FakeModel(monkeypatch, [_reply([("Moti barked... and ran.", "narrative")])])
 
     assert split_story(source, settings=SETTINGS) == [StoryLine("Moti barked... and ran.", "Narrative")]
 
 
 def test_a_model_failure_falls_back_to_the_next_model(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [_reply(REFERENCE)])
+    fake = FakeModel(monkeypatch, [_reply(REFERENCE)])
     calls: list[str] = []
 
     class FlakyModels:
@@ -107,13 +107,9 @@ def test_a_model_failure_falls_back_to_the_next_model(monkeypatch) -> None:
             calls.append(model)
             if model == "model-a":
                 raise RuntimeError("429 rate limit")
-            return type("R", (), {"text": gemini.replies.pop(0)})()
+            return type("R", (), {"text": fake.replies.pop(0)})()
 
-    class FlakyClient:
-        def __init__(self, api_key: str):
-            self.models = FlakyModels()
-
-    monkeypatch.setattr("services.story.genai.Client", FlakyClient)
+    patch_openrouter(monkeypatch, "services.story.OpenRouterClient", FlakyModels)
 
     assert len(split_story(STORY, settings=SETTINGS)) == len(REFERENCE)
     assert calls == ["model-a", "model-b"]
@@ -122,28 +118,28 @@ def test_a_model_failure_falls_back_to_the_next_model(monkeypatch) -> None:
 def test_changed_wording_is_retried_once_then_rejected(monkeypatch) -> None:
     reworded = list(REFERENCE)
     reworded[6] = ("Moti wagged his tail and barked happily.", "Narrative")
-    gemini = FakeGemini(monkeypatch, [_reply(reworded), _reply(reworded)])
+    model = FakeModel(monkeypatch, [_reply(reworded), _reply(reworded)])
 
     with pytest.raises(StorySplitError, match="wording"):
         split_story(STORY, settings=SETTINGS)
 
-    assert len(gemini.calls) == 2
+    assert len(model.calls) == 2
 
 
 def test_a_bad_first_reply_is_recovered_by_the_retry(monkeypatch) -> None:
     dropped = REFERENCE[:-1]
-    gemini = FakeGemini(monkeypatch, [_reply(dropped), _reply(REFERENCE)])
+    model = FakeModel(monkeypatch, [_reply(dropped), _reply(REFERENCE)])
 
     lines = split_story(STORY, settings=SETTINGS)
 
     assert len(lines) == len(REFERENCE)
-    assert len(gemini.calls) == 2
+    assert len(model.calls) == 2
 
 
 def test_unknown_emotion_is_rejected(monkeypatch) -> None:
     bad = list(REFERENCE)
     bad[2] = (bad[2][0], "Melancholic")
-    FakeGemini(monkeypatch, [_reply(bad), _reply(bad)])
+    FakeModel(monkeypatch, [_reply(bad), _reply(bad)])
 
     with pytest.raises(StorySplitError, match="Melancholic"):
         split_story(STORY, settings=SETTINGS)
@@ -154,7 +150,7 @@ def test_a_line_over_the_cap_is_rejected(monkeypatch) -> None:
     # length rule can catch it.
     sentence = "The stream ran on and on past the trees. "
     source = (sentence * (MAX_LINE_CHARS // len(sentence) + 1)).strip()
-    FakeGemini(monkeypatch, [_reply([(source, "Narrative")])] * 2)
+    FakeModel(monkeypatch, [_reply([(source, "Narrative")])] * 2)
 
     with pytest.raises(StorySplitError, match=str(MAX_LINE_CHARS)):
         split_story(source, settings=SETTINGS)
@@ -169,43 +165,43 @@ def test_the_cap_counts_the_emotion_tag() -> None:
 def test_a_story_split_into_too_many_lines_is_refused(monkeypatch) -> None:
     words = [f"Word{i}." for i in range(MAX_STORY_LINES + 1)]
     source = " ".join(words)
-    gemini = FakeGemini(monkeypatch, [_reply([(w, "Narrative") for w in words])] * 2)
+    model = FakeModel(monkeypatch, [_reply([(w, "Narrative") for w in words])] * 2)
 
     with pytest.raises(StorySplitError, match="too long"):
         split_story(source, settings=SETTINGS)
 
     # an over-split is a bad split like any other, so it gets the retry too
-    assert len(gemini.calls) == 2
+    assert len(model.calls) == 2
 
 
-def test_a_story_too_big_to_fit_is_refused_without_calling_gemini(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [])
+def test_a_story_too_big_to_fit_is_refused_without_calling_a_model(monkeypatch) -> None:
+    model = FakeModel(monkeypatch, [])
     source = "word " * (MAX_STORY_LINES * MAX_LINE_CHARS // 5 + 1)
 
     with pytest.raises(StorySplitError, match="too long"):
         split_story(source, settings=SETTINGS)
 
-    assert gemini.calls == []
+    assert model.calls == []
 
 
 def test_empty_text_is_refused(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [])
+    model = FakeModel(monkeypatch, [])
 
     with pytest.raises(StorySplitError):
         split_story("   \n ", settings=SETTINGS)
 
-    assert gemini.calls == []
+    assert model.calls == []
 
 
 def test_reply_that_is_not_json_is_retried_then_rejected(monkeypatch) -> None:
-    FakeGemini(monkeypatch, ["Sure! Here are your lines:", "```json\nnope\n```"])
+    FakeModel(monkeypatch, ["Sure! Here are your lines:", "```json\nnope\n```"])
 
     with pytest.raises(StorySplitError):
         split_story(STORY, settings=SETTINGS)
 
 
 def test_reply_in_a_code_fence_is_accepted(monkeypatch) -> None:
-    FakeGemini(monkeypatch, ["```json\n" + _reply(REFERENCE) + "\n```"])
+    FakeModel(monkeypatch, ["```json\n" + _reply(REFERENCE) + "\n```"])
 
     assert len(split_story(STORY, settings=SETTINGS)) == len(REFERENCE)
 
@@ -225,11 +221,11 @@ FIX_DRAFTS = {"1": "किरण ने मोती को बुलाया�
 
 
 def test_fix_prompt_carries_the_hindi_register_and_every_line_id(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [json.dumps({"1": "किरण ने मोती को आवाज़ दी।", "2": "मोती भौंकने लगा।"})])
+    model = FakeModel(monkeypatch, [json.dumps({"1": "किरण ने मोती को आवाज़ दी।", "2": "मोती भौंकने लगा।"})])
 
     story.fix_story("The stream", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)
 
-    [call] = gemini.calls
+    [call] = model.calls
     assert "parent tells a bedtime story" in call["system"]
     assert "स्कूल" in call["system"] and "बस" in call["system"]
     # per-story data goes in contents, not the system prompt
@@ -239,21 +235,24 @@ def test_fix_prompt_carries_the_hindi_register_and_every_line_id(monkeypatch) ->
     assert "The stream" in call["contents"]
     # QC's "no unnecessary English" rule does not carry over: loanwords stay
     assert "unnecessary English" not in call["system"]
+    # the reply is held to one string per line id, and nothing else
+    assert call["schema"]["required"] == ["1", "2"]
+    assert call["schema"]["additionalProperties"] is False
 
 
 def test_fix_prompt_for_another_language_uses_everyday_register(monkeypatch) -> None:
-    gemini = FakeGemini(monkeypatch, [json.dumps({"1": "a", "2": "b"})])
+    model = FakeModel(monkeypatch, [json.dumps({"1": "a", "2": "b"})])
 
     story.fix_story("T", FIX_LINES, FIX_DRAFTS, "ta-IN", settings=SETTINGS)
 
-    system = gemini.calls[0]["system"]
+    system = model.calls[0]["system"]
     assert "Everyday spoken Tamil" in system
     assert "bedtime" not in system
 
 
 def test_fix_reply_is_parsed_into_a_mapping_keyed_by_line_id(monkeypatch) -> None:
     reply = "```json\n" + json.dumps({"1": " किरण ने आवाज़ दी। ", "2": "मोती भौंकने लगा।", "9": "stray"}) + "\n```"
-    FakeGemini(monkeypatch, [reply])
+    FakeModel(monkeypatch, [reply])
 
     fixed = story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)
 
@@ -262,13 +261,13 @@ def test_fix_reply_is_parsed_into_a_mapping_keyed_by_line_id(monkeypatch) -> Non
 
 
 def test_fix_reply_missing_or_empty_ids_leaves_them_out(monkeypatch) -> None:
-    FakeGemini(monkeypatch, [json.dumps({"1": "  "})])
+    FakeModel(monkeypatch, [json.dumps({"1": "  "})])
 
     assert story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS) == {}
 
 
 def test_fix_that_no_model_can_answer_raises(monkeypatch) -> None:
-    FakeGemini(monkeypatch, ["not json", "still not json"])
+    FakeModel(monkeypatch, ["not json", "still not json"])
 
     with pytest.raises(story.StoryFixError):
         story.fix_story("T", FIX_LINES, FIX_DRAFTS, "hi-IN", settings=SETTINGS)

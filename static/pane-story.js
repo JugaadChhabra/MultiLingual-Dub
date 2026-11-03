@@ -64,13 +64,13 @@
     if (blocker() || state.splitting) return;
     state.splitting = true;
     U.clearBanners(els.banners);
-    say("Gemini is reading the story…");
+    say("Reading the story…");
     els.split.innerHTML = `<span class="spin"></span>Breaking into lines…`;
     els.live.hidden = false;
     window.Shell.setRunning("story", true, "Story splitting");
     refreshRun();
     try {
-      // Up to two Gemini calls when the first split is rejected, so this waits
+      // Up to two model calls when the first split is rejected, so this waits
       // longer than a normal request.
       const r = await U.fetchT("/batch/story/split", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -91,11 +91,11 @@
       say("");
       showReview();
     } catch (e) {
-      const raw = e.name === "AbortError" ? "Gemini took too long to answer." : String(e.message || e);
+      const raw = e.name === "AbortError" ? "The model took too long to answer." : String(e.message || e);
       // a 400 is about the story itself; anything else is the service
       U.banner(els.banners, {
         kind: "error", id: "story-split",
-        title: e.status === 400 ? "The story could not be broken into lines" : "Gemini could not be reached",
+        title: e.status === 400 ? "The story could not be broken into lines" : "The story model could not be reached",
         detail: e.status === 400 ? U.esc(raw) : "Nothing was spent. Try again in a minute.",
         raw: e.status === 400 ? undefined : raw,
       });

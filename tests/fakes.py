@@ -157,3 +157,23 @@ def use_env(monkeypatch, env_text: str) -> None:
     for key, value in dotenv_values(stream=StringIO(env_text)).items():
         if key and value is not None:
             monkeypatch.setenv(key, value)
+
+
+def patch_openrouter(monkeypatch, target: str, make_models) -> None:
+    """Stand ``target``'s OpenRouterClient up over a fake with ``generate_content``.
+
+    ``make_models`` is called once per client, as the SDK client's ``models``
+    was. ``config`` carries the system prompt and schema under the names the
+    older Gemini-shaped fakes assert on.
+    """
+    from types import SimpleNamespace
+
+    class FakeClient:
+        def __init__(self, api_key: str) -> None:
+            self.models = make_models()
+
+        def complete_json(self, *, model, system, prompt, schema, name="scripts") -> str:
+            config = SimpleNamespace(system_instruction=system, response_schema=schema)
+            return self.models.generate_content(model=model, contents=prompt, config=config).text
+
+    monkeypatch.setattr(target, FakeClient)

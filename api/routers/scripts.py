@@ -27,7 +27,7 @@ async def generate_video_scripts(
     operator to read and edit. A render costs money at submission, so the two
     steps stay separate — see services/script_writer.py.
 
-    Synchronous rather than a background job. One Gemini call for the whole set
+    Synchronous rather than a background job. One model call for the whole set
     takes seconds, and a draft the operator is waiting to read has nothing to
     gain from a polling endpoint.
     """
@@ -36,7 +36,7 @@ async def generate_video_scripts(
     except MissingSettingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Blocking throughout — history read, the Gemini call, history write — so
+    # Blocking throughout — history read, the model call, history write — so
     # the whole day runs off the event loop. A set whose repair budget ran out
     # still comes back, with the unresolved clashes as warnings.
     try:

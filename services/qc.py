@@ -3,16 +3,19 @@ import json
 import logging
 from dataclasses import dataclass
 
-import google.genai as genai
-from google.genai import types
-
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
+from services.openrouter import OpenRouterClient
 from services.retry import retry_call
-from services.runtime_config import read_setting, require
+from services.runtime_config import require
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_QC_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+# OpenRouter model ids, tried in order. Set here in code, not in .env, as for
+# the script writer. QC runs once per row, so price leads: Haiku is about a
+# third of what gemini-2.5-flash cost and won the Hindi side-by-side in
+# services/script_writer.py. Gemini Flash is the fallback — a different
+# provider, and historically strong on the less common Indic scripts.
+QC_MODELS = ["anthropic/claude-haiku-5.5", "google/gemini-3.8-flash"]
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -25,12 +28,12 @@ class QCError(Exception):
 class QCSettings:
     api_key: str
     models: list[str]
-    # Audio is only ever generated after Gemini QC, so this being off is a
+    # Audio is only ever generated after QC, so this being off is a
     # configuration error rather than a feature toggle. Validated on resolve so
     # a batch is rejected at submit instead of failing once it starts.
     enabled: bool
 
-    REQUIRED = ("GEMINI_API_KEY", "BATCH_ENABLE_QC")
+    REQUIRED = ("OPENROUTER_API_KEY", "BATCH_ENABLE_QC")
 
     @classmethod
     def resolve(cls) -> QCSettings:
@@ -38,11 +41,9 @@ class QCSettings:
         enabled = values["BATCH_ENABLE_QC"].strip().lower() in _TRUTHY
         if not enabled:
             raise ValueError(
-                "BATCH_ENABLE_QC must be true: audio is generated only after Gemini QC"
+                "BATCH_ENABLE_QC must be true: audio is generated only after QC"
             )
-        raw = read_setting("GEMINI_QC_MODELS").strip()
-        models = [item.strip() for item in raw.split(",") if item.strip()] or DEFAULT_QC_MODELS
-        return cls(api_key=values["GEMINI_API_KEY"], models=models, enabled=enabled)
+        return cls(api_key=values["OPENROUTER_API_KEY"], models=list(QC_MODELS), enabled=enabled)
 
 
 def _parse_response_json(response_text: str) -> dict[str, str]:
@@ -54,6 +55,16 @@ def _parse_response_json(response_text: str) -> dict[str, str]:
     return json.loads(text)
 
 
+def string_map_schema(keys: list[str]) -> dict:
+    """A strict schema for a JSON object with exactly these keys, each a string."""
+    return {
+        "type": "object",
+        "properties": {key: {"type": "string"} for key in keys},
+        "required": list(keys),
+        "additionalProperties": False,
+    }
+
+
 def qc_translations_batch(
     original_text: str,
     translations: dict[str, str],
@@ -61,25 +72,21 @@ def qc_translations_batch(
     *,
     settings: QCSettings,
     teaching_mode: bool = False,
-    thinking_budget: int | None = None,
 ) -> dict[str, str]:
     """
-    QC multiple translations at once using Gemini.
+    QC multiple translations at once.
 
     :param original_text: English source text
     :param translations: Dict of {language_code: translated_text}
     :param target_languages: List of language codes
-    :param settings: Resolved Gemini configuration, from the edge of the request
-    :param thinking_budget: Optional Gemini thinking-token budget. When None
-        (default) the model's default thinking behaviour is used unchanged.
-        Pass 0 to disable thinking. Used by eval tooling to A/B the setting.
+    :param settings: Resolved QC configuration, from the edge of the request
     :return: Dict of {language_code: corrected_text}
     """
     if not target_languages or not translations:
         return translations
 
     try:
-        client = genai.Client(api_key=settings.api_key)
+        client = OpenRouterClient(settings.api_key)
         models = settings.models
 
         lang_descs = ", ".join(
@@ -147,21 +154,19 @@ Return only the corrected JSON object."""
 Candidate translations JSON:
 {translations_json}"""
 
-        config = types.GenerateContentConfig(system_instruction=system_instruction)
-        if thinking_budget is not None:
-            config.thinking_config = types.ThinkingConfig(thinking_budget=thinking_budget)
+        schema = string_map_schema(list(dict.fromkeys([*translations, *target_languages])))
 
         last_exc: Exception | None = None
 
         for model in models:
             try:
-                response = retry_call(
-                    lambda: client.models.generate_content(
-                        model=model, contents=prompt, config=config
+                response_text = retry_call(
+                    lambda: client.complete_json(
+                        model=model, system=system_instruction, prompt=prompt,
+                        schema=schema, name="translations",
                     ),
-                    operation=f"Gemini QC ({model})",
-                )
-                response_text = response.text.strip()
+                    operation=f"QC ({model})",
+                ).strip()
                 corrected = _parse_response_json(response_text)
 
                 for lang in target_languages:
@@ -178,11 +183,11 @@ Candidate translations JSON:
                 logger.warning("QC: model %s failed: %s", model, exc)
 
         if last_exc:
-            raise QCError(f"Gemini QC failed after {len(models)} models: {last_exc}") from last_exc
-        raise QCError("Gemini QC failed: no models available")
+            raise QCError(f"QC failed after {len(models)} models: {last_exc}") from last_exc
+        raise QCError("QC failed: no models available")
 
     except QCError:
         raise
     except Exception as e:
-        logger.error(f"QC: Gemini API error: {e}")
-        raise QCError(f"Gemini QC failed: {e}") from e
+        logger.error(f"QC: model API error: {e}")
+        raise QCError(f"QC failed: {e}") from e

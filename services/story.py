@@ -1,11 +1,11 @@
 """Story mode: a pasted story broken into voiceover lines, each with an emotion.
 
-Gemini does the splitting, under the same settings, retry helper and model
-fallback as per-row QC. What it returns is never trusted: a split is accepted
+A model reached through OpenRouter does the splitting, with the same key,
+retry helper and model fallback as per-row QC. What it returns is never trusted: a split is accepted
 only if it keeps the operator's wording, uses emotions from ``STORY_EMOTIONS``
 and keeps every line under ``MAX_LINE_CHARS``.
 
-Gemini also does the *story fix*: one call per language that sees every line's
+The same models do the *story fix*: one call per language that sees every line's
 English beside its literal draft and rewrites the drafts so the story sounds
 told, not translated.
 """
@@ -17,17 +17,22 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-import google.genai as genai
-from google.genai import types
-
 from services.languages import LANGUAGE_NAMES, LANGUAGE_SCRIPT_HINTS
-from services.qc import QCSettings, _parse_response_json
+from services.openrouter import OpenRouterClient
+from services.qc import QCSettings, _parse_response_json, string_map_schema
 from services.retry import retry_call
 
 logger = logging.getLogger(__name__)
 
+# OpenRouter model ids, tried in order; QCSettings supplies only the key. A
+# story is one split and one fix per language, so volume is small and the
+# stronger writer is affordable: the fix is a rewrite into spoken language,
+# and a split that keeps the wording first time saves the second call.
+# Gemini Flash is the fallback, from a different provider.
+STORY_MODELS = ["anthropic/claude-sonnet-5.5", "google/gemini-3.8-flash"]
+
 # The emotions a line may carry. Each becomes an ElevenLabs audio tag, so this
-# one list is both what Gemini may pick from and what the review dropdown offers.
+# one list is both what the model may pick from and what the review dropdown offers.
 STORY_EMOTIONS = [
     "Cheerful", "Narrative", "Curious", "Clever", "Calm", "Grateful", "Worried",
     "Energetic", "Joyful", "Thoughtful", "Magical", "Determined", "Inspirational",
@@ -41,16 +46,16 @@ MAX_LINE_CHARS = 800
 # One story is one run. Longer ones are refused rather than chunked.
 MAX_STORY_LINES = 120
 
-# A split that fails validation gets one more Gemini call before it is refused.
+# A split that fails validation gets one more model call before it is refused.
 _SPLIT_ATTEMPTS = 2
 
 
 class StorySplitError(Exception):
-    """The story, or Gemini's split of it, cannot be used. The operator's to fix."""
+    """The story, or the model's split of it, cannot be used. The operator's to fix."""
 
 
-class StoryGeminiError(Exception):
-    """Gemini could not be reached on any model."""
+class StoryModelError(Exception):
+    """No model could be reached."""
 
 
 class StoryFixError(Exception):
@@ -109,14 +114,14 @@ def _parse_lines(response_text: str) -> list[StoryLine]:
     try:
         payload = _parse_response_json(response_text)
     except (ValueError, TypeError) as exc:
-        raise StorySplitError(f"Gemini did not return JSON: {exc}") from exc
+        raise StorySplitError(f"The model did not return JSON: {exc}") from exc
     items = payload.get("lines") if isinstance(payload, dict) else payload
     if not isinstance(items, list) or not items:
-        raise StorySplitError("Gemini's reply has no lines")
+        raise StorySplitError("The model's reply has no lines")
     lines = []
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
-            raise StorySplitError("Gemini's reply has a line without text")
+            raise StorySplitError("The model's reply has a line without text")
         emotion = str(item.get("emotion", "")).strip()
         # "narrative" is the right answer in the wrong case, not a wrong answer
         emotion = _EMOTION_CASE.get(emotion.lower(), emotion)
@@ -141,41 +146,62 @@ def _too_long() -> StorySplitError:
     )
 
 
-def _generate(client, models: list[str], prompt: str, config) -> str:
+# The emotion is not an enum here: a wrong-case or unlisted emotion is fixed or
+# rejected by _parse_lines and _validate, with a retry, rather than by the schema.
+_SPLIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}, "emotion": {"type": "string"}},
+                "required": ["text", "emotion"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["lines"],
+    "additionalProperties": False,
+}
+
+
+def _generate(client: OpenRouterClient, prompt: str) -> str:
     last_exc: Exception | None = None
-    for model in models:
+    for model in STORY_MODELS:
         try:
-            response = retry_call(
-                lambda: client.models.generate_content(model=model, contents=prompt, config=config),
-                operation=f"Gemini story split ({model})",
-            )
-            return response.text.strip()
+            return retry_call(
+                lambda: client.complete_json(
+                    model=model, system=_SYSTEM_INSTRUCTION, prompt=prompt,
+                    schema=_SPLIT_SCHEMA, name="story_lines",
+                ),
+                operation=f"Story split ({model})",
+            ).strip()
         except Exception as exc:
             last_exc = exc
             logger.warning("Story split: model %s failed: %s", model, exc)
-    raise StoryGeminiError(f"Gemini story split failed after {len(models)} models: {last_exc}")
+    raise StoryModelError(f"Story split failed after {len(STORY_MODELS)} models: {last_exc}")
 
 
 def split_story(text: str, *, settings: QCSettings) -> list[StoryLine]:
     """Split a story into voiceover lines with emotions, keeping its wording.
 
     Raises StorySplitError for an empty or over-size story, or a split that
-    still fails validation after one retry; StoryGeminiError if no model answers.
+    still fails validation after one retry; StoryModelError if no model answers.
     """
     source = text.strip()
     if not source:
         raise StorySplitError("Paste a story first: the text is empty")
-    # No split of this can fit, so it is refused before Gemini is paid to try.
+    # No split of this can fit, so it is refused before a model is paid to try.
     if len(_normalise(source)) > MAX_STORY_LINES * MAX_LINE_CHARS:
         raise _too_long()
 
-    client = genai.Client(api_key=settings.api_key)
-    config = types.GenerateContentConfig(system_instruction=_SYSTEM_INSTRUCTION)
+    client = OpenRouterClient(settings.api_key)
     prompt = f"Story:\n{source}"
 
     last_error: StorySplitError | None = None
     for attempt in range(1, _SPLIT_ATTEMPTS + 1):
-        reply = _generate(client, settings.models, prompt, config)
+        reply = _generate(client, prompt)
         try:
             lines = _parse_lines(reply)
             if len(lines) > MAX_STORY_LINES:
@@ -266,23 +292,26 @@ def fix_story(
     or left empty is simply absent — the caller decides what that line gets.
     Raises StoryFixError if no model returns usable JSON.
     """
-    client = genai.Client(api_key=settings.api_key)
-    config = types.GenerateContentConfig(system_instruction=_fix_instruction(language))
+    client = OpenRouterClient(settings.api_key)
+    system = _fix_instruction(language)
     contents = _fix_contents(title, lines, drafts)
     line_ids = list(lines)
+    schema = string_map_schema(line_ids)
 
     last_exc: Exception | None = None
-    for model in settings.models:
+    for model in STORY_MODELS:
         try:
-            response = retry_call(
-                lambda: client.models.generate_content(model=model, contents=contents, config=config),
-                operation=f"Gemini story fix {language} ({model})",
+            reply = retry_call(
+                lambda: client.complete_json(
+                    model=model, system=system, prompt=contents, schema=schema, name="story_fix",
+                ),
+                operation=f"Story fix {language} ({model})",
             )
-            fixed = _parse_fix(response.text.strip(), line_ids)
+            fixed = _parse_fix(reply.strip(), line_ids)
         except Exception as exc:
             last_exc = exc
             logger.warning("Story fix %s: model %s failed: %s", language, model, exc)
             continue
         logger.info("Story fix %s: %d/%d lines fixed using %s", language, len(fixed), len(line_ids), model)
         return fixed
-    raise StoryFixError(f"Gemini story fix for {language} failed after {len(settings.models)} models: {last_exc}")
+    raise StoryFixError(f"Story fix for {language} failed after {len(STORY_MODELS)} models: {last_exc}")
