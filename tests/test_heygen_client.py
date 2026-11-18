@@ -28,117 +28,152 @@ def transport(monkeypatch):
 # --- duplicate render avoidance -------------------------------------------
 
 
-def test_a_lost_submit_response_adopts_the_orphaned_render(transport) -> None:
-    """/video/generate is not idempotent. When the response is lost we cannot
-    tell whether HeyGen created the render, so we look it up by callback_id
-    instead of resubmitting — the '12 rows in, 15 renders out' bug."""
-    posts: list[httpx.Request] = []
+def _submit(**overrides) -> str:
+    kwargs = dict(
+        api_key="k",
+        talking_photo_id="photo-1",
+        audio_asset_id="asset-1",
+        motion_prompt=None,
+        video_title="T",
+        callback_id="job-42",
+    )
+    kwargs.update(overrides)
+    return heygen_client.create_avatar_iv_video(**kwargs)
+
+
+def test_a_lost_submit_response_is_replayed_with_the_same_idempotency_key(transport) -> None:
+    """A video create is billed. When the response is lost we replay with the
+    same Idempotency-Key so HeyGen hands back the original render instead of
+    creating a second one — the '12 rows in, 15 renders out' bug."""
+    keys: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/v2/video/generate":
-            posts.append(request)
+        assert request.url.path == "/v3/videos", request.url
+        keys.append(request.headers["Idempotency-Key"])
+        if len(keys) == 1:
             raise httpx.RemoteProtocolError("server disconnected", request=request)
-        if request.url.path == "/v1/video.list":
-            return httpx.Response(200, json={"data": {"videos": [{"video_id": "orphan-1"}]}})
-        if request.url.path == "/v1/video_status.get":
-            return httpx.Response(
-                200, json={"data": {"callback_id": "job-42", "status": "processing"}}
-            )
-        raise AssertionError(f"unexpected request: {request.url}")
+        return httpx.Response(200, json={"data": {"video_id": "v-1", "status": "pending"}})
 
     transport(handler)
 
-    video_id = heygen_client.create_avatar_iv_video(
-        api_key="k",
-        talking_photo_id="photo-1",
-        audio_asset_id="asset-1",
-        motion_prompt=None,
-        video_title="T",
-        callback_id="job-42",
-    )
-
-    assert video_id == "orphan-1"
-    assert len(posts) == 1, "must not resubmit — that is what duplicates the render"
+    assert _submit() == "v-1"
+    assert len(keys) == 2
+    assert keys[0] == keys[1], "a replay must reuse the key or it is a new render"
+    assert keys[0].startswith("job-42.")
 
 
-def test_a_lost_submit_with_no_orphan_resubmits(transport) -> None:
-    """If the request never reached HeyGen there is nothing to adopt, and
-    resubmitting is safe."""
-    posts: list[httpx.Request] = []
+def test_separate_submits_use_separate_idempotency_keys(transport) -> None:
+    """A job that deliberately re-renders must not get its old video back."""
+    keys: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/v2/video/generate":
-            posts.append(request)
-            if len(posts) == 1:
-                raise httpx.ConnectError("never got there", request=request)
-            return httpx.Response(200, json={"data": {"video_id": "fresh-1"}})
-        if request.url.path == "/v1/video.list":
-            return httpx.Response(200, json={"data": {"videos": []}})
-        raise AssertionError(f"unexpected request: {request.url}")
+        keys.append(request.headers["Idempotency-Key"])
+        return httpx.Response(200, json={"data": {"video_id": f"v-{len(keys)}"}})
 
     transport(handler)
 
-    video_id = heygen_client.create_avatar_iv_video(
-        api_key="k",
-        talking_photo_id="photo-1",
-        audio_asset_id="asset-1",
-        motion_prompt=None,
-        video_title="T",
-        callback_id="job-42",
-    )
-
-    assert video_id == "fresh-1"
-    assert len(posts) == 2
+    _submit()
+    _submit()
+    assert keys[0] != keys[1]
 
 
-def test_without_a_correlation_id_a_lost_submit_fails_rather_than_risking_a_duplicate(
-    transport,
-) -> None:
+def test_a_request_in_progress_conflict_waits_and_replays(transport) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(409, json={"error": {"code": "request_in_progress", "message": "busy"}})
+        return httpx.Response(200, json={"data": {"video_id": "v-1"}})
+
+    transport(handler)
+
+    assert _submit() == "v-1"
+    assert calls == 2
+
+
+def test_a_submit_that_never_gets_through_eventually_raises(transport) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.RemoteProtocolError("server disconnected", request=request)
 
     transport(handler)
 
     with pytest.raises(httpx.TransportError):
-        heygen_client.create_avatar_iv_video(
-            api_key="k",
-            talking_photo_id="photo-1",
-            audio_asset_id="asset-1",
-            motion_prompt=None,
-            video_title="T",
-            callback_id=None,
-        )
+        _submit()
 
 
-# --- avatar iv character payload -------------------------------------------
+# --- avatar iv payload -----------------------------------------------------
 
 
-def test_motion_prompt_reaches_the_character_payload(transport) -> None:
-    """motion_prompt must land inside the character object, not be silently
-    dropped on the way to /v2/video/generate."""
+def _capture_submit(transport, **overrides) -> dict:
     import json
 
     seen: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/v2/video/generate":
-            seen.update(json.loads(request.content))
-            return httpx.Response(200, json={"data": {"video_id": "v-1"}})
-        raise AssertionError(f"unexpected request: {request.url}")
+        assert request.url.path == "/v3/videos", request.url
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json={"data": {"video_id": "v-1"}})
+
+    transport(handler)
+    _submit(**overrides)
+    return seen
+
+
+def test_the_v3_payload_drives_the_photo_with_the_uploaded_audio(transport) -> None:
+    body = _capture_submit(transport, motion_prompt="hold still and nod gently")
+
+    assert body["type"] == "avatar"
+    assert body["avatar_id"] == "photo-1"
+    assert body["audio_asset_id"] == "asset-1"
+    assert body["engine"] == {"type": "avatar_iv"}
+    assert body["motion_prompt"] == "hold still and nod gently"
+    assert body["callback_id"] == "job-42"
+    assert body["title"] == "T"
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "aspect", "resolution"),
+    [
+        (1920, 1080, "16:9", "1080p"),
+        (1080, 1920, "9:16", "1080p"),
+        (720, 720, "1:1", "720p"),
+        (1080, 1350, "4:5", "1080p"),
+        (1000, 1500, "auto", "720p"),  # 2:3 has no v3 ratio; match the photo instead of padding
+        (None, None, "auto", None),
+    ],
+)
+def test_dimensions_map_to_a_v3_aspect_ratio(transport, width, height, aspect, resolution) -> None:
+    body = _capture_submit(transport, width=width, height=height)
+
+    assert body["aspect_ratio"] == aspect
+    assert body.get("resolution") == resolution
+
+
+# --- asset upload ----------------------------------------------------------
+
+
+def test_assets_upload_as_multipart_to_v3(transport) -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["host"] = request.url.host
+        seen["type"] = request.headers["content-type"]
+        seen["body"] = request.content
+        return httpx.Response(200, json={"data": {
+            "asset_id": "a-1", "url": "https://x/a.mp3", "mime_type": "audio/mpeg", "size_bytes": 3,
+        }})
 
     transport(handler)
 
-    heygen_client.create_avatar_iv_video(
-        api_key="k",
-        talking_photo_id="photo-1",
-        audio_asset_id="asset-1",
-        motion_prompt="hold still and nod gently",
-        video_title="T",
-        callback_id=None,
-    )
+    result = heygen_client.upload_asset(api_key="k", content=b"mp3", content_type="audio/mpeg")
 
-    character = seen["video_inputs"][0]["character"]
-    assert character["motion_prompt"] == "hold still and nod gently"
+    assert result.asset_id == "a-1"
+    assert (seen["host"], seen["path"]) == ("api.heygen.com", "/v3/assets")
+    assert seen["type"].startswith("multipart/form-data")
+    assert b'name="file"' in seen["body"] and b"mp3" in seen["body"]
 
 
 # --- resumable download ----------------------------------------------------
@@ -273,46 +308,97 @@ def test_a_download_that_never_completes_raises(transport, tmp_path) -> None:
         heygen_client.download_video("https://cdn.invalid/v.mp4", str(tmp_path / "v.mp4"))
 
 
-# --- photo cap rotation ----------------------------------------------------
+# --- photo avatars ----------------------------------------------------------
+
+
+def _photo_handler(*, create_responses: list[httpx.Response], deleted: list[str], look_status: list[str]):
+    creates = iter(create_responses)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/v3/assets":
+            return httpx.Response(200, json={"data": {"asset_id": "img-1", "url": "u"}})
+        if path == "/v3/avatars" and request.method == "POST":
+            return next(creates)
+        if path == "/v3/avatars/looks":
+            return httpx.Response(200, json={"data": [
+                {"id": "look-old", "group_id": "g-old", "status": "completed"},
+                {"id": "look-new", "group_id": "g-new", "status": "completed"},
+            ], "has_more": False, "next_token": None})
+        if path == "/v3/avatars" and request.method == "GET":
+            return httpx.Response(200, json={"data": [
+                {"id": "g-old", "created_at": 1},
+                {"id": "g-new", "created_at": 2},
+            ], "has_more": False, "next_token": None})
+        if path.startswith("/v3/avatars/looks/"):
+            return httpx.Response(200, json={"data": {"id": "tp-new", "status": look_status.pop(0)}})
+        if request.method == "DELETE" and path.startswith("/v3/avatars/"):
+            deleted.append(path.rsplit("/", 1)[-1])
+            return httpx.Response(200, json={"data": {"id": path.rsplit("/", 1)[-1]}})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    return handler
+
+
+_CREATED = httpx.Response(200, json={"data": {"avatar_item": {"id": "tp-new", "status": "processing"}}})
+
+
+def test_a_new_photo_waits_until_its_look_is_trained(transport) -> None:
+    """v3 trains photo avatars asynchronously and /v3/videos rejects a look that
+    is still processing, so the upload must not return early."""
+    statuses = ["processing", "processing", "completed"]
+    transport(_photo_handler(create_responses=[_CREATED], deleted=[], look_status=statuses))
+
+    assert heygen_client.upload_talking_photo(api_key="k", content=b"img", content_type="image/jpeg") == "tp-new"
+    assert statuses == []
+
+
+def test_a_photo_that_fails_training_raises(transport) -> None:
+    transport(_photo_handler(create_responses=[_CREATED], deleted=[], look_status=["failed"]))
+
+    with pytest.raises(RuntimeError, match="photo avatar failed"):
+        heygen_client.upload_talking_photo(api_key="k", content=b"img", content_type="image/jpeg")
 
 
 def test_hitting_the_photo_cap_rotates_the_oldest_and_retries(transport) -> None:
-    uploads = 0
     deleted: list[str] = []
+    cap = httpx.Response(400, json={"error": {
+        "code": "avatar_limit_exceeded", "message": "Photo avatar limit reached.",
+    }})
+    transport(_photo_handler(create_responses=[cap, _CREATED], deleted=deleted, look_status=["completed"]))
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal uploads
-        path = request.url.path
-        if path == "/v1/talking_photo":
-            uploads += 1
-            if uploads == 1:
-                return httpx.Response(400, json={"code": heygen_client.QUOTA_EXCEEDED_CODE})
-            return httpx.Response(200, json={"data": {"talking_photo_id": "tp-new"}})
-        if path == "/v2/avatar_group.list":
-            return httpx.Response(
-                200,
-                json={"data": {"avatar_group_list": [
-                    {"id": "g-old", "created_at": 1},
-                    {"id": "g-new", "created_at": 2},
-                ]}},
-            )
-        if path.endswith("/avatars"):
-            group = path.split("/")[3]
-            return httpx.Response(200, json={"data": {"avatar_list": [{"id": f"look-{group}"}]}})
-        if request.method == "DELETE":
-            deleted.append(path.rsplit("/", 1)[-1])
-            return httpx.Response(200, json={})
-        raise AssertionError(f"unexpected request: {request.method} {request.url}")
-
-    transport(handler)
-
-    photo_id = heygen_client.upload_talking_photo(
-        api_key="k", content=b"img", content_type="image/jpeg"
-    )
+    photo_id = heygen_client.upload_talking_photo(api_key="k", content=b"img", content_type="image/jpeg")
 
     assert photo_id == "tp-new"
     assert deleted == ["g-old"], "the oldest photo group is the one that gets rotated out"
-    assert uploads == 2
+
+
+def test_an_invalid_photo_is_not_mistaken_for_the_cap(transport) -> None:
+    deleted: list[str] = []
+    bad = httpx.Response(400, json={"error": {"code": "invalid_parameter", "message": "max size 32MB"}})
+    transport(_photo_handler(create_responses=[bad], deleted=deleted, look_status=[]))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        heygen_client.upload_talking_photo(api_key="k", content=b"img", content_type="image/jpeg")
+    assert deleted == []
+
+
+def test_clearing_photos_only_touches_photo_avatar_groups(transport) -> None:
+    deleted: list[str] = []
+    seen_params: list[dict] = []
+    handler = _photo_handler(create_responses=[], deleted=deleted, look_status=[])
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v3/avatars/looks":
+            seen_params.append(dict(request.url.params))
+        return handler(request)
+
+    transport(spy)
+
+    assert heygen_client.clear_talking_photos(api_key="k") == 2
+    assert deleted == ["g-old", "g-new"]
+    assert seen_params[0]["avatar_type"] == "photo_avatar"
+    assert seen_params[0]["ownership"] == "private"
 
 
 # --- render listing ----------------------------------------------------------
@@ -320,14 +406,16 @@ def test_hitting_the_photo_cap_rotates_the_oldest_and_retries(transport) -> None
 
 def _listing_handler(pages: list[list[str]], requested: list[str | None]):
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v3/videos", request.url
         token = request.url.params.get("token")
         requested.append(token)
         i = int(token) if token else 0
         nxt = str(i + 1) if i + 1 < len(pages) else None
-        return httpx.Response(200, json={"data": {
-            "videos": [{"video_id": v, "status": "completed", "created_at": 1} for v in pages[i]],
-            "token": nxt,
-        }})
+        return httpx.Response(200, json={
+            "data": [{"id": v, "status": "completed", "created_at": 1} for v in pages[i]],
+            "has_more": nxt is not None,
+            "next_token": nxt,
+        })
     return handler
 
 
@@ -337,7 +425,7 @@ def test_listing_follows_the_page_token_to_the_end(transport) -> None:
 
     videos = heygen_client.list_videos(api_key="k")
 
-    assert [v["video_id"] for v in videos] == ["a", "b", "c", "d"]
+    assert [v["id"] for v in videos] == ["a", "b", "c", "d"]
     assert requested == [None, "1", "2"]
 
 
@@ -348,5 +436,5 @@ def test_listing_stops_at_a_page_it_already_knows(transport) -> None:
 
     videos = heygen_client.list_videos(api_key="k", known=frozenset({"old1", "old2", "older"}))
 
-    assert [v["video_id"] for v in videos] == ["new", "old1", "old2"]
+    assert [v["id"] for v in videos] == ["new", "old1", "old2"]
     assert requested == [None, "1"]

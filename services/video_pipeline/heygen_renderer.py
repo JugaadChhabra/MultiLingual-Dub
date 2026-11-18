@@ -20,11 +20,11 @@ _LISTING_STATUS = {"completed": "completed", "failed": "failed"}
 
 
 class HeyGenRenderer(VideoRenderer):
-    """VideoRenderer backed by HeyGen's Avatar IV API.
+    """VideoRenderer backed by HeyGen's v3 API (Avatar IV engine).
 
-    Deliberately thin. Every hard-won behaviour — non-idempotent submit and
-    callback_id adoption, Range-resumed downloads, photo-cap rotation, retry on
-    the whole TransportError family — stays in ``heygen_client``, which earned
+    Deliberately thin. Every hard-won behaviour — idempotent submit replay,
+    Range-resumed downloads, photo-cap rotation, retry on the whole
+    TransportError family — stays in ``heygen_client``, which earned
     those rules one production incident at a time. This class exists to make
     those calls substitutable, and to stop HeyGen's response shapes leaking into
     the job that orchestrates them.

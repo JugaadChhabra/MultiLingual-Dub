@@ -105,8 +105,8 @@ class VideoRenderer(ABC):
     ) -> str:
         """Submit a render, returning the provider's video id.
 
-        ``correlation_id`` tags the render so it can be found again if the
-        response to this call is lost — submission is not assumed idempotent.
+        ``correlation_id`` tags the render (and seeds the idempotency key) so a
+        lost response never turns into a duplicate render.
         """
 
     @abstractmethod
