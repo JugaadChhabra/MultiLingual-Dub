@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="icon" href="favicon.png" />
+<link rel="icon" type="image/png" href="/static/logo.png?v=1" />
+<link rel="apple-touch-icon" href="/static/logo.png?v=1" />
 <title>Content Hub</title>
-<link rel="stylesheet" href="/static/app.css?v=17" />
+<link rel="stylesheet" href="/static/app.css?v=18" />
 </head>
 <body>
 <!-- Icons are Remix Icon symbols from /static/icons.svg, always currentColor.
@@ -18,6 +19,7 @@
       aria-label="Toggle sidebar">
       <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#sidebar"/></svg>
     </button>
+    <img class="logo" src="/static/logo.png?v=1" alt="" width="24" height="24" />
     <span class="title">Content Hub</span>
     <div class="right">
       <span id="tbRun" hidden><span class="dot a pulse"></span> <span id="tbRunText"></span></span>

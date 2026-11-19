@@ -79,6 +79,7 @@ code{font-family:var(--mono);font-size:var(--t-caption);}
 .app{display:flex;flex-direction:column;height:100vh;}
 .tb{height:46px;flex:none;display:flex;align-items:center;gap:var(--s3);padding:0 var(--s4);
   background:var(--material);backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep);}
+.tb .logo{width:24px;height:24px;flex:none;margin-right:calc(-1 * var(--s1));border-radius:6px;}
 .tb .title{font-weight:var(--w-bold);}
 .tb .right{margin-left:auto;display:flex;align-items:center;gap:var(--s3);
   font-size:var(--t-caption);color:var(--label2);}
