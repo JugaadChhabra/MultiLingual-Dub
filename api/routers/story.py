@@ -115,7 +115,7 @@ async def create_story_job(payload: StoryJobRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     job_id = uuid.uuid4().hex
-    await shared.jobs_store.create(job_id)
+    await shared.jobs_store.create(job_id, kind="story")
 
     await shared.job_queue.submit(
         job_id,

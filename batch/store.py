@@ -53,9 +53,9 @@ class JobsStore:
             state.job_id, state.summary.rows_processed, state.summary.total_rows,
         )
 
-    async def create(self, job_id: str) -> JobState:
+    async def create(self, job_id: str, kind: str = "excel") -> JobState:
         async with self._lock:
-            state = JobState(job_id=job_id, status="queued", summary=JobSummary())
+            state = JobState(job_id=job_id, kind=kind, status="queued", summary=JobSummary())
             self._jobs[job_id] = state
             self._write(state)
             return state
@@ -66,6 +66,28 @@ class JobsStore:
             if not state:
                 return None
             return state.model_copy(deep=True)
+
+    async def list_active(self) -> list[dict]:
+        """Every queued or running job, running first, then queued by position.
+        Read under the lock, so a restart can be judged safe from one snapshot."""
+        async with self._lock:
+            active = [s for s in self._jobs.values() if s.status in self.IN_FLIGHT_STATUSES]
+            active.sort(key=lambda s: (
+                s.status != "running",
+                s.queue_position if s.queue_position is not None else 0,
+            ))
+            return [
+                {
+                    "job_id": s.job_id,
+                    "kind": s.kind,
+                    "status": s.status,
+                    "queue_position": s.queue_position,
+                    "rows_processed": s.summary.rows_processed,
+                    "total_rows": s.summary.total_rows,
+                    "started_at": s.summary.started_at,
+                }
+                for s in active
+            ]
 
     async def start(self, job_id: str) -> datetime:
         async with self._lock:
