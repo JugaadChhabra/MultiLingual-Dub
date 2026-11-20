@@ -238,6 +238,17 @@ running jobs, a terminal job with no finish time, and anything of the video
 pipeline (`output/heygen/`: its jobs, renders, library cache, script history).
 S3 uploads are not touched either.
 
+**Retention (video)** (`services/video_pipeline/retention.py`) — a video job's
+folder (`output/heygen/<job_id>/`: TTS audio, raw and carded renders) goes once
+the job is filed to the NAS (#32 adds that) or, as a backstop, once the job
+ended (completed, failed or cancelled) more than `VIDEO_OUTPUT_RETENTION_HOURS`
+ago (default 48). A job-id-named folder with no job record goes once its
+modification time is older than the window. Swept at startup and every 6 hours.
+Job records are kept forever (the Library and Recovery need them). Never swept:
+in-flight jobs (including `recovering`), a terminal job with no finish time, the
+`_`-prefixed app-state folders, and anything not directly under
+`output/heygen/`. Separate from the audio **Retention** above.
+
 **Queue position** — a waiting job's 1-based place in the job queue, on
 `JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered
 for every waiter whenever the queue changes; `None` once the job starts or ends.

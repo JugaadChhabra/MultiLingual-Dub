@@ -59,6 +59,7 @@ services:
       MAX_QUEUED_JOBS: ${MAX_QUEUED_JOBS:-20}
       MIN_FREE_DISK_GB: ${MIN_FREE_DISK_GB:-5}
       OUTPUT_RETENTION_DAYS: ${OUTPUT_RETENTION_DAYS:-14}
+      VIDEO_OUTPUT_RETENTION_HOURS: ${VIDEO_OUTPUT_RETENTION_HOURS:-48}
 
     restart: unless-stopped
     # Time for a stop to finish before the container is killed.

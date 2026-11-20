@@ -65,6 +65,13 @@ Optional tuning (defaults shown, set in `.env`):
   and every 6 hours; queued/running jobs and everything under `output/heygen/`
   are never touched. A local fallback zip exists because its S3 upload failed,
   so it may be the only copy: download it before it expires.
+- `VIDEO_OUTPUT_RETENTION_HOURS` (48, fractions allowed): video jobs that ended
+  (completed, failed or cancelled) longer ago than this have their job folder
+  (`output/heygen/<job_id>/`: TTS audio, raw and carded renders) deleted, as do
+  job-id-named folders with no job record whose modification time is older than
+  this. Swept at startup and every 6 hours. Job records, queued/running/recovering
+  jobs and the `_`-prefixed folders (`_jobs`, `_batches`, `_library`, `_scripts`,
+  `_audio_cache`) are never touched. The NAS holds the filed copy.
 
 ## Redeploying safely
 
