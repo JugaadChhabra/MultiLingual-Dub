@@ -93,8 +93,8 @@
   const say = (text, bad) => { els.msg.textContent = text || ""; els.msg.classList.toggle("err", !!bad); };
 
   // ── progress ─────────────────────────────────────────────────────────────
-  function renderProgress(s, status) {
-    U.jobProgress(els, s, status, state.targets.length || SEL.size);
+  function renderProgress(s, status, job) {
+    U.jobProgress(els, s, status, state.targets.length || SEL.size, job);
   }
 
   // ── run ──────────────────────────────────────────────────────────────────
@@ -136,9 +136,9 @@
   }
 
   async function poll(id) {
-    const end = await U.pollJob(id, (summary, status) => {
-      renderProgress(summary, status);
-      window.Shell.setRunning("audio", true, shortProgress(summary));
+    const end = await U.pollJob(id, (summary, status, job) => {
+      renderProgress(summary, status, job);
+      window.Shell.setRunning("audio", true, U.waitingLabel(job) || shortProgress(summary));
     });
     finish(end.status, end.summary, end.cause);
   }
@@ -170,6 +170,8 @@
       if (U.JOB_ENDED.includes(p.status)) { localStorage.removeItem(JOB_KEY); return; }
       state.running = true; state.jobId = id; state.targets = [...SEL];
       els.live.hidden = false; refreshRun();
+      renderProgress(p.summary, p.status, p);
+      window.Shell.setRunning("audio", true, U.waitingLabel(p) || shortProgress(p.summary));
       U.toast("Reattached to a run already in progress", { kind: "info",
         detail: "Nothing was lost when the page reloaded." });
       poll(id);

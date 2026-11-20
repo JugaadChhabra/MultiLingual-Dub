@@ -1,5 +1,6 @@
-"""How wide this process runs: the ElevenLabs provider limit and the size of
-the default thread pool.
+"""How wide this process runs: the ElevenLabs provider limit, the size of
+the default thread pool, and how many audio jobs run at once (the job queue's
+slots, see batch/job_queue.py).
 
 The provider limit is a process-wide cap on concurrent ElevenLabs calls.
 
@@ -28,6 +29,7 @@ import weakref
 
 DEFAULT_ELEVENLABS_MAX_CONCURRENCY = 10
 DEFAULT_THREAD_POOL_SIZE = 32
+DEFAULT_AUDIO_MAX_CONCURRENT_JOBS = 3
 
 _elevenlabs_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
@@ -45,6 +47,12 @@ def _positive_env_int(name: str, default: int) -> int:
 
 def elevenlabs_max_concurrency() -> int:
     return _positive_env_int("ELEVENLABS_MAX_CONCURRENCY", DEFAULT_ELEVENLABS_MAX_CONCURRENCY)
+
+
+def audio_max_concurrent_jobs() -> int:
+    """AUDIO_MAX_CONCURRENT_JOBS, or 3: how many audio jobs (Excel and story)
+    run at once. The rest wait in the job queue."""
+    return _positive_env_int("AUDIO_MAX_CONCURRENT_JOBS", DEFAULT_AUDIO_MAX_CONCURRENT_JOBS)
 
 
 def thread_pool_size() -> int:

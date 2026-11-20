@@ -255,7 +255,8 @@
   const JOB_ENDED = ["completed", "failed", "cancelled"];
   const pause = (ms) => new Promise((res) => setTimeout(res, ms));
 
-  // Resolves with the job's last state once it ends; onProgress sees each poll.
+  // Resolves with the job's last state once it ends; onProgress sees each poll
+  // as (summary, status, job), where job is the whole payload (queue_position…).
   async function pollJob(id, onProgress) {
     let notFound = 0;
     while (true) {
@@ -267,18 +268,36 @@
         }
         if (!r.ok) throw new Error("HTTP " + r.status);
         const p = await r.json(); notFound = 0;
-        onProgress(p.summary, p.status);
+        onProgress(p.summary, p.status, p);
         if (JOB_ENDED.includes(p.status)) return { status: p.status, summary: p.summary, cause: p.cause };
       } catch (_) { /* keep polling through a blip */ }
       await pause(2000);
     }
   }
 
+  // "Waiting — #N in line" while a job waits in the job queue for a slot, else
+  // null. `job` is the polled payload; only a queued job has a position.
+  function waitingLabel(job) {
+    const n = job && job.status === "queued" ? job.queue_position : null;
+    return n ? `Waiting — #${n} in line` : null;
+  }
+
   // Everything here comes from fields JobSummary already collected. `els` holds
-  // the progress block's parts; `languages` the run's language count.
-  function jobProgress(els, s, status, languages) {
+  // the progress block's parts; `languages` the run's language count; `job` the
+  // polled payload, for a queued job's place in line.
+  function jobProgress(els, s, status, languages, job) {
     s = s || {};
     els.progress.hidden = false;
+
+    const waiting = waitingLabel(job);
+    if (waiting) {
+      els.clips.textContent = waiting;
+      els.upN.textContent = els.doneN.textContent = els.badN.textContent = els.queueN.textContent = 0;
+      setBar(els, { total: 0, uploaded: 0, rendered: 0, failed: 0, live: false });
+      els.started.textContent = "";
+      els.detail.textContent = "Other runs are using every slot · this one starts by itself when one frees up";
+      return;
+    }
     const total = s.language_tasks_total || (s.total_rows || 0) * languages || 0;
     const uploaded = s.uploads_succeeded || 0;
     const succeeded = s.language_tasks_succeeded || 0;
@@ -479,6 +498,6 @@
   }
 
   window.UI = { $, esc, icon, label, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
-                JOB_ENDED, pollJob, jobProgress, jobEnded, bindJobCancel, resetJobCancel,
+                JOB_ENDED, pollJob, jobProgress, waitingLabel, jobEnded, bindJobCancel, resetJobCancel,
                 notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone, langPicker };
 })();

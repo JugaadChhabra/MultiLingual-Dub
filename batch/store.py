@@ -45,6 +45,7 @@ class JobsStore:
     @staticmethod
     def _settle(state: JobState) -> None:
         state.status = "failed"
+        state.queue_position = None
         state.error = "Interrupted by a restart"
         finalize_summary(state.summary)
         logger.warning(
@@ -70,11 +71,28 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "running"
+            state.queue_position = None
             started_at = datetime.now(timezone.utc)
             state.summary.started_at = started_at
             self._write(state)
             logger.info("Job %s → running", job_id)
             return started_at
+
+    async def set_queue_positions(self, positions: dict[str, int | None]) -> None:
+        """Record each waiting job's place in the job queue. A number is only
+        written to a job still ``queued``; None clears it whatever the status.
+        Unknown ids are ignored, and an unchanged position is not rewritten."""
+        async with self._lock:
+            for job_id, position in positions.items():
+                state = self._jobs.get(job_id)
+                if state is None:
+                    continue
+                if position is not None and state.status != "queued":
+                    continue
+                if state.queue_position == position:
+                    continue
+                state.queue_position = position
+                self._write(state)
 
     async def update_summary(self, job_id: str, summary: JobSummary) -> None:
         async with self._lock:
@@ -86,6 +104,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "completed"
+            state.queue_position = None
             finalize_summary(summary)
             state.summary = summary
             self._write(state)
@@ -113,6 +132,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "failed"
+            state.queue_position = None
             state.error = message
             if exc is not None:
                 state.cause = classify(exc, provider=None, stage=stage).to_dict()
@@ -140,6 +160,7 @@ class JobsStore:
         async with self._lock:
             state = self._jobs[job_id]
             state.status = "cancelled"
+            state.queue_position = None
             state.error = "Job cancelled by user"
             self._cancel_flags.discard(job_id)
             if summary is None:

@@ -64,6 +64,9 @@ class JobSummary(BaseModel):
 class JobState(BaseModel):
     job_id: str
     status: str = Field(pattern="^(queued|running|completed|failed|cancelled)$")
+    # 1-based place in the job queue (batch/job_queue.py) while waiting for a
+    # slot; None once the job has started, or ended without starting.
+    queue_position: int | None = None
     summary: JobSummary = Field(default_factory=JobSummary)
     error: str | None = None
     # The same failure, classified for a human — see services/errors.py. `error`
