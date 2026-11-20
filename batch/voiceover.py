@@ -30,6 +30,7 @@ from services.elevenlabs import (
     batch_config_for_language,
     synthesize_speech_bytes,
 )
+from services.provider_limit import elevenlabs_limit
 from services.qc import QCError, QCSettings, qc_translations_batch
 from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
@@ -260,23 +261,38 @@ async def speak_row(
 ) -> RowOutcome:
     """Speak each language's text with the row's emotion tag, then compress.
 
-    A language whose TTS fails comes back as a 'tts' TaskFailure; the others
-    still get audio.
-    """
-    audio: dict[str, bytes] = {}
-    failures: list[TaskFailure] = []
+    All of the row's languages are spoken concurrently, each holding a slot of
+    the process-wide ElevenLabs provider limit for its TTS call. Compression
+    runs in a worker thread so it never blocks the event loop.
 
-    for language, text in texts_by_language.items():
+    A language whose TTS fails comes back as a 'tts' TaskFailure; the others
+    still get audio. Never raises for a per-language problem.
+    """
+
+    async def _speak(language: str, text: str) -> bytes:
         tts_text = f"[{row.emotion}] {text}" if row.emotion else text
-        try:
+        async with elevenlabs_limit():
             raw_audio = await asyncio.to_thread(
                 _generate_elevenlabs_audio_bytes, tts_text, language, deps.eleven
             )
-        except Exception as exc:
-            failures.append(TaskFailure(language=language, stage="tts", reason=str(exc)))
-            logger.error("%slang %s: TTS failed (%s)", log_prefix, language, exc)
+        return await asyncio.to_thread(compress_mp3_bytes, raw_audio)
+
+    languages = list(texts_by_language)
+    results = await asyncio.gather(
+        *(_speak(language, texts_by_language[language]) for language in languages),
+        return_exceptions=True,
+    )
+
+    audio: dict[str, bytes] = {}
+    failures: list[TaskFailure] = []
+    for language, result in zip(languages, results):
+        if isinstance(result, asyncio.CancelledError):
+            raise result
+        if isinstance(result, BaseException):
+            failures.append(TaskFailure(language=language, stage="tts", reason=str(result)))
+            logger.error("%slang %s: TTS failed (%s)", log_prefix, language, result)
             continue
-        audio[language] = compress_mp3_bytes(raw_audio)
+        audio[language] = result
         logger.info("%slang %s: audio ready", log_prefix, language)
 
     return RowOutcome(audio=audio, failures=failures)
