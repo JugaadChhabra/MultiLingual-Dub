@@ -39,6 +39,7 @@ DEFAULT_MAX_QUEUED_JOBS = 20
 DEFAULT_MIN_FREE_DISK_GB = 5.0
 DEFAULT_OUTPUT_RETENTION_DAYS = 14.0
 DEFAULT_VIDEO_OUTPUT_RETENTION_HOURS = 48.0
+DEFAULT_TTS_CACHE_RETENTION_DAYS = 7.0
 
 _elevenlabs_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
@@ -107,6 +108,12 @@ def video_output_retention_hours() -> float:
     it ends a video job's folder under ``output/heygen/<job_id>/`` is kept.
     Job records are kept regardless."""
     return _positive_env_float("VIDEO_OUTPUT_RETENTION_HOURS", DEFAULT_VIDEO_OUTPUT_RETENTION_HOURS)
+
+
+def tts_cache_retention_days() -> float:
+    """TTS_CACHE_RETENTION_DAYS, or 7 (fractions allowed): how long a cached TTS
+    audio file under ``output/heygen/_audio_cache/`` survives without being used."""
+    return _positive_env_float("TTS_CACHE_RETENTION_DAYS", DEFAULT_TTS_CACHE_RETENTION_DAYS)
 
 
 def thread_pool_size() -> int:

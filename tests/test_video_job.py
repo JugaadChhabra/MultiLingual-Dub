@@ -536,3 +536,18 @@ def test_a_recovery_cancelled_while_deleting_stays_completed(tmp_path: Path, nas
 
     assert asyncio.run(store.get("job-1")).status == "completed"
     assert asyncio.run(store.list_recoverable()) == []
+
+
+def test_a_cache_hit_refreshes_the_entry_mtime(tmp_path: Path, nas_root: Path) -> None:
+    import os, time
+    output_dir = tmp_path / "out"
+    speech = FakeSpeech()
+    asyncio.run(_run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(), speech=speech, job_id="job-1", nas_config=_nas(nas_root)))
+    (entry,) = (output_dir / "_audio_cache").glob("*.mp3")
+    old = time.time() - 10 * 86400
+    os.utime(entry, (old, old))
+
+    asyncio.run(_run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(), speech=speech, job_id="job-2", nas_config=_nas(nas_root)))
+
+    assert speech.call_count == 1
+    assert entry.stat().st_mtime > time.time() - 60
