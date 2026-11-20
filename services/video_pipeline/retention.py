@@ -4,7 +4,7 @@ A sweep removes, under the video output folder (``output/heygen/``):
 
 - the folder ``<job_id>/`` of every video job that ended — completed, failed or
   cancelled — more than the window ago (``VIDEO_OUTPUT_RETENTION_HOURS``,
-  default 48);
+  default 48; only job-id-shaped names, 32 lowercase hex);
 - a folder named like a job id (32 lowercase hex) that has no job record, once
   its modification time is older than the window.
 
@@ -41,13 +41,19 @@ SWEEP_INTERVAL_SECONDS = 6 * 60 * 60
 _JOB_ID_NAME = re.compile(r"[0-9a-f]{32}")
 
 
+# Far beyond any sensible window, and small enough that ``now - window`` can't
+# overflow a datetime.
+_MAX_RETENTION_HOURS = 100 * 365 * 24
+
+
 def _sweepable(root: Path, name: str) -> Path | None:
     """The folder ``root/name`` if the sweep may delete it, else None.
 
-    ``root`` must already be resolved. Refuses app-state folders, symlinks,
-    non-folders and anything that does not resolve to a direct child of root.
+    ``root`` must already be resolved. Only job-id-shaped names (which rules
+    out the ``_`` app-state folders); never a symlink, a file, or anything that
+    does not resolve to a direct child of root.
     """
-    if not name or name.startswith(("_", ".")):
+    if not _JOB_ID_NAME.fullmatch(name):
         return None
     folder = root / name
     if folder.is_symlink() or not folder.is_dir():
@@ -59,9 +65,30 @@ def _sweepable(root: Path, name: str) -> Path | None:
     return folder
 
 
-async def _delete(folder: Path) -> bool:
-    """Delete ``folder``; True if it is gone afterwards."""
-    await asyncio.to_thread(shutil.rmtree, folder, ignore_errors=True)
+def _candidates(root: Path, expired: set[str], known: set[str], cutoff_ts: float) -> list[Path]:
+    """One listing of the output folder: the expired jobs' folders and the
+    orphans past the window. Blocking; run in a thread."""
+    found: list[Path] = []
+    for entry in sorted(root.iterdir()):
+        name = entry.name
+        if name in known and name not in expired:
+            continue
+        folder = _sweepable(root, name)
+        if folder is None:
+            continue
+        if name not in known:
+            try:
+                if folder.stat().st_mtime >= cutoff_ts:
+                    continue
+            except FileNotFoundError:
+                continue
+        found.append(folder)
+    return found
+
+
+def _delete(folder: Path) -> bool:
+    """Delete ``folder``; True if it is gone afterwards. Blocking."""
+    shutil.rmtree(folder, ignore_errors=True)
     if folder.exists():
         logger.warning("Video retention could not delete %s; will retry next sweep", folder)
         return False
@@ -77,36 +104,28 @@ async def sweep_expired_job_folders(
     """Remove expired job folders (see the module docstring). Returns the
     names of the folders removed; job records are left as they are."""
     root = Path(video_output_dir).resolve()
-    if not root.is_dir():
-        return []
     cutoff = now - retention
     removed: list[str] = []
-
-    for job_id in await store.finished_before(cutoff):
-        folder = _sweepable(root, job_id)
-        # Already gone (filed and cleaned up, or never written) is fine.
-        if folder is not None and await _delete(folder):
-            removed.append(job_id)
-
-    known = await store.job_ids()
-    cutoff_ts = cutoff.timestamp()
     orphans = 0
-    for entry in sorted(root.iterdir()):
-        name = entry.name
-        if name in known or not _JOB_ID_NAME.fullmatch(name):
-            continue
-        folder = _sweepable(root, name)
-        if folder is None:
-            continue
-        try:
-            if folder.stat().st_mtime >= cutoff_ts:
+    if root.is_dir():
+        # Orphans are judged against every record taken *before* the listing,
+        # so a job created meanwhile only risks a folder whose mtime is fresh.
+        known = await store.job_ids()
+        expired = set(await store.finished_before(cutoff))
+        candidates = await asyncio.to_thread(
+            _candidates, root, expired, known, cutoff.timestamp())
+        for folder in candidates:
+            name = folder.name
+            # Re-check right before deleting: Recovery may have claimed the
+            # job (or a record appeared for an orphan) since the listing.
+            if name in expired:
+                if not await store.finished_before(cutoff, job_id=name):
+                    continue
+            elif name in await store.job_ids():
                 continue
-        except FileNotFoundError:
-            continue
-        if await _delete(folder):
-            removed.append(name)
-            orphans += 1
-
+            if await asyncio.to_thread(_delete, folder):
+                removed.append(name)
+                orphans += name not in expired
     logger.info(
         "Video retention sweep removed %d job folder(s) (%d orphan) older than %s",
         len(removed), orphans, retention,
@@ -121,7 +140,7 @@ async def sweep_once(store: VideoJobsStore, video_output_dir: Path) -> None:
         await sweep_expired_job_folders(
             store,
             video_output_dir,
-            timedelta(hours=video_output_retention_hours()),
+            timedelta(hours=min(video_output_retention_hours(), _MAX_RETENTION_HOURS)),
             datetime.now(timezone.utc),
         )
     except Exception:

@@ -171,6 +171,37 @@ def test_a_record_whose_id_points_outside_the_output_folder_is_skipped(tmp_path)
     assert (outside / "render.mp4").exists()
 
 
+def test_a_record_whose_id_is_not_job_id_shaped_keeps_its_folder(tmp_path) -> None:
+    root = tmp_path / "heygen"
+    persist = root / "_jobs"
+    persist.mkdir(parents=True)
+    _seed(persist, "notes", "completed", finished=_hours_ago(72))
+    notes = _folder(root, "notes")
+    store = VideoJobsStore(persist_dir=persist)
+
+    assert asyncio.run(sweep_expired_job_folders(store, root, WINDOW, NOW)) == []
+    assert notes.exists()
+
+
+def test_a_job_claimed_by_recovery_mid_sweep_keeps_its_folder(world, monkeypatch) -> None:
+    root, _persist, store, ids, _ = world
+    real = retention._candidates
+
+    def listing_then_recovery_claims(*args):
+        found = real(*args)
+        # Recovery claims the job after the sweep listed it, before deletion.
+        store._jobs[ids["old_failed"]].status = "recovering"
+        return found
+
+    monkeypatch.setattr(retention, "_candidates", listing_then_recovery_claims)
+
+    removed = asyncio.run(sweep_expired_job_folders(store, root, WINDOW, NOW))
+
+    assert ids["old_failed"] not in removed
+    assert (root / ids["old_failed"] / "render.mp4").exists()
+    assert ids["old_completed"] in removed
+
+
 def test_a_naive_finish_time_is_read_as_utc(tmp_path) -> None:
     root = tmp_path / "heygen"
     persist = root / "_jobs"
@@ -229,3 +260,14 @@ def test_the_window_comes_from_the_environment(monkeypatch) -> None:
     assert video_output_retention_hours() == 1.5
     monkeypatch.setenv("VIDEO_OUTPUT_RETENTION_HOURS", "-3")
     assert video_output_retention_hours() == 48
+
+
+def test_a_huge_window_sweeps_nothing_rather_than_failing(world, monkeypatch, caplog) -> None:
+    root, _persist, store, ids, _ = world
+    monkeypatch.setenv("VIDEO_OUTPUT_RETENTION_HOURS", "inf")
+
+    with caplog.at_level(logging.ERROR, logger="services.video_pipeline.retention"):
+        asyncio.run(retention.sweep_once(store, root))
+
+    assert not caplog.records
+    assert (root / ids["old_completed"]).exists()

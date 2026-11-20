@@ -160,14 +160,15 @@ class VideoJobsStore:
         async with self._lock:
             return [s.model_copy(deep=True) for s in self._jobs.values()]
 
-    async def finished_before(self, cutoff: datetime) -> list[str]:
+    async def finished_before(self, cutoff: datetime, *, job_id: str | None = None) -> list[str]:
         """Ids of terminal jobs whose summary says they finished before
-        ``cutoff``. In-flight jobs (a ``recovering`` one keeps the finish time
-        of its earlier failure) and terminal ones with no finish time are never
-        listed."""
+        ``cutoff`` (only ``job_id``, if given). In-flight jobs (a ``recovering``
+        one keeps the finish time of its earlier failure) and terminal ones with
+        no finish time are never listed."""
         async with self._lock:
+            jobs = self._jobs.values() if job_id is None else filter(None, [self._jobs.get(job_id)])
             return [
-                s.job_id for s in self._jobs.values()
+                s.job_id for s in jobs
                 if s.status not in self.IN_FLIGHT_STATUSES
                 and s.summary.finished_at is not None
                 and _as_utc(s.summary.finished_at) < cutoff
