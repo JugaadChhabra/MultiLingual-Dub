@@ -5,6 +5,8 @@ The container starts ``api.routes:app``.
 """
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
@@ -16,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from api import shared
 from api.background import spawn
 from api.routers import audio, config, library, pages, scripts, story, video, video_batch
+from services.concurrency import thread_pool_size
 from services.nas import NasConfig, NasService
 from services.runtime_config import MissingSettingError
 
@@ -28,6 +31,9 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=thread_pool_size(), thread_name_prefix="app-worker")
+    )
     try:
         NasService(NasConfig.resolve()).ensure_base_folders()
     except Exception as exc:

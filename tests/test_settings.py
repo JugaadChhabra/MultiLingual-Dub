@@ -309,12 +309,14 @@ def test_only_settings_resolvers_read_raw_keys() -> None:
 
 
 def test_config_is_not_read_from_the_environment_outside_the_allowed_modules() -> None:
-    """os.getenv is likewise confined. retry.py and audio_compress.py are the
-    two deliberate exceptions — process tuning, not account configuration."""
+    """os.getenv is likewise confined. retry.py, audio_compress.py and
+    concurrency.py are the deliberate exceptions — process tuning, not account
+    configuration."""
     allowed = {
         Path("services/runtime_config.py"),
         Path("services/retry.py"),
         Path("services/audio_compress.py"),
+        Path("services/concurrency.py"),
     }
     pattern = re.compile(r"os\.(getenv|environ)")
     offenders = []

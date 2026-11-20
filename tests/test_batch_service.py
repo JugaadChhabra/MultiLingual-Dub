@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import zipfile
 
 from batch.models import ExcelRow, JobSummary
@@ -47,7 +48,7 @@ def _identity_qc_batch(
 
 
 def test_run_excel_batch_job_processes_rows_and_languages(monkeypatch) -> None:
-    """Translations run in parallel per row; TTS calls are sequential."""
+    """Each row's languages are translated and spoken concurrently; rows run in order."""
     rows = [
         ExcelRow(row_index=2, text="row1", emotion="", activity_name="", audio_type="a"),
         ExcelRow(row_index=3, text="row2", emotion="", activity_name="", audio_type="b"),
@@ -784,3 +785,161 @@ def test_collisions_accumulate_across_multiple_activities(monkeypatch) -> None:
     assert state.status == "completed"
     # One collision in each activity.
     assert state.summary.filename_collisions_resolved == 2
+
+
+# --- Parallel speaking under the ElevenLabs provider limit ------------------
+
+
+class _InFlight:
+    """Counts fake TTS calls in flight across worker threads, keeping the peak."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.current = 0
+        self.peak = 0
+
+    def enter(self) -> None:
+        with self._lock:
+            self.current += 1
+            self.peak = max(self.peak, self.current)
+
+    def leave(self) -> None:
+        with self._lock:
+            self.current -= 1
+
+
+class _RecordingS3Client:
+    instances: list["_RecordingS3Client"] = []
+
+    def __init__(self, _config):
+        self.uploads: list[tuple[str, dict[str, bytes], str]] = []
+        _RecordingS3Client.instances.append(self)
+
+    def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+        self.uploads.append((language, dict(audio_files), folder_name))
+        return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+
+def _held_tts(in_flight: _InFlight, barrier: threading.Barrier):
+    """A fake TTS that stays in flight until the barrier releases it."""
+
+    def held_tts(_text: str, _language: str, settings=None) -> bytes:
+        in_flight.enter()
+        try:
+            barrier.wait()
+            return b"fake-audio"
+        finally:
+            in_flight.leave()
+
+    return held_tts
+
+
+async def _translate_ok(text: str, language: str, _sarvam=None, _google=None):
+    return language, f"translated:{text}:{language}", None
+
+
+def _patch_pipeline(monkeypatch, rows, tts) -> None:
+    _RecordingS3Client.instances = []
+    monkeypatch.setattr("batch.voiceover._translate_language_async", _translate_ok)
+    monkeypatch.setattr("batch.voiceover._generate_elevenlabs_audio_bytes", tts)
+    monkeypatch.setattr("batch.voiceover.qc_translations_batch", _identity_qc_batch)
+    monkeypatch.setattr("batch.service.read_excel_rows", lambda _path: rows)
+    monkeypatch.setattr("batch.service.S3Client", _RecordingS3Client)
+
+
+async def _run_job(store: JobsStore, job_id: str, languages: list[str]):
+    await store.create(job_id)
+    await run_excel_batch_job(
+        job_id=job_id,
+        excel_path="unused.xlsx",
+        target_languages=languages,
+        jobs_store=store,
+        settings=_settings(),
+    )
+    return await store.get(job_id)
+
+
+def test_a_rows_languages_are_spoken_at_the_same_time(monkeypatch) -> None:
+    languages = ["hi-IN", "ta-IN", "bn-IN", "gu-IN"]
+    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
+    in_flight = _InFlight()
+    # Every call waits for all of the row's languages to arrive. Spoken one at a
+    # time, the barrier would time out and every language would fail.
+    barrier = threading.Barrier(len(languages), timeout=5)
+
+    held_tts = _held_tts(in_flight, barrier)
+
+    _patch_pipeline(monkeypatch, rows, held_tts)
+    state = asyncio.run(_run_job(JobsStore(), "job-parallel-row", languages))
+
+    assert state is not None
+    assert state.status == "completed"
+    assert in_flight.peak == len(languages)
+    assert state.summary.language_tasks_succeeded == len(languages)
+    assert state.summary.language_tasks_failed == 0
+
+
+def test_two_jobs_never_exceed_the_provider_limit_together(monkeypatch) -> None:
+    limit = 2
+    monkeypatch.setenv("ELEVENLABS_MAX_CONCURRENCY", str(limit))
+    languages = ["hi-IN", "ta-IN", "bn-IN"]
+    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act", audio_type="a")]
+    in_flight = _InFlight()
+    # Calls are released in groups of `limit`, so the slots are held as long as
+    # possible and any call let in past the limit shows up in the peak.
+    barrier = threading.Barrier(limit, timeout=5)
+
+    held_tts = _held_tts(in_flight, barrier)
+
+    _patch_pipeline(monkeypatch, rows, held_tts)
+    store = JobsStore()
+
+    async def _run_both():
+        return await asyncio.gather(
+            _run_job(store, "job-limit-1", languages),
+            _run_job(store, "job-limit-2", languages),
+        )
+
+    states = asyncio.run(_run_both())
+
+    assert in_flight.peak == limit
+    for state in states:
+        assert state is not None
+        assert state.status == "completed"
+        assert state.summary.language_tasks_succeeded == len(languages)
+        assert state.summary.language_tasks_failed == 0
+
+
+def test_one_language_failing_tts_leaves_the_others_and_is_retried(monkeypatch) -> None:
+    languages = ["hi-IN", "ta-IN", "gu-IN"]
+    rows = [ExcelRow(row_index=2, text="row1", emotion="", activity_name="Act 1", audio_type="a1")]
+    calls: dict[str, int] = {language: 0 for language in languages}
+    lock = threading.Lock()
+
+    def flaky_tts(_text: str, language: str, settings=None) -> bytes:
+        with lock:
+            calls[language] += 1
+            attempt = calls[language]
+        if language == "ta-IN" and attempt == 1:
+            raise RuntimeError("11labs timeout")
+        return b"fake-audio"
+
+    _patch_pipeline(monkeypatch, rows, flaky_tts)
+    state = asyncio.run(_run_job(JobsStore(), "job-tts-retry", languages))
+
+    assert state is not None
+    assert state.status == "completed"
+    assert calls == {"hi-IN": 1, "ta-IN": 2, "gu-IN": 1}
+    assert state.summary.rows_processed == 1
+    assert state.summary.rows_succeeded == 1
+    assert state.summary.rows_failed == 0
+    assert state.summary.language_tasks_total == 3
+    assert state.summary.language_tasks_succeeded == 3
+    assert state.summary.language_tasks_failed == 0
+
+    assert len(_RecordingS3Client.instances) == 1
+    uploads = _RecordingS3Client.instances[0].uploads
+    assert sorted(language for language, _, _ in uploads) == ["Gujarati", "Hindi", "Tamil"]
+    for _, files, folder in uploads:
+        assert folder == "act_1"
+        assert set(files.keys()) == {"a1.mp3"}

@@ -178,7 +178,8 @@ for the work rather than a batch job forty rows in.
 derived from the settings classes rather than listed by hand, which is what
 stopped it drifting from what the code reads.
 
-**Process tuning** — `API_RETRY_*` and `AUDIO_COMPRESS_*`, read straight from
+**Process tuning** — `API_RETRY_*`, `AUDIO_COMPRESS_*`,
+`ELEVENLABS_MAX_CONCURRENCY` and `APP_THREAD_POOL_SIZE`, read straight from
 the environment and deliberately outside the settings model. They describe the
 machine the container runs on, not whose account is in use, and the modules
 reading them are leaf utilities called from everywhere.
@@ -192,7 +193,14 @@ activity name changes, that activity's audio is zipped per language and pushed.
 
 **Language task** — one row voiced into one language. The unit that succeeds or
 fails, and the unit the summary counts. Not a unit of *execution*: a whole row
-is processed at once so its languages can share one QC call.
+is processed at once so its languages can share one QC call. Within a row the
+language tasks are translated and *spoken* concurrently; rows still run one
+after another.
+
+**Provider limit** — the process-wide cap on concurrent calls to one provider,
+shared by every job. Today only ElevenLabs has one (`services/concurrency.py`,
+`ELEVENLABS_MAX_CONCURRENCY`, default 10 — the Pro plan's limit): each language
+task holds a slot for its whole TTS call, retries included.
 
 **Voiceover** — turning one row into audio in every language asked for:
 translate, QC, speak, compress. The audio-side counterpart to *render*, and
