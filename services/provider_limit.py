@@ -13,6 +13,9 @@ The semaphore is created lazily, one per running event loop. An asyncio
 semaphore is bound to the loop it is first used on, so a module-level one would
 break the moment a second loop used it (each ``asyncio.run`` in the tests, for
 one). In the app there is only ever one loop, so this is one shared semaphore.
+
+The video pipeline's speech (services/video_pipeline/speech.py) does not go
+through this limit yet; the video pipeline is out of scope for the audio work.
 """
 from __future__ import annotations
 

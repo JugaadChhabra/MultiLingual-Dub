@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import zipfile
 
 from batch.models import ExcelRow, JobSummary
@@ -788,8 +789,6 @@ def test_collisions_accumulate_across_multiple_activities(monkeypatch) -> None:
 
 # --- Parallel speaking under the ElevenLabs provider limit ------------------
 
-import threading
-
 
 class _InFlight:
     """Counts fake TTS calls in flight across worker threads, keeping the peak."""
@@ -819,6 +818,20 @@ class _RecordingS3Client:
     def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
         self.uploads.append((language, dict(audio_files), folder_name))
         return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+
+def _held_tts(in_flight: _InFlight, barrier: threading.Barrier):
+    """A fake TTS that stays in flight until the barrier releases it."""
+
+    def held_tts(_text: str, _language: str, settings=None) -> bytes:
+        in_flight.enter()
+        try:
+            barrier.wait()
+            return b"fake-audio"
+        finally:
+            in_flight.leave()
+
+    return held_tts
 
 
 async def _translate_ok(text: str, language: str, _sarvam=None, _google=None):
@@ -854,13 +867,7 @@ def test_a_rows_languages_are_spoken_at_the_same_time(monkeypatch) -> None:
     # time, the barrier would time out and every language would fail.
     barrier = threading.Barrier(len(languages), timeout=5)
 
-    def held_tts(_text: str, _language: str, settings=None) -> bytes:
-        in_flight.enter()
-        try:
-            barrier.wait()
-            return b"fake-audio"
-        finally:
-            in_flight.leave()
+    held_tts = _held_tts(in_flight, barrier)
 
     _patch_pipeline(monkeypatch, rows, held_tts)
     state = asyncio.run(_run_job(JobsStore(), "job-parallel-row", languages))
@@ -882,13 +889,7 @@ def test_two_jobs_never_exceed_the_provider_limit_together(monkeypatch) -> None:
     # possible and any call let in past the limit shows up in the peak.
     barrier = threading.Barrier(limit, timeout=5)
 
-    def held_tts(_text: str, _language: str, settings=None) -> bytes:
-        in_flight.enter()
-        try:
-            barrier.wait()
-            return b"fake-audio"
-        finally:
-            in_flight.leave()
+    held_tts = _held_tts(in_flight, barrier)
 
     _patch_pipeline(monkeypatch, rows, held_tts)
     store = JobsStore()
