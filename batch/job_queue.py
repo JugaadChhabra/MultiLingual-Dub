@@ -10,8 +10,9 @@ A slot is held for exactly as long as the runner coroutine runs: it is freed in
 a ``finally`` when the runner returns or raises, not by watching statuses. The
 runners record their own terminal status (completed / failed / cancelled).
 
-When a job's turn comes and it is no longer ``queued`` (cancelled while it
-waited), it is skipped and its runner is never created.
+When a job's turn comes and it is no longer ``queued``, or a cancel was
+requested while it waited (which is then recorded), it is skipped and its
+runner is never created.
 
 Work is still launched through ``api.background.spawn``, so it keeps the strong
 reference and the logging of escaped exceptions.
@@ -95,6 +96,10 @@ class JobQueue:
                 state = await self._store.get(item.job_id)
                 if state is None or state.status != "queued":
                     logger.info("Job %s left the queue without running", item.job_id)
+                    continue
+                if await self._store.is_cancelled(item.job_id):
+                    # Cancel was asked for while it waited: it never runs.
+                    await self._store.cancel(item.job_id)
                     continue
                 lane.running += 1
                 started.append(item.job_id)

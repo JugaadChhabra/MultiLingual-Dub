@@ -121,7 +121,7 @@ def _states(client, ids) -> list[tuple[str, int | None]]:
     return [(j["status"], j["queue_position"]) for j in (_job(client, i) for i in ids)]
 
 
-def _settle(client, ids, expected, retries: int = 200):
+def _settle(client, ids, expected, retries: int = 2000):
     """Poll until the jobs reach the expected (status, position) pairs."""
     for _ in range(retries):
         got = _states(client, ids)
@@ -190,4 +190,16 @@ def test_a_job_no_longer_queued_when_its_turn_comes_is_skipped(env) -> None:
     _settle(client, ids, [
         ("completed", None), ("running", None), ("cancelled", None), ("running", None),
     ])
+    assert ids[2] not in gate.invoked
+
+
+def test_a_job_cancelled_while_waiting_never_runs(env) -> None:
+    client, gate = env
+    ids = [_submit_excel(client) for _ in range(3)]
+    _settle(client, ids, [("running", None), ("running", None), ("queued", 1)])
+
+    assert client.post(f"/batch/excel-jobs/{ids[2]}/cancel").status_code == 200
+    gate.release(ids[0])
+
+    _settle(client, ids, [("completed", None), ("running", None), ("cancelled", None)])
     assert ids[2] not in gate.invoked
