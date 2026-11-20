@@ -208,6 +208,9 @@ stories alike) wait in for one of `AUDIO_MAX_CONCURRENT_JOBS` slots (default 3;
 it. A job holds its slot for as long as its runner runs, however it ends; a job
 that is no longer `queued` when its turn comes is skipped and never runs. A
 waiting job's status is plain `queued` — there is no separate "waiting" status.
+Cancelling a waiting job (`JobQueue.cancel`) makes it `cancelled` in that same
+request and takes it out of the line; cancelling a running one only asks it to
+stop at its next row boundary.
 
 **Queue position** — a waiting job's 1-based place in the job queue, on
 `JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered
