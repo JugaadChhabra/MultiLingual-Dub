@@ -24,12 +24,12 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from batch.store import JobsStore
+from batch.upload import ARCHIVES_DIRNAME
 from services.concurrency import output_retention_days
 
 logger = logging.getLogger(__name__)
 
 SWEEP_INTERVAL_SECONDS = 6 * 60 * 60
-ARCHIVES_DIRNAME = "batch_archives"
 
 
 async def sweep_expired_jobs(
@@ -64,7 +64,7 @@ async def sweep_expired_jobs(
     return removed
 
 
-async def sweep_once(store: JobsStore, output_dir: Path, now: datetime | None = None) -> None:
+async def sweep_once(store: JobsStore, output_dir: Path) -> None:
     """One sweep with the configured window, never raising: a failure is
     logged so the loop that calls this keeps going."""
     try:
@@ -72,7 +72,7 @@ async def sweep_once(store: JobsStore, output_dir: Path, now: datetime | None = 
             store,
             output_dir,
             timedelta(days=output_retention_days()),
-            now or datetime.now(timezone.utc),
+            datetime.now(timezone.utc),
         )
     except Exception:
         logger.exception("Retention sweep failed; will try again next interval")

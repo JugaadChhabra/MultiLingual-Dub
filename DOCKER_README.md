@@ -63,7 +63,8 @@ Optional tuning (defaults shown, set in `.env`):
   cancelled) longer ago than this have their local fallback zips
   (`output/batch_archives/<job_id>/`) and job record deleted. Swept at startup
   and every 6 hours; queued/running jobs and everything under `output/heygen/`
-  are never touched.
+  are never touched. A local fallback zip exists because its S3 upload failed,
+  so it may be the only copy: download it before it expires.
 
 ## Redeploying safely
 

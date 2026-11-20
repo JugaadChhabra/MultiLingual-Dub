@@ -150,3 +150,14 @@ def test_a_failing_sweep_is_logged_and_the_loop_keeps_going(monkeypatch, tmp_pat
     assert len(calls) == 3
     assert sleeps == [retention.SWEEP_INTERVAL_SECONDS] * 3
     assert sum("Retention sweep failed" in r.getMessage() for r in caplog.records) == 3
+
+
+def test_a_naive_finish_time_is_read_as_utc_rather_than_stopping_the_sweep(tmp_path) -> None:
+    persist = tmp_path / "batch" / "_jobs"
+    persist.mkdir(parents=True)
+    _seed(persist, "naive_old", "completed", finished=_days_ago(20).replace(tzinfo=None))
+    store = JobsStore(persist_dir=persist)
+
+    removed = asyncio.run(sweep_expired_jobs(store, tmp_path, WINDOW, NOW))
+
+    assert removed == ["naive_old"]

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import shutil
 import tempfile
 from pathlib import Path
@@ -94,6 +95,8 @@ def free_disk_bytes(path: Path) -> int:
 def _check_free_disk() -> None:
     free_gb = free_disk_bytes(shared.OUTPUT_DIR) / GB
     if free_gb < min_free_disk_gb():
+        # Rounded down, so 4.96 GB free never reads as "5.0 GB" against a 5 GB minimum.
+        free_gb = math.floor(free_gb * 10) / 10
         raise HTTPException(
             status_code=507,
             detail=(

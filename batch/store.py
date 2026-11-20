@@ -12,6 +12,12 @@ from services.state_mirror import JsonStateMirror, finalize_summary
 logger = logging.getLogger(__name__)
 
 
+def _as_utc(moment: datetime) -> datetime:
+    """Every finish time is written timezone-aware (UTC); a naive one (a
+    hand-edited file) is read as UTC rather than breaking the comparison."""
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
 class JobsStore:
     """Audio batch jobs, optionally mirrored to disk.
 
@@ -98,7 +104,7 @@ class JobsStore:
                 s.job_id for s in self._jobs.values()
                 if s.status not in self.IN_FLIGHT_STATUSES
                 and s.summary.finished_at is not None
-                and s.summary.finished_at < cutoff
+                and _as_utc(s.summary.finished_at) < cutoff
             ]
 
     async def remove(self, job_id: str) -> bool:

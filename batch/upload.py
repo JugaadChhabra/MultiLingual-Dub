@@ -17,6 +17,10 @@ from services.s3 import S3Client
 
 logger = logging.getLogger(__name__)
 
+# Under the output folder: one subfolder per job holding its local fallback
+# zips. Retention (batch/retention.py) deletes these by the same name.
+ARCHIVES_DIRNAME = "batch_archives"
+
 
 def _safe_archive_name(raw: str) -> str:
     cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in raw.strip())
@@ -44,7 +48,7 @@ def _write_local_archive(
 ) -> ArchiveDownload:
     safe_activity = _safe_archive_name(activity_name)
     safe_language = _safe_archive_name(language_label)
-    archive_dir = output_dir / "batch_archives" / job_id / safe_activity
+    archive_dir = output_dir / ARCHIVES_DIRNAME / job_id / safe_activity
     archive_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{safe_activity}-{safe_language}.zip"
     archive_path = archive_dir / filename

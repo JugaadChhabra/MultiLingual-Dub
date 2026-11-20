@@ -204,7 +204,7 @@ def _disk_free_gb(monkeypatch, gb: float) -> None:
 
 
 def test_an_excel_job_on_a_nearly_full_disk_gets_507_and_creates_no_job(client, monkeypatch) -> None:
-    _disk_free_gb(monkeypatch, 3.2)
+    _disk_free_gb(monkeypatch, 3.25)
 
     r = _post(client, _sheet(1))
 
@@ -259,3 +259,10 @@ def test_enough_free_disk_admits_excel_and_story_jobs(client, monkeypatch) -> No
     })
     assert r.status_code == 202, r.text
     assert len(_active_ids(client)) == 2
+
+
+def test_free_space_just_under_the_minimum_is_not_shown_as_the_minimum(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 4.96)
+    r = _post(client, _sheet(1))
+    assert r.status_code == 507
+    assert "(4.9 GB free)" in r.json()["detail"]
