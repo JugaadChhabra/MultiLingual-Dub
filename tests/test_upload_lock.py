@@ -94,9 +94,25 @@ def test_two_jobs_appending_to_the_same_folder_both_keep_their_files(monkeypatch
         tasks = await _run_jobs(
             store, [("job-a", "a.xlsx"), ("job-b", "b.xlsx")], _settings(), mode="append"
         )
+        rows_done: dict[str, int] = {}
+
+        async def _poll_rows_done() -> None:
+            for job_id in ("job-a", "job-b"):
+                state = await store.get(job_id)
+                rows_done[job_id] = state.summary.rows_processed if state else 0
+
         try:
             assert await _wait_until(lambda: len(entered) >= 1)
-            # Give the other job every chance to start its own read-modify-write.
+            # Wait until both jobs have voiced their row, i.e. both are past the
+            # row loop and into their upload; then give the second job every
+            # chance to start its own read-modify-write.
+            deadline = time.monotonic() + GATE_TIMEOUT
+            while time.monotonic() < deadline:
+                await _poll_rows_done()
+                if all(done == 1 for done in rows_done.values()):
+                    break
+                await asyncio.sleep(0.01)
+            assert rows_done == {"job-a": 1, "job-b": 1}
             await asyncio.sleep(0.3)
             entered_while_first_held = len(entered)
         finally:
@@ -171,3 +187,46 @@ def test_local_archive_is_written_in_place_with_no_temp_file_left(monkeypatch, t
     with zipfile.ZipFile(expected) as zf:
         assert zf.namelist() == ["a1.mp3"]
     assert list(tmp_path.rglob("*.tmp")) == []
+
+
+def test_lock_spans_every_language_of_one_jobs_upload(monkeypatch) -> None:
+    """Two create-mode jobs on the same folder: one job's Hindi and Tamil zips
+    both go up before the other job's first zip does."""
+    rows_by_path = {
+        "a.xlsx": [ExcelRow(row_index=2, text="a", emotion="", activity_name="Act 1", audio_type="a1")],
+        "b.xlsx": [ExcelRow(row_index=2, text="b", emotion="", activity_name="Act 1", audio_type="b1")],
+    }
+    _stub_voiceover(monkeypatch, rows_by_path)
+
+    calls: list[tuple[str, str]] = []
+    calls_lock = threading.Lock()
+
+    class FakeS3Client:
+        def __init__(self, _config):
+            pass
+
+        def upload_language_zip(self, language: str, audio_files: dict[str, bytes], folder_name: str):
+            with calls_lock:
+                calls.append((language, next(iter(audio_files))))
+            time.sleep(0.1)  # a slow upload: without the lock the jobs interleave
+            return {"bucket": "fake", "key": f"{folder_name}/{language}.zip", "etag": "etag"}
+
+    monkeypatch.setattr("batch.service.S3Client", FakeS3Client)
+    store = JobsStore()
+
+    async def _run():
+        tasks = []
+        for job_id, path in (("job-a", "a.xlsx"), ("job-b", "b.xlsx")):
+            await store.create(job_id)
+            tasks.append(asyncio.create_task(run_excel_batch_job(
+                job_id=job_id, excel_path=path, target_languages=["hi-IN", "ta-IN"],
+                jobs_store=store, settings=_settings(),
+            )))
+        await asyncio.gather(*tasks)
+
+    asyncio.run(_run())
+
+    assert len(calls) == 4
+    first_job, second_job = calls[0][1], calls[2][1]
+    assert {first_job, second_job} == {"a1.mp3", "b1.mp3"}
+    assert [file for _, file in calls] == [first_job, first_job, second_job, second_job]

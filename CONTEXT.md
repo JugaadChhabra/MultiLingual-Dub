@@ -209,6 +209,8 @@ local fallback zips included — so two jobs writing the same folder take turns.
 It exists because append mode is a read-modify-write of each language zip: two
 jobs appending at once would each read the old zip and the last writer would
 silently erase the other's files. Different folders don't block each other.
+In create mode it only orders the two uploads: the later job's fresh zip still
+replaces the earlier one's, as it always has.
 
 **Job queue** — the first-come, first-served line audio jobs (Excel sheets and
 stories alike) wait in for one of `AUDIO_MAX_CONCURRENT_JOBS` slots (default 3;
