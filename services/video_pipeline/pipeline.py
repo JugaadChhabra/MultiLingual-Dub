@@ -293,11 +293,8 @@ async def _finalize_video(
     # record (video_path / audio_path included) is left as it is.
     try:
         await asyncio.to_thread(_delete_job_dir, job_dir, output_dir)
-    except (Exception, asyncio.CancelledError):
+    except Exception:
         # The video is filed; the sweep (retention.py) retries the folder.
-        # Cancellation is swallowed too: the job is already completed, and
-        # letting it reach Recovery's handler would mark the filed job failed
-        # (recoverable again, so it could be filed to the NAS twice).
         logger.exception("Video job %s is filed, but its folder %s could not be deleted",
                          job_id, job_dir)
 
@@ -471,6 +468,12 @@ async def _recover_claimed(
     except (Exception, asyncio.CancelledError) as exc:
         # Cancellation too: a job left in 'downloading' is not 'failed', so it
         # would refuse every later recovery until a restart settled it.
+        if (await jobs_store.get(job_id)).status == "completed":
+            # Interrupted after filing (while deleting the job folder): the
+            # video is on the NAS. Failing it now would make it recoverable
+            # again, and so filed twice.
+            logger.warning("Recovery of video job %s was interrupted after filing", job_id)
+            raise
         logger.exception("Recovery of video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)
         raise

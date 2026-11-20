@@ -244,8 +244,9 @@ the job is filed to the NAS (`_finalize_video` deletes it right after marking
 the job completed; a delete error is logged and the job stays completed) or,
 as a backstop, once the job ended (completed, failed or cancelled) more than
 `VIDEO_OUTPUT_RETENTION_HOURS` ago (default 48). Nothing is deleted on filing
-when the job fails, is cancelled or its NAS upload raises. A job-id-named folder with no job record goes once its
-modification time is older than the window. Swept at startup and every 6 hours.
+when the job fails, is cancelled or its NAS upload raises. A job-id-named
+folder with no job record goes once its modification time is older than the
+window. Swept at startup and every 6 hours.
 Job records are kept forever (the Library and Recovery need them). Never swept:
 in-flight jobs (including `recovering`), a terminal job with no finish time, the
 `_`-prefixed app-state folders, and anything not directly under

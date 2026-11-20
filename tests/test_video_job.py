@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from services.nas import NasConfig
-from services.video_pipeline.pipeline import recover_video_job, run_video_job
+from services.nas import NasConfig, NasService
+from services.video_pipeline import pipeline
+from services.video_pipeline.pipeline import _delete_job_dir, recover_video_job, run_video_job
 from services.video_pipeline.recovery import NotRecoverable
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.store import VideoJobsStore
@@ -466,8 +467,6 @@ def test_a_recovered_job_leaves_no_folder_behind(tmp_path: Path, nas_root: Path)
 
 
 def test_a_failed_nas_upload_keeps_the_folder(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
-    from services.nas import NasService
-
     def boom(self, *args, **kwargs):
         raise OSError("NAS unreachable")
 
@@ -486,8 +485,6 @@ def test_a_failed_nas_upload_keeps_the_folder(tmp_path: Path, nas_root: Path, mo
 
 
 def test_a_failed_delete_leaves_the_job_completed(tmp_path: Path, nas_root: Path, monkeypatch, caplog) -> None:
-    from services.video_pipeline import pipeline
-
     def boom(job_dir: Path, output_dir: Path) -> None:
         raise PermissionError("busy")
 
@@ -507,8 +504,6 @@ def test_a_failed_delete_leaves_the_job_completed(tmp_path: Path, nas_root: Path
 
 
 def test_a_job_folder_outside_the_output_dir_is_never_deleted(tmp_path: Path) -> None:
-    from services.video_pipeline.pipeline import _delete_job_dir
-
     output_dir = tmp_path / "out"
     output_dir.mkdir()
     elsewhere = tmp_path / "elsewhere"
@@ -525,8 +520,6 @@ def test_a_job_folder_outside_the_output_dir_is_never_deleted(tmp_path: Path) ->
 def test_a_recovery_cancelled_while_deleting_stays_completed(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
     """Cancelling during the delete must not turn a filed job back into a
     failed (and so recoverable) one."""
-    from services.video_pipeline import pipeline
-
     output_dir = tmp_path / "out"
     store, _ = asyncio.run(
         _run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(fail_download=True),
@@ -537,8 +530,9 @@ def test_a_recovery_cancelled_while_deleting_stays_completed(tmp_path: Path, nas
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(pipeline, "_delete_job_dir", cancelled)
-    asyncio.run(recover_video_job(job_id="job-1", jobs_store=store, output_dir=output_dir,
-                                  renderer=FakeRenderer(), nas_config=_nas(nas_root)))
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(recover_video_job(job_id="job-1", jobs_store=store, output_dir=output_dir,
+                                      renderer=FakeRenderer(), nas_config=_nas(nas_root)))
 
     assert asyncio.run(store.get("job-1")).status == "completed"
     assert asyncio.run(store.list_recoverable()) == []
