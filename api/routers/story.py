@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Response
 from openpyxl import Workbook
 
 from api import shared
+from api.admission import admit_audio_job
 from api.models import StoryJobRequest, StorySplitRequest, StoryXlsxRequest
 from api.utils import parse_target_languages
 from batch.excel import REQUIRED_HEADERS
@@ -113,6 +114,8 @@ async def create_story_job(payload: StoryJobRequest):
         english_voice_is_required(parsed_languages, settings.eleven)
     except (MissingSettingError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await admit_audio_job()
 
     job_id = uuid.uuid4().hex
     await shared.jobs_store.create(job_id, kind="story")

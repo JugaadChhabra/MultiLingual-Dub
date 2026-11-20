@@ -29,12 +29,31 @@ def to_output_url(file_path: str | Path, output_dir: Path) -> str | None:
     return f"/output/{rel_path.as_posix()}"
 
 
-async def save_upload_file(upload: UploadFile, destination: Path) -> None:
+UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+async def save_upload_file(upload: UploadFile, destination: Path, *, max_mb: float | None = None) -> None:
+    """Copy an upload to ``destination`` a chunk at a time, never holding the
+    whole body in memory. Past ``max_mb`` (None: no cap) it stops and raises
+    413. On any failure the partial file is deleted."""
+    limit = int(max_mb * 1024 * 1024) if max_mb is not None else None
+    written = 0
     try:
-        payload = await upload.read()
-        destination.write_bytes(payload)
+        with destination.open("wb") as out:
+            while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+                written += len(chunk)
+                if limit is not None and written > limit:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"This file is over the {max_mb:g} MB upload limit.",
+                    )
+                out.write(chunk)
     except OSError as exc:
+        destination.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Failed to save upload") from exc
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 def parse_target_languages(raw_items: list[str] | None, raw_json: str | None) -> list[str]:
