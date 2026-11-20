@@ -202,6 +202,18 @@ shared by every job. Today only ElevenLabs has one (`services/concurrency.py`,
 `ELEVENLABS_MAX_CONCURRENCY`, default 10 — the Pro plan's limit): each language
 task holds a slot for its whole TTS call, retries included.
 
+**Job queue** — the first-come, first-served line audio jobs (Excel sheets and
+stories alike) wait in for one of `AUDIO_MAX_CONCURRENT_JOBS` slots (default 3;
+`batch/job_queue.py`). Both job routes hand their job to it rather than spawning
+it. A job holds its slot for as long as its runner runs, however it ends; a job
+that is no longer `queued` when its turn comes is skipped and never runs. A
+waiting job's status is plain `queued` — there is no separate "waiting" status.
+
+**Queue position** — a waiting job's 1-based place in the job queue, on
+`JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered
+for every waiter whenever the queue changes; `None` once the job starts or ends.
+The UI shows it as "Waiting — #N in line".
+
 **Voiceover** — turning one row into audio in every language asked for:
 translate, QC, speak, compress. The audio-side counterpart to *render*, and
 deliberately not called that — *render* means the video thing. Both the main

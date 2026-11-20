@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException, Response
 from openpyxl import Workbook
 
 from api import shared
-from api.background import spawn
 from api.models import StoryJobRequest, StorySplitRequest, StoryXlsxRequest
 from api.utils import parse_target_languages
 from batch.excel import REQUIRED_HEADERS
@@ -118,8 +117,9 @@ async def create_story_job(payload: StoryJobRequest):
     job_id = uuid.uuid4().hex
     await shared.jobs_store.create(job_id)
 
-    spawn(
-        run_story_job(
+    await shared.job_queue.submit(
+        job_id,
+        lambda: run_story_job(
             job_id=job_id,
             title=payload.title.strip(),
             activity_name=activity,

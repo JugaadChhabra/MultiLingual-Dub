@@ -10,7 +10,6 @@ import openpyxl
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from api import shared
-from api.background import spawn
 from api.utils import ensure_file_extension, parse_target_languages, save_upload_file
 from batch.models import CreateJobResponse, JobState
 from batch.service import english_voice_is_required, run_excel_batch_job
@@ -55,8 +54,9 @@ async def create_excel_job(
     job_id = uuid.uuid4().hex
     await shared.jobs_store.create(job_id)
 
-    spawn(
-        run_excel_batch_job(
+    await shared.job_queue.submit(
+        job_id,
+        lambda: run_excel_batch_job(
             job_id=job_id,
             excel_path=str(saved_path),
             target_languages=parsed_languages,

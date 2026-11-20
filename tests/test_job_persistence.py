@@ -390,3 +390,20 @@ def test_an_interrupted_video_batch_says_why_its_rows_failed(tmp_path: Path) -> 
     assert state.cause["kind"] == "batch_rows_failed"
     assert state.cause["title"] == "2 of 2 rows failed"
     assert state.cause["detail"] == "Interrupted by a restart"
+
+
+def test_a_waiting_audio_job_is_settled_like_a_running_one(tmp_path: Path) -> None:
+    """A job still waiting in the job queue at shutdown will never get a slot,
+    so it must not claim to be waiting after a restart."""
+    async def _before():
+        store = JobsStore(persist_dir=tmp_path)
+        await store.create("job-1")
+        await store.set_queue_positions({"job-1": 2})
+
+    asyncio.run(_before())
+
+    state = asyncio.run(JobsStore(persist_dir=tmp_path).get("job-1"))
+
+    assert state.status == "failed"
+    assert state.error == "Interrupted by a restart"
+    assert state.queue_position is None

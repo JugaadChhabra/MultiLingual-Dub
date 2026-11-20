@@ -288,9 +288,9 @@
   }
 
   async function poll(id) {
-    const end = await U.pollJob(id, (summary, status) => {
-      U.jobProgress(els, summary, status, state.targets.length || SEL.size);
-      window.Shell.setRunning("story", true, shortProgress(summary));
+    const end = await U.pollJob(id, (summary, status, job) => {
+      U.jobProgress(els, summary, status, state.targets.length || SEL.size, job);
+      window.Shell.setRunning("story", true, U.waitingLabel(job) || shortProgress(summary));
     });
     finish(end.status, end.summary, end.cause);
   }
@@ -345,7 +345,8 @@
       els.live.hidden = false;
       showReview();
       els.reviewMsg.textContent = "Running…"; els.reviewMsg.classList.remove("err");
-      window.Shell.setRunning("story", true, "Story audio running");
+      U.jobProgress(els, p.summary, p.status, state.targets.length || SEL.size, p);
+      window.Shell.setRunning("story", true, U.waitingLabel(p) || "Story audio running");
       U.toast("Reattached to a story run already in progress", { kind: "info",
         detail: "Nothing was lost when the page reloaded." });
       poll(id);

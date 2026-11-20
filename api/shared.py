@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from batch.job_queue import JobQueue
 from batch.store import JobsStore
 from services.elevenlabs import ElevenLabsSettings
 from services.email import EmailSettings
@@ -37,6 +38,9 @@ VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # 404. Only video jobs can actually be resumed from theirs — a HeyGen render
 # outlives the process — but knowing how far a batch got is worth the file.
 jobs_store = JobsStore(persist_dir=OUTPUT_DIR / "batch" / "_jobs")
+# Audio jobs (Excel and story) wait here for one of AUDIO_MAX_CONCURRENT_JOBS
+# slots instead of all starting at once.
+job_queue = JobQueue(jobs_store)
 video_jobs_store = VideoJobsStore(persist_dir=VIDEO_OUTPUT_DIR / "_jobs")
 video_batch_jobs_store = VideoBatchJobsStore(persist_dir=VIDEO_OUTPUT_DIR / "_batches")
 # Pause / cancel for the video jobs and batches running now, by their id.
