@@ -143,6 +143,30 @@ def test_recovering_a_failed_job_files_it_to_the_nas(client, store, renderer, la
     assert renderer.calls == ["await_render", "download"]
 
 
+def test_a_recovered_batch_row_links_to_the_library_download(
+    client, store, launched, monkeypatch
+) -> None:
+    from services.video_pipeline.batch_store import BatchRowState, VideoBatchJobsStore
+
+    batches = VideoBatchJobsStore()
+    monkeypatch.setattr(shared, "video_batch_jobs_store", batches)
+    _job(store, "a")
+
+    async def seed():
+        await batches.create("b1", [BatchRowState(
+            row_index=0, script="hello", video_title="My Video", job_id="a", status="failed",
+        )])
+
+    asyncio.run(seed())
+
+    assert client.post("/video/heygen/a/recover").status_code == 202
+    _run(launched)
+
+    row = asyncio.run(batches.get("b1")).rows[0]
+    assert row.status == "completed"
+    assert row.video_local_url == "/video/heygen/library/video-9/download"
+
+
 def test_an_unknown_job_is_404(client, launched) -> None:
     resp = client.post("/video/heygen/nope/recover")
 

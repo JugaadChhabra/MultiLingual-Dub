@@ -11,11 +11,10 @@ from fastapi.responses import FileResponse
 from api import shared
 from api.background import spawn
 from api.models import FileRenderRequest
-from api.utils import to_output_url
 from services.runtime_config import MissingSettingError
 from services.video_pipeline import NotRecoverable, start_recovery, start_recovery_of_failed
 from services.video_pipeline.intake import scrub_title
-from services.video_pipeline.library import page_of
+from services.video_pipeline.library import download_url, page_of
 from services.video_pipeline.library_service import Download, NoMedia, sniff_image_type
 from services.video_pipeline.pipeline import start_filing_render
 from services.video_pipeline.types import VideoJobSpec, VideoJobState
@@ -36,11 +35,10 @@ def _csv(raw: str | None) -> set[str]:
 
 async def _record_recovery(state: VideoJobState) -> None:
     """A recovered job's batch row, if it has one, is done now too."""
-    video_path = state.summary.video_path
     await shared.video_batch_jobs_store.row_recovered(
         state.job_id,
         nas_path=state.summary.nas_path,
-        video_local_url=to_output_url(video_path, shared.OUTPUT_DIR) if video_path else None,
+        video_local_url=download_url(state.summary.heygen_video_id),
     )
 
 

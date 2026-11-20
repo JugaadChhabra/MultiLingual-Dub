@@ -91,3 +91,45 @@ def test_a_whitespace_talking_photo_id_with_no_image_is_refused(client, launched
     assert resp.status_code == 400
     assert resp.json()["detail"] == "provide either an image file or a talking_photo_id"
     assert launched == []
+
+
+def _completed_job(path: str | None) -> str:
+    import asyncio
+
+    async def _go():
+        await shared.video_jobs_store.create("j1")
+        await shared.video_jobs_store.patch_summary(
+            "j1", video_path=path, heygen_video_id="v1", video_url="https://heygen.invalid/v1.mp4",
+        )
+        await shared.video_jobs_store.complete("j1")
+
+    asyncio.run(_go())
+    return "j1"
+
+
+def test_a_job_whose_video_file_exists_links_to_it(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(shared, "OUTPUT_DIR", tmp_path)
+    video = tmp_path / "heygen" / "a.mp4"
+    video.parent.mkdir()
+    video.write_bytes(b"x")
+    _completed_job(str(video))
+
+    body = client.get("/video/heygen/j1").json()
+
+    assert body["video_local_url"] == "/output/heygen/a.mp4"
+
+
+def test_a_job_whose_video_file_is_gone_has_no_local_link(client, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(shared, "OUTPUT_DIR", tmp_path)
+    video = tmp_path / "heygen" / "a.mp4"
+    video.parent.mkdir()
+    video.write_bytes(b"x")
+    _completed_job(str(video))
+    with_file = client.get("/video/heygen/j1").json()
+
+    video.unlink()
+    without = client.get("/video/heygen/j1").json()
+
+    assert "video_local_url" not in without
+    with_file.pop("video_local_url")
+    assert without == with_file
