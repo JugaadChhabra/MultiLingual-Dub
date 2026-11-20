@@ -198,7 +198,7 @@ language tasks are translated and *spoken* concurrently; rows still run one
 after another.
 
 **Provider limit** — the process-wide cap on concurrent calls to one provider,
-shared by every job. Today only ElevenLabs has one (`services/provider_limit.py`,
+shared by every job. Today only ElevenLabs has one (`services/concurrency.py`,
 `ELEVENLABS_MAX_CONCURRENCY`, default 10 — the Pro plan's limit): each language
 task holds a slot for its whole TTS call, retries included.
 

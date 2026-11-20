@@ -1,4 +1,7 @@
-"""The provider limit: a process-wide cap on concurrent ElevenLabs calls.
+"""How wide this process runs: the ElevenLabs provider limit and the size of
+the default thread pool.
+
+The provider limit is a process-wide cap on concurrent ElevenLabs calls.
 
 Every audio job (Excel and story) speaks through ``speak_row``, which holds a
 slot here around each language's TTS call, retries included. So however many
@@ -6,8 +9,8 @@ jobs run at once, ElevenLabs never sees more than ``ELEVENLABS_MAX_CONCURRENCY``
 calls from this process (default 10, the Pro plan's limit). A call backing off
 after a 429 keeps its slot; a 429 means we should be sending less anyway.
 
-Read straight from the environment, like ``API_RETRY_*``: it describes the
-account's plan as deployed, not a per-session setting.
+Both are read straight from the environment, like ``API_RETRY_*``: they are
+process tuning, describing the deployment rather than a per-session setting.
 
 The semaphore is created lazily, one per running event loop. An asyncio
 semaphore is bound to the loop it is first used on, so a module-level one would
@@ -24,19 +27,31 @@ import os
 import weakref
 
 DEFAULT_ELEVENLABS_MAX_CONCURRENCY = 10
+DEFAULT_THREAD_POOL_SIZE = 32
 
 _elevenlabs_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
 )
 
 
-def elevenlabs_max_concurrency() -> int:
-    raw = os.getenv("ELEVENLABS_MAX_CONCURRENCY", "").strip()
+def _positive_env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
     try:
-        value = int(raw) if raw else DEFAULT_ELEVENLABS_MAX_CONCURRENCY
+        value = int(raw) if raw else default
     except ValueError:
-        value = DEFAULT_ELEVENLABS_MAX_CONCURRENCY
-    return value if value > 0 else DEFAULT_ELEVENLABS_MAX_CONCURRENCY
+        return default
+    return value if value > 0 else default
+
+
+def elevenlabs_max_concurrency() -> int:
+    return _positive_env_int("ELEVENLABS_MAX_CONCURRENCY", DEFAULT_ELEVENLABS_MAX_CONCURRENCY)
+
+
+def thread_pool_size() -> int:
+    """APP_THREAD_POOL_SIZE, or 32. TTS, translation, compression and S3 calls
+    all run in the default executor; the platform default (cores + 4) is too
+    tight once a row's languages are spoken concurrently across several jobs."""
+    return _positive_env_int("APP_THREAD_POOL_SIZE", DEFAULT_THREAD_POOL_SIZE)
 
 
 def elevenlabs_limit() -> asyncio.Semaphore:

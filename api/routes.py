@@ -9,7 +9,6 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 import logging
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from api import shared
 from api.background import spawn
 from api.routers import audio, config, library, pages, scripts, story, video, video_batch
+from services.concurrency import thread_pool_size
 from services.nas import NasConfig, NasService
 from services.runtime_config import MissingSettingError
 
@@ -29,25 +29,10 @@ logging.basicConfig(
 )
 
 
-DEFAULT_THREAD_POOL_SIZE = 32
-
-
-def _thread_pool_size() -> int:
-    """APP_THREAD_POOL_SIZE, or 32. TTS, translation, compression and S3 calls
-    all run in the default executor; the platform default (cores + 4) is too
-    tight once a row's languages are spoken concurrently across several jobs."""
-    raw = os.getenv("APP_THREAD_POOL_SIZE", "").strip()
-    try:
-        value = int(raw) if raw else DEFAULT_THREAD_POOL_SIZE
-    except ValueError:
-        value = DEFAULT_THREAD_POOL_SIZE
-    return value if value > 0 else DEFAULT_THREAD_POOL_SIZE
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.get_running_loop().set_default_executor(
-        ThreadPoolExecutor(max_workers=_thread_pool_size(), thread_name_prefix="app-worker")
+        ThreadPoolExecutor(max_workers=thread_pool_size(), thread_name_prefix="app-worker")
     )
     try:
         NasService(NasConfig.resolve()).ensure_base_folders()

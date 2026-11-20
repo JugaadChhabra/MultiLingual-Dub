@@ -30,7 +30,7 @@ from services.elevenlabs import (
     batch_config_for_language,
     synthesize_speech_bytes,
 )
-from services.provider_limit import elevenlabs_limit
+from services.concurrency import elevenlabs_limit
 from services.qc import QCError, QCSettings, qc_translations_batch
 from services.google_translate import GoogleTranslateSettings
 from services.sarvam import SarvamSettings
