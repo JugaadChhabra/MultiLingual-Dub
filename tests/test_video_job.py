@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from services.nas import NasConfig
-from services.video_pipeline.pipeline import recover_video_job, run_video_job
+from services.nas import NasConfig, NasService
+from services.video_pipeline import pipeline
+from services.video_pipeline.pipeline import _delete_job_dir, recover_video_job, run_video_job
 from services.video_pipeline.recovery import NotRecoverable
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.store import VideoJobsStore
@@ -427,3 +428,111 @@ def test_persisted_jobs_survive_a_restart(tmp_path: Path, nas_root: Path) -> Non
     state = asyncio.run(reloaded.get("job-1"))
     assert state.spec is not None
     assert state.spec.video_title == "My Video"
+
+
+# ── Delete on filing (#32) ─────────────────────────────────────────────────
+
+
+def test_a_filed_job_leaves_no_folder_behind(tmp_path: Path, nas_root: Path) -> None:
+    output_dir = tmp_path / "out"
+    renderer, speech = FakeRenderer(), FakeSpeech()
+
+    _, state = asyncio.run(
+        _run(output_dir=output_dir, spec=_spec(), renderer=renderer, speech=speech, nas_config=_nas(nas_root))
+    )
+
+    assert state.status == "completed"
+    assert (nas_root / "12-08-2026" / "My Video.mp4").read_bytes() == renderer.video_bytes
+    assert not (output_dir / "job-1").exists()
+    # The record keeps pointing where the files were; the links cope (#30).
+    assert state.summary.video_path == str(output_dir / "job-1" / "video.mp4")
+
+
+def test_a_recovered_job_leaves_no_folder_behind(tmp_path: Path, nas_root: Path) -> None:
+    output_dir = tmp_path / "out"
+
+    store, failed = asyncio.run(
+        _run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(fail_download=True),
+             speech=FakeSpeech(), nas_config=_nas(nas_root))
+    )
+    assert failed.status == "failed"
+    assert (output_dir / "job-1").is_dir()
+
+    asyncio.run(recover_video_job(job_id="job-1", jobs_store=store, output_dir=output_dir,
+                                  renderer=FakeRenderer(), nas_config=_nas(nas_root)))
+
+    assert asyncio.run(store.get("job-1")).status == "completed"
+    assert (nas_root / "12-08-2026" / "My Video.mp4").exists()
+    assert not (output_dir / "job-1").exists()
+
+
+def test_a_failed_nas_upload_keeps_the_folder(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    def boom(self, *args, **kwargs):
+        raise OSError("NAS unreachable")
+
+    monkeypatch.setattr(NasService, "upload_video", boom)
+    output_dir = tmp_path / "out"
+    renderer = FakeRenderer()
+
+    _, state = asyncio.run(
+        _run(output_dir=output_dir, spec=_spec(include_overlay=False, include_music=False),
+             renderer=renderer, speech=FakeSpeech(), nas_config=_nas(nas_root))
+    )
+
+    assert state.status == "failed"
+    assert "NAS unreachable" in (state.error or "")
+    assert (output_dir / "job-1" / "video.mp4").read_bytes() == renderer.video_bytes
+
+
+def test_a_failed_delete_leaves_the_job_completed(tmp_path: Path, nas_root: Path, monkeypatch, caplog) -> None:
+    def boom(job_dir: Path, output_dir: Path) -> None:
+        raise PermissionError("busy")
+
+    monkeypatch.setattr(pipeline, "_delete_job_dir", boom)
+    output_dir = tmp_path / "out"
+
+    with caplog.at_level("ERROR", logger=pipeline.__name__):
+        _, state = asyncio.run(
+            _run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(),
+                 speech=FakeSpeech(), nas_config=_nas(nas_root))
+        )
+
+    assert state.status == "completed"
+    assert state.error is None
+    assert (output_dir / "job-1").is_dir()
+    assert any("job-1" in r.getMessage() and r.levelname == "ERROR" for r in caplog.records)
+
+
+def test_a_job_folder_outside_the_output_dir_is_never_deleted(tmp_path: Path) -> None:
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep.txt").write_text("x")
+    (output_dir / "link").symlink_to(elsewhere, target_is_directory=True)
+
+    _delete_job_dir(output_dir / "link", output_dir)
+    _delete_job_dir(output_dir / ".." / "elsewhere", output_dir)
+
+    assert (elsewhere / "keep.txt").exists()
+
+
+def test_a_recovery_cancelled_while_deleting_stays_completed(tmp_path: Path, nas_root: Path, monkeypatch) -> None:
+    """Cancelling during the delete must not turn a filed job back into a
+    failed (and so recoverable) one."""
+    output_dir = tmp_path / "out"
+    store, _ = asyncio.run(
+        _run(output_dir=output_dir, spec=_spec(), renderer=FakeRenderer(fail_download=True),
+             speech=FakeSpeech(), nas_config=_nas(nas_root))
+    )
+
+    def cancelled(job_dir: Path, output_dir: Path) -> None:
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(pipeline, "_delete_job_dir", cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(recover_video_job(job_id="job-1", jobs_store=store, output_dir=output_dir,
+                                      renderer=FakeRenderer(), nas_config=_nas(nas_root)))
+
+    assert asyncio.run(store.get("job-1")).status == "completed"
+    assert asyncio.run(store.list_recoverable()) == []

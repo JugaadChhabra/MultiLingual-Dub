@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -197,6 +198,7 @@ async def run_video_job(
             spec=spec,
             video_url=rendered.video_url,
             job_dir=job_dir,
+            output_dir=output_dir,
             jobs_store=jobs_store,
             renderer=renderer,
             nas_config=nas_config,
@@ -225,12 +227,14 @@ async def _finalize_video(
     spec: VideoJobSpec,
     video_url: str,
     job_dir: Path,
+    output_dir: Path,
     jobs_store: VideoJobsStore,
     renderer: VideoRenderer,
     nas_config: NasConfig,
 ) -> None:
-    """Download a finished render to disk and push it to the NAS, then mark the
-    job completed. Shared by the main pipeline and recovery.
+    """Download a finished render to disk and push it to the NAS, mark the
+    job completed, then delete its job folder. Shared by the main pipeline and
+    recovery.
 
     The render URL + video id are recorded BEFORE downloading so that if the
     download still fails, the persisted job keeps a handle to re-fetch the
@@ -281,6 +285,28 @@ async def _finalize_video(
     await jobs_store.patch_summary(job_id, nas_path=nas_path)
 
     await jobs_store.complete(job_id)
+
+    # 7. Delete the job folder (audio, raw and carded renders). Safe: the NAS
+    # copy is the deliverable, Recovery re-downloads from HeyGen, and the
+    # Library download falls back to HeyGen. Only reached once the NAS upload
+    # succeeded; any failure above leaves the folder for the sweep. The job
+    # record (video_path / audio_path included) is left as it is.
+    try:
+        await asyncio.to_thread(_delete_job_dir, job_dir, output_dir)
+    except Exception:
+        # The video is filed; the sweep (retention.py) retries the folder.
+        logger.exception("Video job %s is filed, but its folder %s could not be deleted",
+                         job_id, job_dir)
+
+
+def _delete_job_dir(job_dir: Path, output_dir: Path) -> None:
+    """Delete ``job_dir`` if it is a real folder directly under ``output_dir``;
+    otherwise leave it and log why. Blocking; raises if the delete fails."""
+    if job_dir.is_symlink() or job_dir.resolve().parent != output_dir.resolve():
+        logger.warning("Not deleting %s: it is not a folder directly under %s", job_dir, output_dir)
+        return
+    if job_dir.is_dir():
+        shutil.rmtree(job_dir)
 
 
 Launch = Callable[..., Any]
@@ -433,6 +459,7 @@ async def _recover_claimed(
                 spec=state.spec,
                 video_url=rendered.video_url,
                 job_dir=job_dir,
+                output_dir=output_dir,
                 jobs_store=jobs_store,
                 renderer=renderer,
                 nas_config=nas_config,
@@ -441,6 +468,12 @@ async def _recover_claimed(
     except (Exception, asyncio.CancelledError) as exc:
         # Cancellation too: a job left in 'downloading' is not 'failed', so it
         # would refuse every later recovery until a restart settled it.
+        if (await jobs_store.get(job_id)).status == "completed":
+            # Interrupted after filing (while deleting the job folder): the
+            # video is on the NAS. Failing it now would make it recoverable
+            # again, and so filed twice.
+            logger.warning("Recovery of video job %s was interrupted after filing", job_id)
+            raise
         logger.exception("Recovery of video job %s failed", job_id)
         await jobs_store.fail(job_id, str(exc), exc=exc)
         raise
