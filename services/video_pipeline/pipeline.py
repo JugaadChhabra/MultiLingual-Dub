@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -105,6 +106,10 @@ async def run_video_job(
         if cache_path.exists() and cache_path.stat().st_size > 0:
             await jobs_store.set_status(job_id, "tts", f"Reusing cached audio ({cache_key[:12]})")
             audio_bytes = cache_path.read_bytes()
+            try:  # age in the cache means "last used"; retention trims on it
+                os.utime(cache_path)
+            except OSError:
+                pass
             logger.info("TTS cache hit for job %s (key=%s, %d bytes)", job_id, cache_key[:12], len(audio_bytes))
         else:
             await jobs_store.set_status(job_id, "tts", "Generating audio")

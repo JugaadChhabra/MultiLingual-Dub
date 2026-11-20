@@ -15,6 +15,11 @@ time, any ``_``-prefixed folder (job store, batch store, Library cache, script
 history, TTS cache), a file at the top level, a symlink, or anything whose
 resolved path is not a direct child of the video output folder.
 
+The sweep also trims the TTS cache (``_audio_cache/``): ``*.mp3`` files directly
+in it whose modification time is older than ``TTS_CACHE_RETENTION_DAYS`` (default
+7) go; a cache hit refreshes the file's mtime, so age means "last used". Anything
+else in that folder stays.
+
 A folder that could not be deleted is logged and tried again next sweep. The
 audio pipeline's retention (``batch/retention.py``) is separate.
 
@@ -31,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from services.concurrency import video_output_retention_hours
+from services.concurrency import tts_cache_retention_days, video_output_retention_hours
 from services.video_pipeline.store import VideoJobsStore
 
 logger = logging.getLogger(__name__)
@@ -86,6 +91,25 @@ def _candidates(root: Path, expired: set[str], known: set[str], cutoff_ts: float
     return found
 
 
+def _trim_audio_cache(cache_dir: Path, cutoff_ts: float) -> int:
+    """Delete stale ``*.mp3`` files directly in ``cache_dir``; returns how many
+    went. Blocking; run in a thread."""
+    if cache_dir.is_symlink() or not cache_dir.is_dir():
+        return 0
+    removed = 0
+    for entry in cache_dir.glob("*.mp3"):
+        try:
+            if entry.is_symlink() or not entry.is_file() or entry.stat().st_mtime >= cutoff_ts:
+                continue
+            entry.unlink()
+            removed += 1
+        except FileNotFoundError:
+            continue
+        except OSError:
+            logger.warning("Video retention could not delete cached audio %s", entry, exc_info=True)
+    return removed
+
+
 def _delete(folder: Path) -> bool:
     """Delete ``folder``; True if it is gone afterwards. Blocking."""
     shutil.rmtree(folder, ignore_errors=True)
@@ -100,6 +124,7 @@ async def sweep_expired_job_folders(
     video_output_dir: Path,
     retention: timedelta,
     now: datetime,
+    cache_retention: timedelta | None = None,
 ) -> list[str]:
     """Remove expired job folders (see the module docstring). Returns the
     names of the folders removed; job records are left as they are."""
@@ -126,9 +151,16 @@ async def sweep_expired_job_folders(
             if await asyncio.to_thread(_delete, folder):
                 removed.append(name)
                 orphans += name not in expired
+    if cache_retention is None:
+        cache_retention = timedelta(days=min(tts_cache_retention_days(), _MAX_RETENTION_HOURS // 24))
+    cache_removed = 0
+    if root.is_dir():
+        cache_removed = await asyncio.to_thread(
+            _trim_audio_cache, root / "_audio_cache", (now - cache_retention).timestamp())
     logger.info(
-        "Video retention sweep removed %d job folder(s) (%d orphan) older than %s",
-        len(removed), orphans, retention,
+        "Video retention sweep removed %d job folder(s) (%d orphan) older than %s "
+        "and %d cached audio file(s) older than %s",
+        len(removed), orphans, retention, cache_removed, cache_retention,
     )
     return removed
 

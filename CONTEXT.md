@@ -250,7 +250,10 @@ window. Swept at startup and every 6 hours.
 Job records are kept forever (the Library and Recovery need them). Never swept:
 in-flight jobs (including `recovering`), a terminal job with no finish time, the
 `_`-prefixed app-state folders, and anything not directly under
-`output/heygen/`. Separate from the audio **Retention** above.
+`output/heygen/`. The sweep also trims the TTS cache (`output/heygen/_audio_cache/`):
+`*.mp3` files directly in it unused for more than `TTS_CACHE_RETENTION_DAYS`
+(default 7) go (a cache hit refreshes the mtime, so age is "last used"); other
+files there stay. Separate from the audio **Retention** above.
 
 **Queue position** — a waiting job's 1-based place in the job queue, on
 `JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered

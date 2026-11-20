@@ -72,6 +72,10 @@ Optional tuning (defaults shown, set in `.env`):
   this. Swept at startup and every 6 hours. Job records, queued/running/recovering
   jobs and the `_`-prefixed folders (`_jobs`, `_batches`, `_library`, `_scripts`,
   `_audio_cache`) are never touched. The NAS holds the filed copy.
+- `TTS_CACHE_RETENTION_DAYS` (7, fractions allowed): cached TTS audio
+  (`output/heygen/_audio_cache/*.mp3`) not reused for longer than this is
+  deleted by the same sweep; a cache hit refreshes the file's age. Other files
+  in that folder are left alone.
 
 ## Redeploying safely
 

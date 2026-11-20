@@ -60,6 +60,7 @@ services:
       MIN_FREE_DISK_GB: ${MIN_FREE_DISK_GB:-5}
       OUTPUT_RETENTION_DAYS: ${OUTPUT_RETENTION_DAYS:-14}
       VIDEO_OUTPUT_RETENTION_HOURS: ${VIDEO_OUTPUT_RETENTION_HOURS:-48}
+      TTS_CACHE_RETENTION_DAYS: ${TTS_CACHE_RETENTION_DAYS:-7}
 
     restart: unless-stopped
     # Time for a stop to finish before the container is killed.

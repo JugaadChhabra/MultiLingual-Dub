@@ -271,3 +271,22 @@ def test_a_huge_window_sweeps_nothing_rather_than_failing(world, monkeypatch, ca
 
     assert not caplog.records
     assert (root / ids["old_completed"]).exists()
+
+
+def test_the_sweep_trims_only_old_mp3s_from_the_tts_cache(tmp_path) -> None:
+    root = tmp_path / "heygen"
+    cache = root / "_audio_cache"
+    cache.mkdir(parents=True)
+    old, fresh, other = cache / "old.mp3", cache / "fresh.mp3", cache / "notes.txt"
+    for f in (old, fresh, other):
+        f.write_bytes(b"x")
+    stale = (NOW - timedelta(days=8)).timestamp()
+    os.utime(old, (stale, stale))
+    os.utime(other, (stale, stale))
+    os.utime(fresh, (NOW.timestamp(), NOW.timestamp()))
+    class _NoJobs:
+        async def job_ids(self): return set()
+        async def finished_before(self, *a, **k): return []
+    asyncio.run(sweep_expired_job_folders(_NoJobs(), root, WINDOW, NOW))
+    assert not old.exists()
+    assert fresh.exists() and other.exists()
