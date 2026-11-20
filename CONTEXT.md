@@ -240,9 +240,11 @@ S3 uploads are not touched either.
 
 **Retention (video)** (`services/video_pipeline/retention.py`) — a video job's
 folder (`output/heygen/<job_id>/`: TTS audio, raw and carded renders) goes once
-the job is filed to the NAS (#32 adds that) or, as a backstop, once the job
-ended (completed, failed or cancelled) more than `VIDEO_OUTPUT_RETENTION_HOURS`
-ago (default 48). A job-id-named folder with no job record goes once its
+the job is filed to the NAS (`_finalize_video` deletes it right after marking
+the job completed; a delete error is logged and the job stays completed) or,
+as a backstop, once the job ended (completed, failed or cancelled) more than
+`VIDEO_OUTPUT_RETENTION_HOURS` ago (default 48). Nothing is deleted on filing
+when the job fails, is cancelled or its NAS upload raises. A job-id-named folder with no job record goes once its
 modification time is older than the window. Swept at startup and every 6 hours.
 Job records are kept forever (the Library and Recovery need them). Never swept:
 in-flight jobs (including `recovering`), a terminal job with no finish time, the
