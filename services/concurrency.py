@@ -1,7 +1,9 @@
 """How wide this process runs: the ElevenLabs provider limit, the size of
 the default thread pool, how many audio jobs run at once (the job queue's
 slots, see batch/job_queue.py), the per-folder S3 upload lock, and the
-admission limits (upload size, sheet rows, waiting jobs; see api/admission.py).
+admission limits (upload size, sheet rows, waiting jobs, free disk; see
+api/admission.py), and how long finished audio jobs are kept (see
+batch/retention.py).
 
 The provider limit is a process-wide cap on concurrent ElevenLabs calls.
 
@@ -34,6 +36,8 @@ DEFAULT_AUDIO_MAX_CONCURRENT_JOBS = 3
 DEFAULT_MAX_UPLOAD_MB = 10.0
 DEFAULT_MAX_SHEET_ROWS = 2000
 DEFAULT_MAX_QUEUED_JOBS = 20
+DEFAULT_MIN_FREE_DISK_GB = 5.0
+DEFAULT_OUTPUT_RETENTION_DAYS = 14.0
 
 _elevenlabs_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
@@ -83,6 +87,18 @@ def max_queued_jobs() -> int:
     """MAX_QUEUED_JOBS, or 20: how many audio jobs may wait in the job queue
     before new ones are turned away with 503."""
     return _positive_env_int("MAX_QUEUED_JOBS", DEFAULT_MAX_QUEUED_JOBS)
+
+
+def min_free_disk_gb() -> float:
+    """MIN_FREE_DISK_GB, or 5 (fractions allowed): below this much free space
+    on the output volume, new audio jobs are turned away with 507."""
+    return _positive_env_float("MIN_FREE_DISK_GB", DEFAULT_MIN_FREE_DISK_GB)
+
+
+def output_retention_days() -> float:
+    """OUTPUT_RETENTION_DAYS, or 14 (fractions allowed): how long after it ends
+    an audio job's local zips and job record are kept."""
+    return _positive_env_float("OUTPUT_RETENTION_DAYS", DEFAULT_OUTPUT_RETENTION_DAYS)
 
 
 def thread_pool_size() -> int:

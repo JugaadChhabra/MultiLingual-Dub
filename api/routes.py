@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from api import shared
 from api.background import spawn
 from api.routers import audio, config, library, pages, scripts, story, video, video_batch
+from batch.retention import retention_loop
 from services.concurrency import thread_pool_size
 from services.nas import NasConfig, NasService
 from services.runtime_config import MissingSettingError
@@ -44,6 +45,8 @@ async def lifespan(app: FastAPI):
         spawn(shared.video_library.catalog.renders(shared.build_renderer()), name="library-warmup")
     except MissingSettingError:
         pass
+    # Finished audio jobs past OUTPUT_RETENTION_DAYS: swept now, then every 6h.
+    spawn(retention_loop(shared.jobs_store, shared.OUTPUT_DIR), name="retention-sweep")
     yield
 
 

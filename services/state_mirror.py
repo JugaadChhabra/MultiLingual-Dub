@@ -80,6 +80,13 @@ class JsonStateMirror(Generic[TState]):
         except OSError as exc:
             logger.warning("Failed to persist state for %s: %s", self._key(state), exc)
 
+    def delete(self, job_id: str) -> None:
+        """Remove this job's file, if there is one. Best-effort like ``write``."""
+        try:
+            self._path(job_id).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Failed to delete persisted state for %s: %s", job_id, exc)
+
     def load(self) -> dict[str, TState]:
         """Read every persisted job. An unreadable file is skipped, not fatal —
         one corrupt record must not stop the process from starting."""

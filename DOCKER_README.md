@@ -57,6 +57,13 @@ Optional tuning (defaults shown, set in `.env`):
   400 naming the count and the limit.
 - `MAX_QUEUED_JOBS` (20): once this many audio jobs are waiting, new Excel and
   story jobs get 503 with `Retry-After` until the line shortens.
+- `MIN_FREE_DISK_GB` (5): with less free space than this on the output volume,
+  new Excel and story jobs get 507 asking the maintainer to clear space.
+- `OUTPUT_RETENTION_DAYS` (14): audio jobs that ended (completed, failed or
+  cancelled) longer ago than this have their local fallback zips
+  (`output/batch_archives/<job_id>/`) and job record deleted. Swept at startup
+  and every 6 hours; queued/running jobs and everything under `output/heygen/`
+  are never touched.
 
 ## Redeploying safely
 
