@@ -1,6 +1,6 @@
 """How wide this process runs: the ElevenLabs provider limit, the size of
-the default thread pool, and how many audio jobs run at once (the job queue's
-slots, see batch/job_queue.py).
+the default thread pool, how many audio jobs run at once (the job queue's
+slots, see batch/job_queue.py), and the per-folder S3 upload lock.
 
 The provider limit is a process-wide cap on concurrent ElevenLabs calls.
 
@@ -70,3 +70,30 @@ def elevenlabs_limit() -> asyncio.Semaphore:
         semaphore = asyncio.Semaphore(elevenlabs_max_concurrency())
         _elevenlabs_by_loop[loop] = semaphore
     return semaphore
+
+
+# The folder upload lock: one asyncio.Lock per S3 activity folder, per loop.
+# Held around one job's whole per-activity upload (batch/upload.py) so two jobs
+# writing to the same folder take turns. Append mode is a read-modify-write of
+# each language zip, so without it the last writer silently drops the other
+# job's files. The inner dict holds its locks weakly: a lock exists only while
+# some upload holds it or waits for it, so idle folders don't pile up.
+_folder_locks_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, weakref.WeakValueDictionary[str, asyncio.Lock]]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def folder_upload_lock(folder_name: str) -> asyncio.Lock:
+    """The running loop's lock for one S3 activity folder. Call from inside a
+    coroutine and keep a reference for as long as you hold or wait on it
+    (``async with folder_upload_lock(name):`` does)."""
+    loop = asyncio.get_running_loop()
+    locks = _folder_locks_by_loop.get(loop)
+    if locks is None:
+        locks = weakref.WeakValueDictionary()
+        _folder_locks_by_loop[loop] = locks
+    lock = locks.get(folder_name)
+    if lock is None:
+        lock = asyncio.Lock()
+        locks[folder_name] = lock
+    return lock
