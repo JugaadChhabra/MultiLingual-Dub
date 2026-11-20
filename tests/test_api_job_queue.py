@@ -203,3 +203,47 @@ def test_a_job_cancelled_while_waiting_never_runs(env) -> None:
 
     _settle(client, ids, [("completed", None), ("running", None), ("cancelled", None)])
     assert ids[2] not in gate.invoked
+
+
+def test_cancelling_a_waiting_job_takes_effect_in_the_same_request(env) -> None:
+    client, gate = env
+    ids = [_submit_excel(client) for _ in range(3)]
+    _settle(client, ids, [("running", None), ("running", None), ("queued", 1)])
+
+    r = client.post(f"/batch/excel-jobs/{ids[2]}/cancel")
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "cancelled"
+    job = _job(client, ids[2])  # no settling: it is already cancelled
+    assert (job["status"], job["queue_position"]) == ("cancelled", None)
+    assert job["error"] == "Job cancelled by user"
+    assert ids[2] not in gate.invoked
+
+
+def test_the_jobs_behind_a_cancelled_waiter_move_up(env) -> None:
+    client, gate = env
+    ids = [_submit_excel(client) for _ in range(4)]
+    _settle(client, ids, [("running", None), ("running", None), ("queued", 1), ("queued", 2)])
+
+    assert client.post(f"/batch/excel-jobs/{ids[2]}/cancel").status_code == 200
+
+    assert _states(client, ids) == [
+        ("running", None), ("running", None), ("cancelled", None), ("queued", 1),
+    ]
+    gate.release(ids[0])
+    _settle(client, ids, [
+        ("completed", None), ("running", None), ("cancelled", None), ("running", None),
+    ])
+    assert ids[2] not in gate.invoked
+
+
+def test_cancelling_a_running_job_is_still_cooperative(env) -> None:
+    client, _gate = env
+    ids = [_submit_excel(client) for _ in range(2)]
+    _settle(client, ids, [("running", None), ("running", None)])
+
+    r = client.post(f"/batch/excel-jobs/{ids[0]}/cancel")
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "cancelling"
+    assert _job(client, ids[0])["status"] == "running"

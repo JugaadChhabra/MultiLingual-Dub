@@ -152,6 +152,22 @@ class JobsStore:
             logger.info("Job %s → cancel requested", job_id)
             return True
 
+    async def cancel_if_queued(self, job_id: str) -> bool:
+        """Cancel a job that is still ``queued``, in one step under the store
+        lock, so nothing can start it in between. False if it is not queued."""
+        async with self._lock:
+            state = self._jobs.get(job_id)
+            if state is None or state.status != "queued":
+                return False
+            state.status = "cancelled"
+            state.queue_position = None
+            state.error = "Job cancelled by user"
+            self._cancel_flags.discard(job_id)
+            finalize_summary(state.summary)
+            self._write(state)
+            logger.info("Job %s → cancelled (while waiting)", job_id)
+            return True
+
     async def is_cancelled(self, job_id: str) -> bool:
         async with self._lock:
             return job_id in self._cancel_flags

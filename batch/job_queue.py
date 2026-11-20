@@ -104,9 +104,28 @@ class JobQueue:
                 lane.running += 1
                 started.append(item.job_id)
                 spawn(self._run(lane, item), name=item.name)
-            positions: dict[str, int | None] = {job_id: None for job_id in started}
-            positions.update({w.job_id: n for n, w in enumerate(lane.waiting, start=1)})
-            await self._store.set_queue_positions(positions)
+            await self._renumber(lane, started)
+
+    async def _renumber(self, lane: _Lane, started: list[str] = ()) -> None:
+        positions: dict[str, int | None] = {job_id: None for job_id in started}
+        positions.update({w.job_id: n for n, w in enumerate(lane.waiting, start=1)})
+        await self._store.set_queue_positions(positions)
+
+    async def cancel(self, job_id: str) -> str | None:
+        """Cancel a job. One still waiting is ``cancelled`` at once, leaves the
+        line, and its runner is never created; the waiters behind it close up.
+        A job that already has a slot is only asked to stop (``"cancelling"``).
+        None if the job is not queued or running."""
+        lane = self._lane()
+        async with lane.lock:
+            waiting = next((w for w in lane.waiting if w.job_id == job_id), None)
+            if waiting is not None and await self._store.cancel_if_queued(job_id):
+                lane.waiting.remove(waiting)
+                await self._renumber(lane)
+                return "cancelled"
+            if await self._store.request_cancel(job_id):
+                return "cancelling"
+            return None
 
     async def _run(self, lane: _Lane, item: _Waiting) -> None:
         try:
