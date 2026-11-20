@@ -14,6 +14,12 @@ from services.video_pipeline.types import VideoJobSpec, VideoJobState, VideoJobS
 logger = logging.getLogger(__name__)
 
 
+def _as_utc(moment: datetime) -> datetime:
+    """Every finish time is written timezone-aware (UTC); a naive one (a
+    hand-edited file) is read as UTC rather than breaking the comparison."""
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
 class VideoJobsStore:
     """In-memory job store with optional write-through JSON persistence.
 
@@ -153,6 +159,24 @@ class VideoJobsStore:
         Costs ~0.1s per 3,000 jobs; callers cache it against ``version``."""
         async with self._lock:
             return [s.model_copy(deep=True) for s in self._jobs.values()]
+
+    async def finished_before(self, cutoff: datetime) -> list[str]:
+        """Ids of terminal jobs whose summary says they finished before
+        ``cutoff``. In-flight jobs (a ``recovering`` one keeps the finish time
+        of its earlier failure) and terminal ones with no finish time are never
+        listed."""
+        async with self._lock:
+            return [
+                s.job_id for s in self._jobs.values()
+                if s.status not in self.IN_FLIGHT_STATUSES
+                and s.summary.finished_at is not None
+                and _as_utc(s.summary.finished_at) < cutoff
+            ]
+
+    async def job_ids(self) -> set[str]:
+        """Every job id on record, whatever its status."""
+        async with self._lock:
+            return set(self._jobs)
 
     async def jobs_for_video(self, video_id: str) -> list[VideoJobState]:
         """Copies of only the jobs that rendered ``video_id``."""

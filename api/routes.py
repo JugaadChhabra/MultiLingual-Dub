@@ -20,6 +20,7 @@ from api.background import spawn
 from api.routers import audio, config, library, pages, scripts, story, video, video_batch
 from batch.retention import retention_loop
 from services.concurrency import thread_pool_size
+from services.video_pipeline.retention import video_retention_loop
 from services.nas import NasConfig, NasService
 from services.runtime_config import MissingSettingError
 
@@ -47,6 +48,9 @@ async def lifespan(app: FastAPI):
         pass
     # Finished audio jobs past OUTPUT_RETENTION_DAYS: swept now, then every 6h.
     spawn(retention_loop(shared.jobs_store, shared.OUTPUT_DIR), name="retention-sweep")
+    # Video job folders past VIDEO_OUTPUT_RETENTION_HOURS: swept now, then every 6h.
+    spawn(video_retention_loop(shared.video_jobs_store, shared.VIDEO_OUTPUT_DIR),
+          name="video-retention-sweep")
     yield
 
 
