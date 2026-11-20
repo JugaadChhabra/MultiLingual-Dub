@@ -249,9 +249,6 @@
     catch (_) { return ""; }
   };
 
-  // ── a batch job, watched until it ends ──────────────────────────────────
-  // An Excel sheet (Audio) and a story (Story) are the same kind of job: polled
-  // and cancelled on the same endpoints, summarised by the same JobSummary.
   // ── starting a job ──────────────────────────────────────────────────────
   // A failed response becomes an Error carrying its status and the server's
   // own `detail`, so the catch can tell "the server said no" from "the request
@@ -276,6 +273,9 @@
       detail: "The request never reached the server.", raw: String(e && e.message || e) });
   }
 
+  // ── a batch job, watched until it ends ──────────────────────────────────
+  // An Excel sheet (Audio) and a story (Story) are the same kind of job: polled
+  // and cancelled on the same endpoints, summarised by the same JobSummary.
   const JOB_ENDED = ["completed", "failed", "cancelled"];
   const pause = (ms) => new Promise((res) => setTimeout(res, ms));
 

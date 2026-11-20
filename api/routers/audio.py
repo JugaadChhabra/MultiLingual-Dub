@@ -14,6 +14,7 @@ from api.admission import admit_audio_job
 from api.utils import ensure_file_extension, parse_target_languages, save_upload_file
 from batch.models import CreateJobResponse, JobState
 from batch.service import english_voice_is_required, run_excel_batch_job
+from services.concurrency import max_upload_mb
 from services.runtime_config import MissingSettingError
 from services.settings import Settings
 
@@ -102,8 +103,8 @@ async def preview_excel(file: UploadFile = File(...)):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
     saved = Path(tmp.name)
     tmp.close()
-    await save_upload_file(file, saved)
     try:
+        await save_upload_file(file, saved, max_mb=max_upload_mb())
         wb = openpyxl.load_workbook(str(saved), read_only=True, data_only=True)
         ws = wb.worksheets[0]
         rows_out = []

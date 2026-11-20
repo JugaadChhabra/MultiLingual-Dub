@@ -5,8 +5,6 @@ from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
 
-from services.concurrency import max_upload_mb
-
 
 def safe_stem(filename: str) -> str:
     return Path(filename).stem.replace(" ", "_")
@@ -34,29 +32,28 @@ def to_output_url(file_path: str | Path, output_dir: Path) -> str | None:
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
-async def save_upload_file(upload: UploadFile, destination: Path) -> None:
+async def save_upload_file(upload: UploadFile, destination: Path, *, max_mb: float | None = None) -> None:
     """Copy an upload to ``destination`` a chunk at a time, never holding the
-    whole body in memory. Over ``MAX_UPLOAD_MB`` it stops, deletes the partial
-    file and raises 413; it also deletes the partial file on a write error."""
-    limit_mb = max_upload_mb()
-    limit = int(limit_mb * 1024 * 1024)
+    whole body in memory. Past ``max_mb`` (None: no cap) it stops and raises
+    413. On any failure the partial file is deleted."""
+    limit = int(max_mb * 1024 * 1024) if max_mb is not None else None
     written = 0
     try:
         with destination.open("wb") as out:
             while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
                 written += len(chunk)
-                if written > limit:
+                if limit is not None and written > limit:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"This file is over the {limit_mb:g} MB upload limit.",
+                        detail=f"This file is over the {max_mb:g} MB upload limit.",
                     )
                 out.write(chunk)
-    except HTTPException:
-        destination.unlink(missing_ok=True)
-        raise
     except OSError as exc:
         destination.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Failed to save upload") from exc
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 def parse_target_languages(raw_items: list[str] | None, raw_json: str | None) -> list[str]:

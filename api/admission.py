@@ -3,10 +3,14 @@ a job is created. It turns away requests that would overload the shared
 machine, with an HTTPException naming the reason:
 
 - 503 with ``Retry-After`` when ``MAX_QUEUED_JOBS`` jobs already wait in the
-  job queue (checked first, so a busy server doesn't take a whole upload);
-- for an Excel job, 413 when the upload is over ``MAX_UPLOAD_MB`` (streamed to
-  disk, never held whole in memory) and 400 when the sheet has more than
-  ``MAX_SHEET_ROWS`` rows.
+  job queue (checked first, before the sheet is copied or read);
+- for an Excel job, 413 when the upload is over ``MAX_UPLOAD_MB`` (copied in
+  chunks, never held whole in memory) and 400 when the sheet has more than
+  ``MAX_SHEET_ROWS`` rows (rows the job would voice, i.e. with text).
+
+Starlette has already spooled the request body to its own temp file before
+any route code runs, so these caps protect memory, the job queue and the work
+done per request, not the bandwidth of the upload itself.
 
 Nothing is created in the jobs store until admission passes, and every
 rejection removes the temp file it made. On success the saved sheet belongs to
@@ -30,7 +34,7 @@ from fastapi import HTTPException, UploadFile
 from api import shared
 from api.utils import save_upload_file
 from batch.excel import read_excel_rows
-from services.concurrency import max_queued_jobs, max_sheet_rows
+from services.concurrency import max_queued_jobs, max_sheet_rows, max_upload_mb
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +54,7 @@ async def admit_audio_job(excel: UploadFile | None = None) -> Path | None:
     saved_path = Path(temp_file.name)
     temp_file.close()
     try:
-        await save_upload_file(excel, saved_path)
+        await save_upload_file(excel, saved_path, max_mb=max_upload_mb())
         await _check_sheet_rows(saved_path)
     except BaseException:
         saved_path.unlink(missing_ok=True)
@@ -65,7 +69,7 @@ def _check_queue_room() -> None:
             status_code=503,
             detail=(
                 f"The server is busy: {limit} audio jobs are already waiting. "
-                "Try again in a few minutes."
+                "Try again in a minute."
             ),
             headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
         )

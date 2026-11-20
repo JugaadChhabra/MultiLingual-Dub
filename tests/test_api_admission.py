@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,7 +42,6 @@ def _configured(monkeypatch, tmp_path) -> None:
 
 
 def _temp_files() -> list[str]:
-    from pathlib import Path
     return sorted(p.name for p in Path(tempfile.tempdir).iterdir())
 
 
@@ -81,8 +81,12 @@ def _post(client, payload: bytes):
     )
 
 
-def _no_jobs() -> bool:
-    return not shared.jobs_store._jobs
+def _active_ids(client) -> set[str]:
+    """Every queued or running job. A job the fake runner got would stay
+    ``queued`` (it never starts it), so a created job always shows here."""
+    r = client.get("/batch/active")
+    assert r.status_code == 200
+    return {j["job_id"] for j in r.json()}
 
 
 def test_an_upload_over_the_size_cap_gets_413_and_creates_no_job(client, monkeypatch) -> None:
@@ -93,7 +97,7 @@ def test_an_upload_over_the_size_cap_gets_413_and_creates_no_job(client, monkeyp
 
     assert r.status_code == 413
     assert "0.01 MB" in r.json()["detail"]
-    assert _no_jobs()
+    assert _active_ids(client) == set()
     assert client.ran == []
     assert _temp_files() == []
 
@@ -115,7 +119,7 @@ def test_a_sheet_over_the_row_cap_gets_400_naming_both_numbers(client, monkeypat
     assert r.json()["detail"] == (
         "This sheet has 5 rows; the limit is 3. Split it into smaller sheets."
     )
-    assert _no_jobs()
+    assert _active_ids(client) == set()
     assert client.ran == []
     assert _temp_files() == []
 
@@ -146,7 +150,7 @@ def full_queue(env, monkeypatch):  # noqa: F811
 
 def test_an_excel_job_beyond_the_waiting_cap_gets_503_with_retry_after(full_queue) -> None:
     client, _gate, ids = full_queue
-    before = set(shared.jobs_store._jobs)
+    before = _active_ids(client)
 
     r = client.post("/batch/excel-jobs",
                     files={"file": ("input.xlsx", _xlsx(), XLSX)},
@@ -155,7 +159,7 @@ def test_an_excel_job_beyond_the_waiting_cap_gets_503_with_retry_after(full_queu
     assert r.status_code == 503
     assert r.headers["Retry-After"] == "60"
     assert "busy" in r.json()["detail"]
-    assert set(shared.jobs_store._jobs) == before
+    assert _active_ids(client) == before
     # The two admitted sheets are the jobs' own (the fake runner never reads
     # them); the turned-away one left nothing.
     assert len(_temp_files()) == 2
@@ -163,7 +167,7 @@ def test_an_excel_job_beyond_the_waiting_cap_gets_503_with_retry_after(full_queu
 
 def test_a_story_job_beyond_the_waiting_cap_gets_503_with_retry_after(full_queue) -> None:
     client, _gate, _ids = full_queue
-    before = set(shared.jobs_store._jobs)
+    before = _active_ids(client)
 
     r = client.post("/batch/story-jobs", json={
         "title": "The stream",
@@ -174,7 +178,7 @@ def test_a_story_job_beyond_the_waiting_cap_gets_503_with_retry_after(full_queue
 
     assert r.status_code == 503
     assert r.headers["Retry-After"] == "60"
-    assert set(shared.jobs_store._jobs) == before
+    assert _active_ids(client) == before
 
 
 def test_room_in_the_line_admits_again(full_queue) -> None:
@@ -183,3 +187,11 @@ def test_room_in_the_line_admits_again(full_queue) -> None:
     _settle(client, ids, [("completed", None), ("running", None)])
 
     _submit_story(client)  # asserts 202
+
+
+def test_a_sheet_the_reader_cannot_parse_is_left_to_the_job(client, monkeypatch) -> None:
+    """Admission only counts rows; a bad sheet still fails inside the job, with
+    the reader's own message, as it did before admission existed."""
+    monkeypatch.setenv("MAX_SHEET_ROWS", "1")
+    r = _post(client, b"not a workbook")
+    assert r.status_code == 202, r.text
