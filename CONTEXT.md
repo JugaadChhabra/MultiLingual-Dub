@@ -202,6 +202,14 @@ shared by every job. Today only ElevenLabs has one (`services/concurrency.py`,
 `ELEVENLABS_MAX_CONCURRENCY`, default 10 — the Pro plan's limit): each language
 task holds a slot for its whole TTS call, retries included.
 
+**Folder upload lock** — one process-wide lock per S3 activity folder
+(`folder_upload_lock` in `services/concurrency.py`). A job holds it around its
+whole upload of one activity — every language zip, create or append mode,
+local fallback zips included — so two jobs writing the same folder take turns.
+It exists because append mode is a read-modify-write of each language zip: two
+jobs appending at once would each read the old zip and the last writer would
+silently erase the other's files. Different folders don't block each other.
+
 **Job queue** — the first-come, first-served line audio jobs (Excel sheets and
 stories alike) wait in for one of `AUDIO_MAX_CONCURRENT_JOBS` slots (default 3;
 `batch/job_queue.py`). Both job routes hand their job to it rather than spawning

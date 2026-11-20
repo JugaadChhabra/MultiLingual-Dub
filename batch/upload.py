@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 from pathlib import Path
 import zipfile
 
@@ -10,6 +11,7 @@ from batch.activity import ActivityBuffer
 from batch.models import ArchiveDownload
 from batch.naming import _next_activity_folder_name
 from batch.tally import BatchTally
+from services.concurrency import folder_upload_lock
 from services.languages import LANGUAGE_NAMES
 from services.s3 import S3Client
 
@@ -46,7 +48,14 @@ def _write_local_archive(
     archive_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{safe_activity}-{safe_language}.zip"
     archive_path = archive_dir / filename
-    archive_path.write_bytes(_build_zip_bytes(audio_files))
+    # Write beside it, then rename into place: a crash mid-write never leaves a
+    # half-written zip behind a download link.
+    tmp_path = archive_dir / f"{filename}.tmp"
+    try:
+        tmp_path.write_bytes(_build_zip_bytes(audio_files))
+        os.replace(tmp_path, archive_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
     rel_path = archive_path.relative_to(output_dir).as_posix()
     return ArchiveDownload(
         activity_name=activity_name,
@@ -59,7 +68,7 @@ def _write_local_archive(
     )
 
 
-def _record_local_archive(
+async def _record_local_archive(
     *,
     output_dir: Path | None,
     job_id: str,
@@ -82,7 +91,8 @@ def _record_local_archive(
         return
 
     try:
-        archive = _write_local_archive(
+        archive = await asyncio.to_thread(
+            _write_local_archive,
             output_dir=output_dir,
             job_id=job_id,
             activity_name=activity_name,
@@ -134,97 +144,100 @@ async def _upload_activity_archives(
         folder_name,
     )
 
-    for language in target_languages:
-        audio_files = buffer.files.get(language, {})
-        if not audio_files:
-            logger.info("Job %s | activity %s | lang %s: no files to zip", job_id, activity_name, language)
-            continue
+    # Folder upload lock: one job's whole upload to this folder (every language,
+    # local fallbacks included) finishes before another job's starts. Append is
+    # a read-modify-write of each zip; without this the last writer wins.
+    async with folder_upload_lock(folder_name):
+        for language in target_languages:
+            audio_files = buffer.files.get(language, {})
+            if not audio_files:
+                logger.info("Job %s | activity %s | lang %s: no files to zip", job_id, activity_name, language)
+                continue
 
-        try:
-            language_label = LANGUAGE_NAMES.get(language, language)
-            if s3_client is None:
-                tally.upload_skipped()
-                fallback_detail = (
-                    "Local ZIP downloads were prepared instead."
-                    if output_dir is not None
-                    else "No local output directory was configured for fallback downloads."
-                )
+            try:
+                language_label = LANGUAGE_NAMES.get(language, language)
+                if s3_client is None:
+                    tally.upload_skipped()
+                    fallback_detail = (
+                        "Local ZIP downloads were prepared instead."
+                        if output_dir is not None
+                        else "No local output directory was configured for fallback downloads."
+                    )
+                    tally.warn_about_uploads(
+                        "Cloud upload is disabled because BATCH_ENABLE_S3_UPLOAD is not true. "
+                        f"{fallback_detail}"
+                    )
+                    await _record_local_archive(
+                        output_dir=output_dir,
+                        job_id=job_id,
+                        activity_name=folder_name,
+                        language_label=language_label,
+                        audio_files=audio_files,
+                        reason="s3_disabled",
+                        tally=tally,
+                    )
+                    logger.warning(
+                        "Job %s | activity %s | lang %s: S3 upload skipped; local fallback requested",
+                        job_id,
+                        activity_name,
+                        language_label,
+                    )
+                    continue
+
+                if append_mode:
+                    result = await asyncio.to_thread(
+                        s3_client.append_to_language_zip,
+                        language_label,
+                        audio_files,
+                        folder_name,
+                    )
+                    tally.upload_succeeded()
+                    logger.info(
+                        "Job %s | activity %s | lang %s: appended %s file(s) into zip (overwrote %s, total now %s) -> %s",
+                        job_id,
+                        activity_name,
+                        language_label,
+                        result.get("added_files", len(audio_files)),
+                        result.get("overwritten_files", "0"),
+                        result.get("total_files", "?"),
+                        result["key"],
+                    )
+                else:
+                    result = await asyncio.to_thread(
+                        s3_client.upload_language_zip,
+                        language_label,
+                        audio_files,
+                        folder_name,
+                    )
+                    tally.upload_succeeded()
+                    logger.info(
+                        "Job %s | activity %s | lang %s: uploaded zip with %d files -> %s",
+                        job_id,
+                        activity_name,
+                        language_label,
+                        len(audio_files),
+                        result["key"],
+                    )
+            except Exception as exc:
+                tally.upload_failed()
                 tally.warn_about_uploads(
-                    "Cloud upload is disabled because BATCH_ENABLE_S3_UPLOAD is not true. "
-                    f"{fallback_detail}"
+                    "Cloud upload failed for at least one ZIP. "
+                    "Local ZIP downloads were prepared for failed uploads."
                 )
-                _record_local_archive(
+                await _record_local_archive(
                     output_dir=output_dir,
                     job_id=job_id,
                     activity_name=folder_name,
-                    language_label=language_label,
+                    language_label=LANGUAGE_NAMES.get(language, language),
                     audio_files=audio_files,
-                    reason="s3_disabled",
+                    reason="s3_failed",
                     tally=tally,
+                    error=str(exc),
                 )
-                logger.warning(
-                    "Job %s | activity %s | lang %s: S3 upload skipped; local fallback requested",
+                logger.error(
+                    "Job %s | activity %s | lang %s: zip upload failed: %s",
                     job_id,
                     activity_name,
-                    language_label,
+                    language,
+                    exc,
                 )
-                continue
-
-            if append_mode:
-                result = await asyncio.to_thread(
-                    s3_client.append_to_language_zip,
-                    language_label,
-                    audio_files,
-                    folder_name,
-                )
-                tally.upload_succeeded()
-                logger.info(
-                    "Job %s | activity %s | lang %s: appended %s file(s) into zip (overwrote %s, total now %s) -> %s",
-                    job_id,
-                    activity_name,
-                    language_label,
-                    result.get("added_files", len(audio_files)),
-                    result.get("overwritten_files", "0"),
-                    result.get("total_files", "?"),
-                    result["key"],
-                )
-            else:
-                result = await asyncio.to_thread(
-                    s3_client.upload_language_zip,
-                    language_label,
-                    audio_files,
-                    folder_name,
-                )
-                tally.upload_succeeded()
-                logger.info(
-                    "Job %s | activity %s | lang %s: uploaded zip with %d files -> %s",
-                    job_id,
-                    activity_name,
-                    language_label,
-                    len(audio_files),
-                    result["key"],
-                )
-        except Exception as exc:
-            tally.upload_failed()
-            tally.warn_about_uploads(
-                "Cloud upload failed for at least one ZIP. "
-                "Local ZIP downloads were prepared for failed uploads."
-            )
-            _record_local_archive(
-                output_dir=output_dir,
-                job_id=job_id,
-                activity_name=folder_name,
-                language_label=LANGUAGE_NAMES.get(language, language),
-                audio_files=audio_files,
-                reason="s3_failed",
-                tally=tally,
-                error=str(exc),
-            )
-            logger.error(
-                "Job %s | activity %s | lang %s: zip upload failed: %s",
-                job_id,
-                activity_name,
-                language,
-                exc,
-            )
-
