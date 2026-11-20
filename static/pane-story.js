@@ -267,22 +267,19 @@
           target_languages: state.targets,
         }),
       }, 30000);
-      if (!r.ok) {
-        let detail = "";
-        try { detail = (await r.json()).detail; } catch (_) {}
-        if (typeof detail !== "string" || !detail) detail = `HTTP ${r.status}`;
-        throw Object.assign(new Error(detail), { status: r.status });
-      }
+      if (!r.ok) throw await U.httpError(r);
       const { job_id } = await r.json();
       state.jobId = job_id;
       try { localStorage.setItem(JOB_KEY, job_id); } catch (_) {}
       await poll(job_id);
     } catch (e) {
-      // a 400 is about the lines or the setup; anything else never got there
-      U.banner(els.banners, e.status === 400
-        ? { kind: "error", title: "The story could not be voiced", detail: U.esc(e.message) }
-        : { kind: "error", title: "Could not start the run",
-            detail: "The request never reached the server.", raw: String(e && e.message || e) });
+      // a 400 is about the lines or the setup; another HTTP error is the server
+      // turning the run away (busy, say); no status means it never got there
+      if (e.status === 400) {
+        U.banner(els.banners, { kind: "error", title: "The story could not be voiced", detail: U.esc(e.message) });
+      } else {
+        U.startFailedBanner(els.banners, e);
+      }
       finish("failed", null, null, false);
     }
   }

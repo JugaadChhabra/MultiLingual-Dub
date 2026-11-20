@@ -10,6 +10,7 @@ import openpyxl
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from api import shared
+from api.admission import admit_audio_job
 from api.utils import ensure_file_extension, parse_target_languages, save_upload_file
 from batch.models import CreateJobResponse, JobState
 from batch.service import english_voice_is_required, run_excel_batch_job
@@ -45,11 +46,8 @@ async def create_excel_job(
     except (MissingSettingError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    saved_path = Path(temp_file.name)
-    temp_file.close()
-
-    await save_upload_file(file, saved_path)
+    # Admission saves the sheet; from here the job owns (and deletes) it.
+    saved_path = await admit_audio_job(file)
 
     job_id = uuid.uuid4().hex
     await shared.jobs_store.create(job_id)

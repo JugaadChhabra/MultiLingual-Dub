@@ -1,6 +1,7 @@
 """How wide this process runs: the ElevenLabs provider limit, the size of
 the default thread pool, how many audio jobs run at once (the job queue's
-slots, see batch/job_queue.py), and the per-folder S3 upload lock.
+slots, see batch/job_queue.py), the per-folder S3 upload lock, and the
+admission limits (upload size, sheet rows, waiting jobs; see api/admission.py).
 
 The provider limit is a process-wide cap on concurrent ElevenLabs calls.
 
@@ -30,6 +31,9 @@ import weakref
 DEFAULT_ELEVENLABS_MAX_CONCURRENCY = 10
 DEFAULT_THREAD_POOL_SIZE = 32
 DEFAULT_AUDIO_MAX_CONCURRENT_JOBS = 3
+DEFAULT_MAX_UPLOAD_MB = 10.0
+DEFAULT_MAX_SHEET_ROWS = 2000
+DEFAULT_MAX_QUEUED_JOBS = 20
 
 _elevenlabs_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
@@ -45,6 +49,15 @@ def _positive_env_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+def _positive_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 def elevenlabs_max_concurrency() -> int:
     return _positive_env_int("ELEVENLABS_MAX_CONCURRENCY", DEFAULT_ELEVENLABS_MAX_CONCURRENCY)
 
@@ -53,6 +66,23 @@ def audio_max_concurrent_jobs() -> int:
     """AUDIO_MAX_CONCURRENT_JOBS, or 3: how many audio jobs (Excel and story)
     run at once. The rest wait in the job queue."""
     return _positive_env_int("AUDIO_MAX_CONCURRENT_JOBS", DEFAULT_AUDIO_MAX_CONCURRENT_JOBS)
+
+
+def max_upload_mb() -> float:
+    """MAX_UPLOAD_MB, or 10 (fractions allowed): the largest Excel upload the
+    server accepts. Larger ones get 413."""
+    return _positive_env_float("MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB)
+
+
+def max_sheet_rows() -> int:
+    """MAX_SHEET_ROWS, or 2000: the most rows one Excel job may have."""
+    return _positive_env_int("MAX_SHEET_ROWS", DEFAULT_MAX_SHEET_ROWS)
+
+
+def max_queued_jobs() -> int:
+    """MAX_QUEUED_JOBS, or 20: how many audio jobs may wait in the job queue
+    before new ones are turned away with 503."""
+    return _positive_env_int("MAX_QUEUED_JOBS", DEFAULT_MAX_QUEUED_JOBS)
 
 
 def thread_pool_size() -> int:

@@ -52,6 +52,11 @@ Optional tuning (defaults shown, set in `.env`):
 - `AUDIO_MAX_CONCURRENT_JOBS` (3): audio jobs running at once; the rest wait in
   a queue with a visible position.
 - `APP_THREAD_POOL_SIZE` (32): size of the app's worker thread pool.
+- `MAX_UPLOAD_MB` (10): largest Excel upload accepted; bigger ones get 413.
+- `MAX_SHEET_ROWS` (2000): most rows one Excel job may have; longer sheets get
+  400 naming the count and the limit.
+- `MAX_QUEUED_JOBS` (20): once this many audio jobs are waiting, new Excel and
+  story jobs get 503 with `Retry-After` until the line shortens.
 
 ## Redeploying safely
 

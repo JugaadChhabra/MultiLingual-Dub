@@ -252,6 +252,30 @@
   // ── a batch job, watched until it ends ──────────────────────────────────
   // An Excel sheet (Audio) and a story (Story) are the same kind of job: polled
   // and cancelled on the same endpoints, summarised by the same JobSummary.
+  // ── starting a job ──────────────────────────────────────────────────────
+  // A failed response becomes an Error carrying its status and the server's
+  // own `detail`, so the catch can tell "the server said no" from "the request
+  // never got there" (a thrown fetch, which has no status).
+  async function httpError(r) {
+    let detail = "";
+    try { detail = (await r.clone().json()).detail; } catch (_) {}
+    if (typeof detail !== "string" || !detail) {
+      try { detail = (await r.text()).trim(); } catch (_) {}
+    }
+    return Object.assign(new Error(detail || `HTTP ${r.status}`), { status: r.status });
+  }
+
+  // The banner for a job that could not start: the server's reason when it
+  // answered, today's wording when it never did.
+  function startFailedBanner(host, e) {
+    if (e && e.status) {
+      return banner(host, { kind: "error", title: "The server turned this run away",
+        detail: esc(e.message), raw: `HTTP ${e.status}` });
+    }
+    return banner(host, { kind: "error", title: "Could not start the run",
+      detail: "The request never reached the server.", raw: String(e && e.message || e) });
+  }
+
   const JOB_ENDED = ["completed", "failed", "cancelled"];
   const pause = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -498,6 +522,6 @@
   }
 
   window.UI = { $, esc, icon, label, fetchT, banner, clearBanners, toast, overlay, confirm, setBar, eta, clock,
-                JOB_ENDED, pollJob, jobProgress, waitingLabel, jobEnded, bindJobCancel, resetJobCancel,
+                JOB_ENDED, httpError, startFailedBanner, pollJob, jobProgress, waitingLabel, jobEnded, bindJobCancel, resetJobCancel,
                 notify, askNotify, chime, kb, bindSwitch, isOn, bindSeg, dropzone, langPicker };
 })();

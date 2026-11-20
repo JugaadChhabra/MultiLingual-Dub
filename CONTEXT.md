@@ -222,6 +222,13 @@ Cancelling a waiting job (`JobQueue.cancel`) makes it `cancelled` in that same
 request and takes it out of the line; cancelling a running one only asks it to
 stop at its next row boundary.
 
+**Admission** — the one step both audio job routes pass before a job is
+created (`api/admission.py`, `admit_audio_job`). It turns a request away with
+the reason: 503 + `Retry-After` when `MAX_QUEUED_JOBS` jobs already wait; for
+an Excel job, 413 over `MAX_UPLOAD_MB` and 400 over `MAX_SHEET_ROWS` rows
+(counted with the job's own reader). A rejected request creates no job and
+leaves no temp file. New pre-flight checks (free disk) belong here.
+
 **Queue position** — a waiting job's 1-based place in the job queue, on
 `JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered
 for every waiter whenever the queue changes; `None` once the job starts or ends.

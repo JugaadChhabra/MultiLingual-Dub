@@ -123,14 +123,13 @@
       state.targets.forEach((l) => fd.append("target_languages", l));
 
       const r = await fetch("/batch/excel-jobs", { method: "POST", body: fd });
-      if (!r.ok) throw new Error((await r.text()) || `HTTP ${r.status}`);
+      if (!r.ok) throw await U.httpError(r);
       const { job_id } = await r.json();
       state.jobId = job_id;
       try { localStorage.setItem(JOB_KEY, job_id); } catch (_) {}
       await poll(job_id);
     } catch (e) {
-      U.banner(els.banners, { kind: "error", title: "Could not start the run",
-        detail: "The request never reached the server.", raw: String(e && e.message || e) });
+      U.startFailedBanner(els.banners, e);
       finish("failed", null, null);
     }
   }

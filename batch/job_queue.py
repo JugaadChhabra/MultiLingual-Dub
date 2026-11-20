@@ -80,6 +80,10 @@ class JobQueue:
             self._lanes[loop] = lane
         return lane
 
+    def waiting_count(self) -> int:
+        """How many jobs wait in this loop's line (not counting running ones)."""
+        return len(self._lane().waiting)
+
     async def submit(self, job_id: str, make_coro: MakeCoro, *, name: str) -> None:
         """Put a job (already created ``queued`` in the store) in line. It starts
         now if a slot is free. ``make_coro`` is called only when it starts."""
