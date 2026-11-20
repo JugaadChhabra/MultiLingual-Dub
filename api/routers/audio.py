@@ -73,6 +73,12 @@ async def create_excel_job(
     return CreateJobResponse(job_id=job_id, status="queued")
 
 
+@router.get("/batch/active")
+async def list_active_jobs():
+    """Jobs a restart would fail: everything queued or running."""
+    return await shared.jobs_store.list_active()
+
+
 @router.get("/batch/excel-jobs/{job_id}", response_model=JobState)
 async def get_excel_job(job_id: str):
     job = await shared.jobs_store.get(job_id)

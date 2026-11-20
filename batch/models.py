@@ -63,6 +63,9 @@ class JobSummary(BaseModel):
 
 class JobState(BaseModel):
     job_id: str
+    # "excel" or "story". Defaults to "excel" so job files persisted before
+    # this field existed still load.
+    kind: str = "excel"
     status: str = Field(pattern="^(queued|running|completed|failed|cancelled)$")
     # 1-based place in the job queue (batch/job_queue.py) while waiting for a
     # slot; None once the job has started, or ended without starting.

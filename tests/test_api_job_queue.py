@@ -247,3 +247,35 @@ def test_cancelling_a_running_job_is_still_cooperative(env) -> None:
     assert r.status_code == 200
     assert r.json()["status"] == "cancelling"
     assert _job(client, ids[0])["status"] == "running"
+
+
+def _active(client) -> list[dict]:
+    r = client.get("/batch/active")
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_active_lists_running_then_queued_with_kinds_and_clears_when_done(env, monkeypatch) -> None:
+    client, gate = env
+    monkeypatch.setattr(shared, "job_queue", JobQueue(shared.jobs_store, limit=1))
+    assert _active(client) == []
+
+    excel = _submit_excel(client)
+    story = _submit_story(client)
+    _settle(client, [excel, story], [("running", None), ("queued", 1)])
+
+    active = _active(client)
+    assert [(j["job_id"], j["kind"], j["status"], j["queue_position"]) for j in active] == [
+        (excel, "excel", "running", None),
+        (story, "story", "queued", 1),
+    ]
+    assert set(active[0]) == {"job_id", "kind", "status", "queue_position",
+                              "rows_processed", "total_rows", "started_at"}
+    assert active[0]["started_at"] is not None
+
+    gate.release(excel)
+    _settle(client, [excel, story], [("completed", None), ("running", None)])
+    gate.release(story)
+    _settle(client, [excel, story], [("completed", None), ("completed", None)])
+
+    assert _active(client) == []

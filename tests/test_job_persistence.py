@@ -208,6 +208,28 @@ def test_an_interrupted_audio_batch_reports_how_far_it_got(tmp_path: Path) -> No
     assert state.summary.total_rows == 40
 
 
+def test_a_persisted_job_file_without_kind_loads_as_excel(tmp_path: Path) -> None:
+    """Job files written before `kind` existed must still load."""
+    (tmp_path / "old-job.json").write_text(
+        '{"job_id": "old-job", "status": "completed", "summary": {}}'
+    )
+
+    state = asyncio.run(JobsStore(persist_dir=tmp_path).get("old-job"))
+
+    assert state is not None
+    assert state.kind == "excel"
+
+
+def test_a_story_jobs_kind_survives_a_restart(tmp_path: Path) -> None:
+    async def _before():
+        store = JobsStore(persist_dir=tmp_path)
+        await store.create("s-1", kind="story")
+
+    asyncio.run(_before())
+
+    assert asyncio.run(JobsStore(persist_dir=tmp_path).get("s-1")).kind == "story"
+
+
 def test_an_interrupted_audio_batch_keeps_its_download_links(tmp_path: Path) -> None:
     """The zips for completed activities are already on disk, so these links
     still work — the one thing an audio batch really can recover."""

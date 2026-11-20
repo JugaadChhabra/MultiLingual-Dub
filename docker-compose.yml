@@ -1,9 +1,6 @@
 services:
   autodub:
     image: ghcr.io/jugaadchhabra/autodub:latest
-    # Always fetch the newest published image on `up` — users get updates
-    # automatically without ever running `docker compose pull`.
-    pull_policy: always
     ports:
       - "8080:8080"
     volumes:
@@ -59,6 +56,8 @@ services:
       AUDIO_MAX_CONCURRENT_JOBS: ${AUDIO_MAX_CONCURRENT_JOBS:-3}
 
     restart: unless-stopped
+    # Time for a stop to finish before the container is killed.
+    stop_grace_period: 30s
 
     # No healthcheck here on purpose. The image defines its own (see Dockerfile),
     # which probes /health with httpx — a dependency it actually installs. The
@@ -68,14 +67,11 @@ services:
 
 # Usage:
 # 1. Create/edit .env and fill all required keys
-# 2. docker compose up -d   (auto-pulls the latest image — no manual pull needed)
+# 2. docker compose up -d
 # 3. Access at http://localhost:8080
 #
-# To update later: just run `docker compose up -d` again. `pull_policy: always`
-# fetches the newest image automatically before (re)starting.
-#
-# Note for Windows: `pull_policy: always` contacts the registry on every `up`,
-# which invokes Docker Desktop's credential helper. That helper needs an
-# interactive logon session, so `up` fails over SSH with "A specified logon
-# session does not exist". Run it from the desktop session, or use
-# `docker compose up -d --pull never` to start the image already on disk.
+# To update, deliberately: check nothing is running, then pull and up.
+#   curl http://localhost:8080/batch/active     # must print []
+#   docker compose pull && docker compose up -d
+# A restart fails every running or queued audio job (see DOCKER_README.md,
+# "Redeploying safely"). Keep a single uvicorn worker: job state is in memory.
