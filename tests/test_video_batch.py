@@ -197,6 +197,15 @@ def test_completed_rows_record_where_the_video_landed(tmp_path: Path, nas_root: 
         assert (nas_root / "12-08-2026" / f"{row.video_title}.mp4").exists()
 
 
+def test_a_completed_rows_link_is_the_library_download(tmp_path: Path, nas_root: Path) -> None:
+    renderer = FakeRenderer()
+
+    state = asyncio.run(_run_batch(tmp_path=tmp_path, rows=_rows(2), renderer=renderer, nas_root=nas_root))
+
+    links = sorted(r.video_local_url for r in state.rows)
+    assert links == [f"/video/heygen/library/video-{n}/download" for n in (1, 2)]
+
+
 def _spy_burn_cards(monkeypatch) -> list:
     """As in test_video_job: record what the finalize step asked burn_cards for,
     copying the render through instead of encoding."""

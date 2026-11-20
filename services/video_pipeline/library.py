@@ -43,6 +43,15 @@ NOTHING_RENDERED = "Failed before anything was sent to HeyGen, so nothing was re
 NOT_ON_HEYGEN = "HeyGen no longer has this render, so it can't be recovered. Re-run it."
 CANCELLED = "Cancelled by the operator, so it was not filed."
 
+def download_url(video_id: str | None) -> str | None:
+    """The Library route that serves a render's video, or None with no render id.
+
+    A batch row links here instead of to the job's local file: those files are
+    deleted once the job is filed (#32), while the Library route keeps serving
+    the video afterwards (the carded copy while it exists, else HeyGen's render).
+    """
+    return f"/video/heygen/library/{video_id}/download" if video_id else None
+
 
 @dataclass(frozen=True)
 class LibraryEntry:

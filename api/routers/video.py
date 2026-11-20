@@ -3,6 +3,7 @@ A batch of rows is api/routers/video_batch.py."""
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -128,9 +129,11 @@ async def get_heygen_video_job(job_id: str):
     if not state:
         raise HTTPException(status_code=404, detail="Job not found")
     payload = state.model_dump(mode="json")
-    if state.summary.video_path:
-        rel = to_output_url(state.summary.video_path, shared.OUTPUT_DIR)
-        payload["video_local_url"] = rel
+    # Local files are deleted once a job is filed (#32); with no file there is
+    # no local link, and the page falls back to the render's HeyGen URL.
+    video_path = state.summary.video_path
+    if video_path and Path(video_path).exists():
+        payload["video_local_url"] = to_output_url(video_path, shared.OUTPUT_DIR)
     control = shared.video_controls.get(job_id)
     payload["cancel_requested"] = bool(control and control.cancelled)
     return payload

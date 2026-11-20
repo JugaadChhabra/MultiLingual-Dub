@@ -14,21 +14,11 @@ from services.video_pipeline.renderer import VideoRenderer
 from services.video_pipeline.slots import TalkingPhotoSlots
 from services.video_pipeline.heygen_client import HeyGenSettings
 from services.video_pipeline.intake import BatchItem
+from services.video_pipeline.library import download_url
 from services.video_pipeline.speech import SpeechSynth
 from services.video_pipeline.store import VideoJobsStore
 
 logger = logging.getLogger(__name__)
-
-
-def _local_video_url(video_path: str, output_base_dir: Path) -> str | None:
-    path = Path(video_path)
-    try:
-        rel = path.resolve().relative_to(output_base_dir.resolve())
-    except ValueError:
-        return None
-    if not path.exists():
-        return None
-    return f"/output/{rel.as_posix()}"
 
 
 def _batch_concurrency(configured: int, row_count: int) -> int:
@@ -134,7 +124,8 @@ async def run_video_batch_job(
                         (video_state.error if video_state else None) or "video job did not complete"
                     )
 
-                video_local_url = _local_video_url(video_state.summary.video_path or "", output_base_dir)
+                # The Library link, not the local file: see library.download_url.
+                video_local_url = download_url(video_state.summary.heygen_video_id)
                 await batch_store.update_row(
                     batch_id, item.row_index,
                     status="completed",
