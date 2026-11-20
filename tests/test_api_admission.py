@@ -17,6 +17,7 @@ from openpyxl import Workbook
 from api import routes as api
 from api import shared
 from api.routers import audio as audio_routes
+from api.routers import story as story_routes
 from batch.job_queue import JobQueue
 from batch.store import JobsStore
 from tests.fakes import use_env
@@ -195,3 +196,73 @@ def test_a_sheet_the_reader_cannot_parse_is_left_to_the_job(client, monkeypatch)
     monkeypatch.setenv("MAX_SHEET_ROWS", "1")
     r = _post(client, b"not a workbook")
     assert r.status_code == 202, r.text
+
+
+def _disk_free_gb(monkeypatch, gb: float) -> None:
+    from api import admission
+    monkeypatch.setattr(admission, "free_disk_bytes", lambda _path: int(gb * admission.GB))
+
+
+def test_an_excel_job_on_a_nearly_full_disk_gets_507_and_creates_no_job(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 3.25)
+
+    r = _post(client, _sheet(1))
+
+    assert r.status_code == 507
+    assert r.json()["detail"] == (
+        "The server is almost out of disk space (3.2 GB free); "
+        "ask the maintainer to clear space before starting new runs."
+    )
+    assert _active_ids(client) == set()
+    assert client.ran == []
+    assert _temp_files() == []
+
+
+def test_a_story_job_on_a_nearly_full_disk_gets_507_and_creates_no_job(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 1)
+
+    r = client.post("/batch/story-jobs", json={
+        "title": "The stream",
+        "activity_name": "thestreamstory",
+        "lines": [{"text": "Hi there!", "emotion": "Cheerful"}],
+        "target_languages": ["hi-IN"],
+    })
+
+    assert r.status_code == 507
+    assert "almost out of disk space" in r.json()["detail"]
+    assert _active_ids(client) == set()
+
+
+def test_the_free_disk_threshold_comes_from_the_env(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 8)
+    monkeypatch.setenv("MIN_FREE_DISK_GB", "10")
+    assert _post(client, _sheet(1)).status_code == 507
+    monkeypatch.setenv("MIN_FREE_DISK_GB", "7.5")
+    assert _post(client, _sheet(1)).status_code == 202
+
+
+def test_enough_free_disk_admits_excel_and_story_jobs(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 5)  # exactly the default threshold is enough
+
+    async def story_runner(*, job_id, **_kwargs):
+        client.ran.append(job_id)
+
+    monkeypatch.setattr(story_routes, "run_story_job", story_runner)
+
+    r = _post(client, _sheet(1))
+    assert r.status_code == 202, r.text
+    r = client.post("/batch/story-jobs", json={
+        "title": "The stream",
+        "activity_name": "thestreamstory",
+        "lines": [{"text": "Hi there!", "emotion": "Cheerful"}],
+        "target_languages": ["hi-IN"],
+    })
+    assert r.status_code == 202, r.text
+    assert len(_active_ids(client)) == 2
+
+
+def test_free_space_just_under_the_minimum_is_not_shown_as_the_minimum(client, monkeypatch) -> None:
+    _disk_free_gb(monkeypatch, 4.96)
+    r = _post(client, _sheet(1))
+    assert r.status_code == 507
+    assert "(4.9 GB free)" in r.json()["detail"]

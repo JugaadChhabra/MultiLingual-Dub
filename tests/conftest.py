@@ -23,3 +23,13 @@ def _stub_burn_cards(monkeypatch):
         return Path(dest)
 
     monkeypatch.setattr(pipeline, "burn_cards", fake_burn_cards)
+
+
+@pytest.fixture(autouse=True)
+def _plenty_of_disk(monkeypatch):
+    """Admission turns jobs away when the output volume is nearly full. Fake a
+    roomy disk so no test depends on the machine it runs on; the free-disk
+    tests override this."""
+    from api import admission
+
+    monkeypatch.setattr(admission, "free_disk_bytes", lambda _path: 500 * admission.GB)

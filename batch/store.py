@@ -12,6 +12,12 @@ from services.state_mirror import JsonStateMirror, finalize_summary
 logger = logging.getLogger(__name__)
 
 
+def _as_utc(moment: datetime) -> datetime:
+    """Every finish time is written timezone-aware (UTC); a naive one (a
+    hand-edited file) is read as UTC rather than breaking the comparison."""
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
 class JobsStore:
     """Audio batch jobs, optionally mirrored to disk.
 
@@ -88,6 +94,31 @@ class JobsStore:
                 }
                 for s in active
             ]
+
+    async def finished_before(self, cutoff: datetime) -> list[str]:
+        """Ids of terminal jobs whose summary says they finished before
+        ``cutoff``. In-flight jobs, and terminal ones with no finish time, are
+        never listed."""
+        async with self._lock:
+            return [
+                s.job_id for s in self._jobs.values()
+                if s.status not in self.IN_FLIGHT_STATUSES
+                and s.summary.finished_at is not None
+                and _as_utc(s.summary.finished_at) < cutoff
+            ]
+
+    async def remove(self, job_id: str) -> bool:
+        """Forget a job: drop it from memory and delete its persisted file.
+        False if the store did not hold it."""
+        async with self._lock:
+            state = self._jobs.pop(job_id, None)
+            self._cancel_flags.discard(job_id)
+            if self._mirror is not None:
+                self._mirror.delete(job_id)
+            if state is None:
+                return False
+            logger.info("Job %s → removed", job_id)
+            return True
 
     async def start(self, job_id: str) -> datetime:
         async with self._lock:

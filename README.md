@@ -45,6 +45,10 @@ All keys come from the `.env` file next to `docker-compose.yml`. The dot in the
 app's header shows how many of the required keys it found; hover it to see which
 are missing.
 
+Retention: audio jobs that ended more than `OUTPUT_RETENTION_DAYS` (default 14)
+days ago have their local fallback zips (`output/batch_archives/<job_id>/`) and
+job record deleted; S3 uploads and everything under `output/heygen/` are kept.
+
 ## Common Commands
 
 ```bash

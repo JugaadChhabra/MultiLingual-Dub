@@ -227,7 +227,16 @@ created (`api/admission.py`, `admit_audio_job`). It turns a request away with
 the reason: 503 + `Retry-After` when `MAX_QUEUED_JOBS` jobs already wait; for
 an Excel job, 413 over `MAX_UPLOAD_MB` and 400 over `MAX_SHEET_ROWS` rows
 (counted with the job's own reader). A rejected request creates no job and
-leaves no temp file. New pre-flight checks (free disk) belong here.
+leaves no temp file. It also gives 507 while the output volume has less than
+`MIN_FREE_DISK_GB` free. New pre-flight checks belong here.
+
+**Retention** (`batch/retention.py`) — finished audio jobs are removed once
+they ended more than `OUTPUT_RETENTION_DAYS` ago (default 14): their local
+fallback zips (`output/batch_archives/<job_id>/`) and their job record, in
+memory and on disk. Swept at startup and every 6 hours. Never swept: queued or
+running jobs, a terminal job with no finish time, and anything of the video
+pipeline (`output/heygen/`: its jobs, renders, library cache, script history).
+S3 uploads are not touched either.
 
 **Queue position** — a waiting job's 1-based place in the job queue, on
 `JobState.queue_position` and so in `GET /batch/excel-jobs/{id}`. Renumbered
