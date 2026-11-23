@@ -43,7 +43,7 @@ CONFIG_KEYS = set(FULL_ENV) | {
     "BATCH_MAX_LANGUAGE_PARALLELISM", "HEYGEN_BATCH_CONCURRENCY",
     "NAS_MODE", "NAS_ROOT_PATH", "NAS_SERVER", "NAS_SHARE", "NAS_PORT",
     "NAS_USERNAME", "NAS_PASSWORD", "NAS_DOMAIN", "US_CHARACTER_NAS_ROOT_PATH",
-    "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "NOTIFY_EMAILS",
+    "RESEND_API_KEY", "RESEND_FROM_ADDRESS", "NOTIFY_EMAILS", "COMP_ENGINE_URL",
 }
 
 
@@ -294,6 +294,7 @@ def test_only_settings_resolvers_read_raw_keys() -> None:
         Path("services/script_writer.py"),
         Path("services/email.py"),
         Path("services/video_pipeline/heygen_client.py"),
+        Path("services/comp_engine.py"),
     }
     pattern = re.compile(r"\bread_setting\s*\(")
     offenders = []

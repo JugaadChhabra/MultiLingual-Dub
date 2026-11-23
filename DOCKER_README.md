@@ -101,6 +101,11 @@ Keep one uvicorn worker: the job stores are in memory, so a second worker would
 not see the first one's jobs. The container is given 30 seconds (`stop_grace_period`)
 to stop.
 
+## Compilations (Comp engine)
+
+The Compilations page needs the Comp engine, which runs on the Mac mini outside
+Docker. Setting it up is covered step by step in [MAC_MINI_SETUP.md](MAC_MINI_SETUP.md).
+
 ## Health and Logs
 
 ```bash

@@ -160,6 +160,25 @@ if [ "$MIDAS_BEFORE" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+step "7. Comp engine (Compilations)"
+# Runs outside Docker, as a LaunchAgent: see comp_gen/macos/install.sh. Optional:
+# without it, only the Compilations pane is unavailable.
+if [ -f "$HERE/comp_gen/macos/install.sh" ]; then
+  bash "$HERE/comp_gen/macos/install.sh" || warn "Comp engine install did not finish (the reason is above). Everything else is running."
+elif curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:8765/health"; then
+  ok "Comp engine already running on this Mac"
+else
+  warn "Comp engine not installed. To enable Compilations, copy the repo's comp_gen/ folder next to this script and run it again."
+fi
+if curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:8765/health"; then
+  if docker compose exec -T autodub python -c "import httpx,sys; sys.exit(httpx.get('http://host.docker.internal:8765/health', timeout=3).status_code != 200)" 2>/dev/null; then
+    ok "Content Hub can reach the Comp engine"
+  else
+    warn "the container cannot reach host.docker.internal:8765. Compilations will say the engine isn't answering."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 HOSTNAME_LOCAL="$(scutil --get LocalHostName 2>/dev/null).local"
 IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)"
 

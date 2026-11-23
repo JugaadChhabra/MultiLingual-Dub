@@ -221,3 +221,9 @@ output/
 
 # Brainstorm mockups
 .superpowers/
+
+# Comp Creator: Windows binaries and per-machine settings never go in the repo
+comp_gen/*.exe
+comp_gen/config.json
+comp_gen/source/CompCreator
+comp_gen/**/.cache/

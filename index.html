@@ -6,18 +6,18 @@
 <link rel="icon" type="image/png" href="/static/logo.png?v=1" />
 <link rel="apple-touch-icon" href="/static/logo.png?v=1" />
 <title>Content Hub</title>
-<link rel="stylesheet" href="/static/app.css?v=18" />
+<link rel="stylesheet" href="/static/app.css?v=20" />
 </head>
 <body>
 <!-- Icons are Remix Icon symbols from /static/icons.svg, always currentColor.
-     In markup: <svg class="ri"><use href="/static/icons.svg?v=2#name"/></svg>;
+     In markup: <svg class="ri"><use href="/static/icons.svg?v=3#name"/></svg>;
      in script: UI.icon("name"). -->
 <div class="app">
 
   <div class="tb">
     <button type="button" class="sbtoggle" id="sbToggle" aria-controls="sidebar" aria-expanded="true"
       aria-label="Toggle sidebar">
-      <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#sidebar"/></svg>
+      <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#sidebar"/></svg>
     </button>
     <img class="logo" src="/static/logo.png?v=1" alt="" width="24" height="24" />
     <span class="title">Content Hub</span>
@@ -32,30 +32,35 @@
     <nav class="sb" id="sidebar" aria-label="Pipelines">
       <div class="sbh">Create</div>
       <button class="sbi" data-section="story">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#story"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#story"/></svg>
         <span class="lbl">Story</span>
         <span class="live" id="storyLive" hidden></span>
       </button>
       <button class="sbi" data-section="audio" aria-current="page">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#audio"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#audio"/></svg>
         <span class="lbl">Audio dubbing</span>
         <span class="live" id="audioLive" hidden></span>
       </button>
       <button class="sbi" data-section="video">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#video"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#video"/></svg>
         <span class="lbl">Video generation</span>
         <span class="live" id="videoLive" hidden></span>
       </button>
+      <button class="sbi" data-section="comps">
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#film"/></svg>
+        <span class="lbl">Compilations</span>
+        <span class="live" id="compsLive" hidden></span>
+      </button>
       <div class="sbh">Videos</div>
       <button class="sbi" data-section="library">
-        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#library"/></svg>
+        <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#library"/></svg>
         <span class="lbl">Library</span>
         <span class="live" id="libraryLive" hidden></span>
       </button>
       <div id="recoverWrap" hidden>
         <div class="sbh">Needs attention</div>
         <button class="sbi warn" id="recoverBtn">
-          <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#warning"/></svg>
+          <svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#warning"/></svg>
           <span class="lbl">Not on the NAS</span>
           <span class="meta" id="recoverN">0</span>
         </button>
@@ -102,7 +107,7 @@
             <div class="grp">
               <div class="row">
                 <button type="button" class="drop empty" id="aDrop" data-state="empty">
-                  <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#sheet"/></svg></span>
+                  <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=3#sheet"/></svg></span>
                   <span class="tx">
                     <span class="t" id="aDropTitle">Drop a .xlsx, or click to browse</span>
                     <span class="s" id="aDropSub">Needs: voiceover_text, emotion, activity_name, voiceover_title</span>
@@ -163,8 +168,8 @@
           <div class="acts">
             <span class="msg" id="sReviewMsg" role="status" aria-live="polite"></span>
             <button class="btn" id="sCancel" hidden>Cancel run</button>
-            <button class="btn" id="sDownload"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#download"/></svg>Excel</button>
-            <button class="btn p" id="sGenerate"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#volume"/></svg>Generate audio</button>
+            <button class="btn" id="sDownload"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#download"/></svg>Excel</button>
+            <button class="btn p" id="sGenerate"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#volume"/></svg>Generate audio</button>
           </div>
         </header>
 
@@ -337,7 +342,7 @@
               <div class="grp">
                 <div class="row">
                   <button type="button" class="drop empty" id="vDrop" data-state="empty">
-                    <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#sheet"/></svg></span>
+                    <span class="ic" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=3#sheet"/></svg></span>
                     <span class="tx">
                       <span class="t" id="vDropTitle">Drop a .xlsx, or click to browse</span>
                       <span class="s" id="vDropSub">Needs: script · video_title optional</span>
@@ -358,7 +363,7 @@
                   <button type="button" class="btn" id="vGen">Write scripts</button>
                 </div>
                 <div id="vDrafts">
-                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=2#edit"/></svg>
+                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=3#edit"/></svg>
                     <div class="t">No drafts yet</div>
                     <div class="s">Written scripts appear here to read and edit before anything renders</div></div>
                 </div>
@@ -367,7 +372,7 @@
                 <div class="wh"><span class="t">Queue</span>
                   <span class="s">One row per video, as it renders and reaches the NAS</span></div>
                 <div class="grp" id="vQueue">
-                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=2#video"/></svg>
+                  <div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=3#video"/></svg>
                     <div class="t">Nothing queued</div>
                     <div class="s">Rows appear here once the batch starts</div></div>
                 </div>
@@ -396,7 +401,7 @@
               <span class="sz" id="vFileSize"></span>
               <span class="acts">
                 <button type="button" class="btn sm" id="vReplace">Replace</button>
-                <button type="button" class="iconbtn" id="vRemove" aria-label="Remove avatar"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
+                <button type="button" class="iconbtn" id="vRemove" aria-label="Remove avatar"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#close"/></svg></button>
               </span>
             </div>
 
@@ -427,6 +432,73 @@
       </div>
     </main>
 
+    <!-- ══════════════ COMPILATIONS ══════════════ -->
+    <!-- Rhymes on the left, the comp being built on the right with its one
+         button under it; comps already made sit above both. Deliberately
+         sparse: the engine's own state (GPU, intro found, library mounted)
+         only appears as a banner when something is wrong. -->
+    <main class="pane" id="pane-comps" aria-label="Compilations" hidden>
+      <div class="pane-inner wide">
+        <header class="phead">
+          <div class="tx">
+            <h1>Compilations</h1>
+            <div class="sub">Pick rhymes, put them in order, and get one YouTube video with its chapters.</div>
+          </div>
+        </header>
+
+        <div id="compsBanners"></div>
+
+        <section id="cRecentWrap" hidden>
+          <div class="wh row-h">
+            <div class="tx"><span class="t">Your comps</span></div>
+            <button class="btn q sm" id="cShowAll" hidden></button>
+          </div>
+          <div class="grp" id="cRecent" aria-live="polite"></div>
+        </section>
+
+        <div class="ccols">
+          <section aria-label="Rhymes">
+            <div class="libbar">
+              <div class="seg" id="cLangs" role="group" aria-label="Language"></div>
+              <input class="fld grow" id="cSearch" type="search" placeholder="Search rhymes" aria-label="Search rhymes" />
+            </div>
+            <div class="rgrid" id="cGrid"></div>
+          </section>
+
+          <aside class="ccomp" aria-label="Your comp">
+            <div class="grp cbuild">
+              <input type="text" class="fld cname" id="cName" maxlength="120" aria-label="Comp name" />
+              <div class="cseq" id="cSeq"></div>
+              <div class="cfoot"><span id="cIoNote"></span><button class="btn q sm" id="cReset" hidden>Clear</button></div>
+            </div>
+
+            <div class="seg cpreset" id="cPreset" role="group" aria-label="Format">
+              <button type="button" data-preset="1080" aria-pressed="true">YouTube</button>
+              <button type="button" data-preset="4k" aria-pressed="false">YouTube 4K</button>
+              <button type="button" data-preset="shorts" aria-pressed="false">Shorts</button>
+            </div>
+
+            <details class="cmore">
+              <summary>More options</summary>
+              <div class="grp">
+                <div class="row"><span class="tx"><span class="t">Between rhymes</span></span>
+                  <span class="rt"><select class="fld" id="cTransition"><option value="fade">Fade</option><option value="cut">Straight cut</option></select></span></div>
+                <div class="row"><span class="tx"><span class="t">Quality</span></span>
+                  <span class="rt"><select class="fld" id="cQuality"><option value="high">High</option><option value="balanced">Balanced</option><option value="fast">Fast preview</option></select></span></div>
+                <div class="row"><span class="tx"><span class="t">Trim intro/outro already in rhymes</span></span>
+                  <span class="rt"><select class="fld" id="cCut"><option value="auto">When found</option><option value="always">Always</option><option value="off">Never</option></select></span></div>
+              </div>
+            </details>
+
+            <div class="crun">
+              <button class="btn p big" id="cRun" title="⌘/Ctrl + Enter">Create comp</button>
+              <span class="msg" id="cMsg" role="status" aria-live="polite"></span>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+
     <!-- ══════════════ LIBRARY ══════════════ -->
     <main class="pane" id="pane-library" aria-label="Video library" hidden>
       <div class="pane-inner">
@@ -450,7 +522,7 @@
             <button type="button" data-state="cancelled" aria-pressed="false">Cancelled <span class="n" data-n="cancelled"></span></button>
           </div>
           <input class="fld grow" id="libSearch" type="search" placeholder="Search title, date or id" aria-label="Search the library" />
-          <button class="btn" id="libRefresh"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#refresh"/></svg>Refresh</button>
+          <button class="btn" id="libRefresh"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#refresh"/></svg>Refresh</button>
           <button class="btn p" id="libSendAll" hidden>Send all to NAS</button>
         </div>
 
@@ -469,7 +541,7 @@
 <aside class="drawer" id="catDrawer" role="dialog" aria-modal="true" aria-labelledby="catTitle" inert>
   <div class="dh">
     <div class="tx"><h2 id="catTitle">New category</h2><div class="dsub" id="catSub">Motion prompt preset</div></div>
-    <button class="iconbtn" id="catClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
+    <button class="iconbtn" id="catClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#close"/></svg></button>
   </div>
   <div class="fld-block">
     <label class="flbl" for="catName">Name</label>
@@ -501,15 +573,33 @@
 <aside class="drawer" id="avDrawer" role="dialog" aria-modal="true" aria-labelledby="avTitle" inert>
   <div class="dh">
     <div class="tx"><h2 id="avTitle">Reuse an avatar</h2><div class="dsub">Already uploaded — no need to send it again</div></div>
-    <button class="iconbtn" id="avClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=2#close"/></svg></button>
+    <button class="iconbtn" id="avClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#close"/></svg></button>
   </div>
   <div class="fld-block grow" style="overflow-y:auto"><div id="avBody"></div></div>
+</aside>
+
+<!-- a finished comp: watch it, copy its chapters, download it -->
+<div class="scrim" id="cScrim"></div>
+<aside class="drawer wide" id="cDrawer" role="dialog" aria-modal="true" aria-labelledby="cDTitle" inert>
+  <div class="dh">
+    <div class="tx"><h2 id="cDTitle">Comp</h2><div class="dsub" id="cDSub"></div></div>
+    <button class="iconbtn" id="cDClose" aria-label="Close"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#close"/></svg></button>
+  </div>
+  <video class="cplayer" id="cDVideo" controls preload="metadata"></video>
+  <div class="flrow cchap"><span class="flbl">Chapters <span class="hint">paste into the YouTube description</span></span>
+    <button class="btn sm" id="cDCopy"><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#copy"/></svg>Copy</button></div>
+  <textarea class="area mono cchaps" id="cDChapters" readonly aria-label="Chapters"></textarea>
+  <div class="acts">
+    <a class="btn" id="cDDownload" download><svg class="ri" aria-hidden="true"><use href="/static/icons.svg?v=3#download"/></svg>Download</a>
+    <button class="btn q" id="cDPath">Copy NAS path</button>
+    <span class="grow"></span>
+  </div>
 </aside>
 
 <!-- alert -->
 <div class="scrim" id="alertScrim"></div>
 <div class="alert" id="alert" role="alertdialog" aria-modal="true" aria-labelledby="alertTitle" inert>
-  <div class="g" id="alertIcon" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=2#warning-fill"/></svg></div>
+  <div class="g" id="alertIcon" aria-hidden="true"><svg class="ri"><use href="/static/icons.svg?v=3#warning-fill"/></svg></div>
   <div class="t" id="alertTitle"></div>
   <div class="m" id="alertMsg"></div>
   <div class="acts">
@@ -530,7 +620,8 @@
 <script src="/static/video/boot.js?v=1"></script>
 <script src="/static/pane-story.js?v=4"></script>
 <script src="/static/pane-library.js?v=4"></script>
-<script src="/static/shell.js?v=7"></script>
+<script src="/static/pane-comps.js?v=2"></script>
+<script src="/static/shell.js?v=8"></script>
   <div class="toasts" role="status" aria-live="polite"></div>
 </body>
 </html>

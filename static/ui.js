@@ -24,7 +24,7 @@
   // Remix Icon symbols from one sprite, so a glyph is the same shape wherever it
   // appears and always takes the colour of the text around it. Bump the version
   // when the sprite changes; the stylesheet caches it like any static asset.
-  const SPRITE = "/static/icons.svg?v=2";
+  const SPRITE = "/static/icons.svg?v=3";
   const icon = (name, cls = "") =>
     `<svg class="ri${cls ? " " + cls : ""}" aria-hidden="true"><use href="${SPRITE}#${name}"/></svg>`;
   // A button's text with its icon in front — textContent would drop the icon.

@@ -45,6 +45,12 @@ def library_page() -> FileResponse:
     return index()
 
 
+@router.get("/comps")
+def comps_page() -> FileResponse:
+    """The Compilations section's own linkable path, like /videogen."""
+    return index()
+
+
 @router.get("/heygen", include_in_schema=False)
 def heygen_page_legacy() -> RedirectResponse:
     """The old name. Kept as a redirect rather than deleted: the video editor has

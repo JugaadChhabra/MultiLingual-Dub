@@ -1,0 +1,16 @@
+{
+  "rhymes_folder": "/Volumes/RHYMES",
+  "intro": "",
+  "outro": "",
+  "intro_outro_folder": "/Volumes/RHYMES/Intro & Outro",
+  "output_folder": "/Volumes/RHYMES/Comps Outs",
+  "ffmpeg_path": "",
+  "resolution": "1920x1080",
+  "fps": "30",
+  "transition": "fade",
+  "fade_seconds": 0.5,
+  "quality": "balanced",
+  "cut_inner": "auto",
+  "encoder": "auto",
+  "parallel": 2
+}

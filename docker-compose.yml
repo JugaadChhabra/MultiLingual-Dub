@@ -62,6 +62,12 @@ services:
       VIDEO_OUTPUT_RETENTION_HOURS: ${VIDEO_OUTPUT_RETENTION_HOURS:-48}
       TTS_CACHE_RETENTION_DAYS: ${TTS_CACHE_RETENTION_DAYS:-7}
 
+      # Compilations: the Comp engine runs natively on the Mac mini (it needs
+      # Apple's hardware encoder and the Finder-mounted rhymes share, neither of
+      # which a container can reach), installed by comp_gen/macos/install.sh.
+      # Docker Desktop routes host.docker.internal to the host's loopback.
+      COMP_ENGINE_URL: ${COMP_ENGINE_URL:-http://host.docker.internal:8765}
+
     restart: unless-stopped
     # Time for a stop to finish before the container is killed.
     stop_grace_period: 30s

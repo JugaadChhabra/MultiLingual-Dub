@@ -698,3 +698,90 @@ select.fld{padding-right:4px;}
 .libform .opts{grid-column:1 / -1;display:flex;align-items:center;gap:var(--s4);font-size:var(--t-caption);color:var(--label2);}
 .libform .opts .grow{flex:1;}
 .libform .err{grid-column:1 / -1;color:var(--red-ink);font-size:var(--t-caption);}
+
+/* ─── compilations ──────────────────────────────────────────────────────── */
+/* Three things on screen: the rhymes, the comp being built, the comps already
+   made. Everything else waits behind "More options" or a drawer. */
+.ccols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--s8);align-items:start;}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:var(--s3);}
+.rgrid .empty{grid-column:1 / -1;}
+.rgrid[aria-busy="true"]{opacity:.6;}
+/* A rhyme is a picture and a name. Length, order and use sit on the picture. */
+.rtile{display:flex;flex-direction:column;padding:0;border:none;cursor:pointer;text-align:left;
+  font-family:var(--font);font-size:var(--t-body);color:var(--label);background:var(--card);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-1);overflow:hidden;
+  transition:box-shadow var(--dur) var(--ease),transform 100ms var(--ease);}
+.rtile:active{transform:scale(.98);}
+.rtile[aria-pressed="true"]{box-shadow:var(--shadow-1),inset 0 0 0 2px var(--accent);}
+.rtile .th{position:relative;display:block;aspect-ratio:16/9;background:var(--fill);}
+.rtile .th img{display:block;width:100%;height:100%;object-fit:cover;}
+.rtile .th img.gone{visibility:hidden;}
+.rtile .ord{position:absolute;top:6px;left:6px;min-width:22px;height:22px;padding:0 6px;border-radius:var(--r-pill);
+  background:var(--accent);color:#fff;font-size:var(--t-caption);font-weight:var(--w-bold);
+  font-variant-numeric:tabular-nums;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+.rtile .ord:empty{display:none;}
+.rtile .dur,.rtile .used{position:absolute;bottom:6px;padding:1px 6px;border-radius:var(--r-xs);
+  background:rgba(0,0,0,.6);color:#fff;font-size:var(--t-caption2);line-height:var(--lh-caption2);
+  font-variant-numeric:tabular-nums;}
+.rtile .dur{right:6px;}
+.rtile .dur:empty{display:none;}
+.rtile .used{left:6px;color:rgba(255,255,255,.8);}
+.rtile .nm{padding:8px var(--s3) 10px;font-weight:var(--w-medium);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.ccomp{position:sticky;top:0;display:flex;flex-direction:column;gap:var(--s3);}
+.cbuild{margin:0;}
+/* The name is the comp's heading, set as one — the Story title does the same. */
+.cbuild .cname{height:auto;padding:var(--s3) var(--s4);font-size:var(--t-headline);line-height:var(--lh-headline);
+  font-weight:var(--w-bold);background:none;box-shadow:none;border-radius:0;border-bottom:.5px solid var(--sep);}
+.cbuild .cname:focus{box-shadow:inset 0 -2px 0 var(--accent);}
+.cseq{max-height:48vh;overflow-y:auto;}
+.cempty{padding:var(--s5) var(--s4);color:var(--label2);font-size:var(--t-caption);line-height:var(--lh-caption);text-align:center;}
+.row.sq{padding:7px 6px 7px var(--s3);gap:var(--s2);cursor:grab;}
+.row.sq .i{width:16px;flex:none;text-align:right;font-size:var(--t-caption);color:var(--label2);font-variant-numeric:tabular-nums;}
+.row.sq .tx{flex:1;min-width:0;}
+.row.sq .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--w-regular);}
+.row.sq .len{flex:none;font-size:var(--t-caption);color:var(--label2);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.row.sq .len .note{color:var(--label3);}
+.row.sq .iconbtn{width:22px;height:22px;}
+.row.sq .iconbtn:disabled{opacity:.3;pointer-events:none;}
+/* Reordering by arrow is there for the keyboard; the mouse drags. So the
+   arrows only appear on the row being worked on. */
+.row.sq .mv{display:none;}
+.row.sq:hover .mv,.row.sq:focus-within .mv{display:flex;}
+.row.sq:hover .len .note,.row.sq:focus-within .len .note{display:none;}
+.row.sq.dragging{opacity:.4;}
+.row.sq.over{box-shadow:inset 0 2px 0 var(--accent);}
+.cfoot{display:flex;align-items:center;gap:var(--s2);padding:6px 6px 6px var(--s4);border-top:.5px solid var(--sep);
+  font-size:var(--t-caption2);line-height:var(--lh-caption2);color:var(--label2);min-height:34px;}
+.cfoot span{flex:1;}
+.cpreset{display:flex;}
+.cpreset button{flex:1;}
+.cmore summary{font-size:var(--t-caption);color:var(--label2);cursor:pointer;padding:0 var(--s1);}
+.cmore summary:hover{color:var(--label);}
+.cmore[open] summary{margin-bottom:var(--s2);}
+.cmore .grp{margin-bottom:0;}
+.cmore select.fld{width:auto;height:26px;}
+.crun{display:flex;flex-direction:column;gap:var(--s2);}
+.crun .btn{width:100%;font-variant-numeric:tabular-nums;}
+.crun .msg{font-size:var(--t-caption);line-height:var(--lh-caption);color:var(--orange-ink);text-align:center;}
+.crun .msg:empty{display:none;}
+.crun .msg.err{color:var(--red-ink);}
+
+#cRecentWrap{margin-bottom:var(--s6);}
+#cRecentWrap .grp{margin-bottom:0;}
+.row.cjob{align-items:center;}
+.row.cjob .tx{flex:1;}
+.row.cjob .t .badge{margin-left:6px;vertical-align:1px;}
+.row.cjob .bar{margin:6px 0 2px;max-width:360px;}
+.row.cjob .s.bad{color:var(--red-ink);}
+
+.drawer.wide{width:min(760px,94vw);}
+.cplayer{width:100%;max-height:52vh;border-radius:var(--r-md);background:#000;flex:none;}
+.cchap{margin:var(--s4) 0 6px;align-items:center;}
+.cchaps{flex:none;min-height:0;resize:none;}
+.area.mono{font-family:var(--mono);font-size:var(--t-caption);line-height:var(--lh-body);}
+
+@media (max-width:1100px){
+  .ccols{grid-template-columns:1fr;}
+  .ccomp{position:static;}
+}

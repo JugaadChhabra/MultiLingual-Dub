@@ -33,3 +33,6 @@ build/
 README.md
 tests/
 *.md
+
+# Comp Creator runs natively on the host, not in this image
+comp_gen/

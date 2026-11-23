@@ -1,0 +1,11 @@
+Build (needs Go 1.22+):
+  Mac mini (Apple silicon):
+    GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o CompCreator .
+    then install it as a service: bash ../macos/install.sh ./CompCreator
+  Windows:
+    GOOS=windows GOARCH=amd64 go build -ldflags "-s -w" -o CompCreator.exe .
+index.html is embedded into the binary at build time.
+
+Flags: --dir <folder> (config.json + .cache), --addr <host:port> (default 127.0.0.1:8765),
+       --no-browser (headless).
+Hardware encoding: VideoToolbox on macOS (Apple silicon), NVENC / QSV / AMF on Windows.

@@ -5,14 +5,14 @@
   const U = window.UI, $ = U.$;
 
   let envConfigured = false;
-  const running = { audio: false, video: false, story: false, library: false };
+  const running = { audio: false, video: false, story: false, library: false, comps: false };
 
   // ── sections ─────────────────────────────────────────────────────────────
   // /videogen and /story are real, linkable paths for their sections. The old
   // /heygen redirects to /videogen, so existing bookmarks still land right.
-  const PATHS = { audio: "/", video: "/videogen", story: "/story", library: "/library" };
+  const PATHS = { audio: "/", video: "/videogen", story: "/story", library: "/library", comps: "/comps" };
   const TITLES = { audio: "Content Hub — Audio", video: "Content Hub — Video", story: "Content Hub — Story",
-                   library: "Content Hub — Library" };
+                   library: "Content Hub — Library", comps: "Content Hub — Compilations" };
   function show(section, push = true) {
     document.querySelectorAll(".sbi[data-section]").forEach((b) => {
       const on = b.dataset.section === section;
@@ -22,6 +22,7 @@
     $("#pane-video").hidden = section !== "video";
     $("#pane-story").hidden = section !== "story";
     $("#pane-library").hidden = section !== "library";
+    $("#pane-comps").hidden = section !== "comps";
     document.title = TITLES[section];
     // The draft boxes size themselves to their text, which they cannot measure
     // while the pane is hidden. This is the moment it stops being hidden.
@@ -30,6 +31,7 @@
     }
     if (section === "story" && window.PaneStory) window.PaneStory.fitLines();
     if (section === "library" && window.PaneLibrary) window.PaneLibrary.activate();
+    if (section === "comps" && window.PaneComps) window.PaneComps.activate();
     if (push) history.replaceState({}, "", PATHS[section]);
   }
   document.querySelectorAll(".sbi[data-section]").forEach((b) =>
@@ -107,13 +109,13 @@
   // ── toolbar running indicator ────────────────────────────────────────────
   function setRunning(section, on, label) {
     running[section] = on;
-    const any = running.audio || running.video || running.story || running.library;
+    const any = running.audio || running.video || running.story || running.library || running.comps;
     $("#tbRun").hidden = !any;
     $("#tbSep").hidden = !any;
     if (any && label) $("#tbRunText").textContent = label;
     else if (any) $("#tbRunText").textContent =
       running.audio ? "Audio running" : running.video ? "Video rendering"
-        : running.story ? "Story splitting" : "Sending to NAS";
+        : running.story ? "Story splitting" : running.comps ? "Comps encoding" : "Sending to NAS";
   }
 
   // ── a classified failure, rendered ───────────────────────────────────────
@@ -164,7 +166,7 @@
   applySidebar(savedSidebar === "rail", false);
   const p = location.pathname;
   show(p.startsWith("/videogen") ? "video" : p.startsWith("/story") ? "story"
-    : p.startsWith("/library") ? "library" : "audio", false);
+    : p.startsWith("/library") ? "library" : p.startsWith("/comps") ? "comps" : "audio", false);
   refreshEnv();
   setInterval(refreshEnv, 20000);
   refreshRecoverable();

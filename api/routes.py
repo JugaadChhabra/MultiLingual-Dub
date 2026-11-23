@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api import shared
 from api.background import spawn
-from api.routers import audio, config, library, pages, scripts, story, video, video_batch
+from api.routers import audio, comps, config, library, pages, scripts, story, video, video_batch
 from batch.retention import retention_loop
 from services.concurrency import thread_pool_size
 from services.video_pipeline.retention import video_retention_loop
@@ -63,5 +63,5 @@ if STATIC_DIR.is_dir():
 
 # Order matters once: library before video, or GET /video/heygen/library is
 # taken by GET /video/heygen/{job_id}.
-for router in (pages, config, library, video, video_batch, scripts, audio, story):
+for router in (pages, config, library, video, video_batch, scripts, audio, story, comps):
     app.include_router(router.router)
