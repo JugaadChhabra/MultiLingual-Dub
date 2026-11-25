@@ -550,6 +550,11 @@
 
   async function boot() {
     U.clearBanners(els.banners);
+    // The folders (and the box to paste one) never wait on the engine: they live
+    // in this browser, and people need to see where the path goes even when the
+    // engine is slow or down.
+    renderFolders();
+    if (!folders.length) showAdd(true);
     try { cfg = await api("config"); engineUp = true; }
     catch (e) { return engineDown(e); }
     renderProblems();

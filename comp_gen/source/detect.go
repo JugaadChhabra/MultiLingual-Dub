@@ -140,7 +140,12 @@ func introOutro() ioPaths {
 	try(cleanPath(c.IOFolder), false)
 	try(cleanPath(c.Intro), false) // a folder pasted into the intro/outro box also works
 	try(cleanPath(c.Outro), false)
-	try(cleanPath(c.RhymesFolder), true)
+	// Last resort: files named intro/outro anywhere in the library. Only when no
+	// Intro & Outro folder is set - on the NAS that walk visits every rhyme over
+	// SMB and takes minutes, which hung /api/config (and the whole pane) with it.
+	if cleanPath(c.IOFolder) == "" {
+		try(cleanPath(c.RhymesFolder), true)
+	}
 	ioMu.Lock()
 	ioCache = r
 	ioMu.Unlock()

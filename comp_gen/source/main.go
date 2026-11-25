@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const defaultAddr = "127.0.0.1:8765"
@@ -249,8 +250,35 @@ func naturalLess(a, b string) bool {
 	return len(pa) < len(pb)
 }
 
+// outputFolder is asked for once per folder while walking a library (skipDir), and
+// working it out lists the library root and creates the folder - over SMB, every
+// time. So the answer is kept for a little while per config.
+var (
+	outMu    sync.Mutex
+	outCache struct {
+		key, path string
+		at        time.Time
+	}
+)
+
 func outputFolder() string {
 	c := loadConfig()
+	key := c.RhymesFolder + "|" + c.OutputFolder
+	outMu.Lock()
+	if outCache.key == key && time.Since(outCache.at) < 30*time.Second {
+		p := outCache.path
+		outMu.Unlock()
+		return p
+	}
+	outMu.Unlock()
+	p := findOutputFolder(c)
+	outMu.Lock()
+	outCache.key, outCache.path, outCache.at = key, p, time.Now()
+	outMu.Unlock()
+	return p
+}
+
+func findOutputFolder(c Config) string {
 	out := cleanPath(c.OutputFolder)
 	if out == "" {
 		rf := cleanPath(c.RhymesFolder)
