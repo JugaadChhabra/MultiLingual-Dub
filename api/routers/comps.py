@@ -25,7 +25,7 @@ ENGINE_DOWN = (
     "launchctl print gui/$(id -u)/com.contenthub.compcreator"
 )
 
-GET_ROUTES = {"config", "rhymes", "info", "detect", "queue"}
+GET_ROUTES = {"config", "rhymes", "folder", "info", "detect", "queue"}
 POST_ROUTES = {"queue/add", "queue/cancel", "queue/move", "queue/clear", "queue/refile"}
 
 # Headers a video player needs to seek and to save the file under its name.

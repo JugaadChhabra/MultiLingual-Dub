@@ -703,6 +703,15 @@ select.fld{padding-right:4px;}
 /* Three things on screen: the rhymes, the comp being built, the comps already
    made. Everything else waits behind "More options" or a drawer. */
 .ccols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--s8);align-items:start;}
+/* Saved folders: one chip each, the × forgets it (the videos stay on the NAS). */
+.cfolders{margin:0 0 var(--s3);}
+.cfolders .chip .n{color:var(--label2);font-weight:var(--w-regular);}
+.cfolders .chip .n:empty{display:none;}
+.cadd{display:grid;grid-template-columns:minmax(0,1fr) 160px auto auto;gap:var(--s2);align-items:center;margin-top:var(--s2);}
+.cadd[hidden]{display:none;}
+.cadd .hint{grid-column:1 / -1;font-size:var(--t-caption);color:var(--label2);}
+.cadd .err{grid-column:1 / -1;font-size:var(--t-caption);color:var(--red-ink);}
+@media (max-width:640px){ .cadd{grid-template-columns:1fr 1fr;} .cadd #cAddPath{grid-column:1 / -1;} }
 .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:var(--s3);}
 .rgrid .empty{grid-column:1 / -1;}
 .rgrid[aria-busy="true"]{opacity:.6;}

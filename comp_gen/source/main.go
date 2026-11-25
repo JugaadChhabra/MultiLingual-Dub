@@ -308,33 +308,153 @@ func listRhymes() ([]Rhyme, error) {
 	if !isDir(folder) {
 		return nil, errors.New("Rhymes folder not set or not found")
 	}
+	return scanRhymes(folder, ""), nil
+}
+
+// maxScan caps one listing, so pasting a folder far too high up the share
+// returns in reasonable time instead of walking the whole NAS.
+const maxScan = 3000
+
+// scanRhymes lists the videos under folder. With lang == "" it is the configured
+// library: refs are relative to it and the language is the top-level folder. With
+// a lang it is a pasted folder: refs are absolute paths and every rhyme is in lang.
+func scanRhymes(folder, lang string) []Rhyme {
 	io := introOutro()
 	items := []Rhyme{}
-	walkVideos(folder, func(full, rel string) {
+	walkVideos(folder, func(full, rel string) bool {
+		if len(items) >= maxScan {
+			return false
+		}
 		if relHasMatch(rel, reIntro) || relHasMatch(rel, reOutro) ||
 			strings.EqualFold(full, io.Intro) || strings.EqualFold(full, io.Outro) ||
 			(io.Folder != "" && within(io.Folder, full)) {
-			return // intro/outro are added automatically, never listed as rhymes
+			return true // intro/outro are added automatically, never listed as rhymes
 		}
 		st, err := os.Stat(full)
 		if err != nil {
-			return
+			return true
 		}
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		if dir == "." {
 			dir = ""
 		}
-		lang := ""
-		if i := strings.Index(rel, "/"); i > 0 {
-			lang = rel[:i]
+		key, l := rel, lang
+		if lang != "" {
+			key = filepath.ToSlash(full)
+		} else if i := strings.Index(rel, "/"); i > 0 {
+			l = rel[:i]
 		}
 		name := filepath.Base(rel)
-		u := usageOf(rel)
-		items = append(items, Rhyme{Rel: rel, Name: strings.TrimSuffix(name, filepath.Ext(name)),
-			Folder: dir, Lang: lang, Size: st.Size(), Mtime: float64(st.ModTime().Unix()), Used: u.Count, Last: u.Last})
+		u := usageOf(key)
+		items = append(items, Rhyme{Rel: key, Name: strings.TrimSuffix(name, filepath.Ext(name)),
+			Folder: dir, Lang: l, Size: st.Size(), Mtime: float64(st.ModTime().Unix()), Used: u.Count, Last: u.Last})
+		return true
 	})
 	sort.Slice(items, func(i, j int) bool { return naturalLess(items[i].Rel, items[j].Rel) })
-	return items, nil
+	return items
+}
+
+// ---------------------------------------------------------------- pasted folders
+// mountsDir is where macOS mounts NAS shares. browseRoots are where a pasted
+// folder may be: on the Mac mini, the mounted drives and shares. Empty means
+// anywhere (Windows, where the engine is only ever run by hand).
+var (
+	mountsDir   = "/Volumes"
+	browseRoots []string
+	reDrive     = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+	reMountDup  = regexp.MustCompile(`-\d+$`)
+)
+
+func allowed(p string) bool {
+	if len(browseRoots) == 0 {
+		return true
+	}
+	for _, r := range browseRoots {
+		if within(r, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// mountOf finds where a share is mounted: /Volumes/DATA, or the "DATA-1" macOS
+// makes when the share was mounted twice, ignoring case.
+func mountOf(share string) string {
+	want := filepath.Join(mountsDir, share)
+	if isDir(want) {
+		return want
+	}
+	if ents, err := os.ReadDir(mountsDir); err == nil {
+		for _, e := range ents {
+			if n := reMountDup.ReplaceAllString(e.Name(), ""); strings.EqualFold(n, share) && isDir(filepath.Join(mountsDir, e.Name())) {
+				return filepath.Join(mountsDir, e.Name())
+			}
+		}
+	}
+	return want
+}
+
+// localDir turns the folder someone pasted into the path on this Mac. People copy
+// it from wherever they are browsing the NAS: \\10.1.1.3\DATA\Animations\Rhymes\Hindi
+// (Windows), smb://10.1.1.3/DATA/Animations/Rhymes/Hindi (Finder's Connect to
+// Server), or /Volumes/DATA/Animations/Rhymes/Hindi (a Mac with the share mounted).
+// The server part is ignored: the share is found by its name under /Volumes.
+func localDir(in string) (string, error) {
+	p := strings.Trim(strings.TrimSpace(in), `"'`)
+	if p == "" {
+		return "", errors.New("Paste the path of a folder on the NAS")
+	}
+	if runtime.GOOS != "windows" {
+		low := strings.ToLower(p)
+		unc := ""
+		switch {
+		case strings.HasPrefix(low, "smb://"):
+			if u, err := url.PathUnescape(p[6:]); err == nil {
+				unc = u
+			} else {
+				unc = p[6:]
+			}
+		case strings.HasPrefix(p, `\\`), strings.HasPrefix(p, "//"):
+			unc = p
+		case reDrive.MatchString(p):
+			return "", errors.New(`That's a drive letter on a Windows PC, which the Mac mini can't see. Paste the NAS path instead, like \\10.1.1.3\DATA\Animations\Rhymes\Hindi`)
+		}
+		if unc != "" {
+			parts := strings.FieldsFunc(unc, func(r rune) bool { return r == '\\' || r == '/' })
+			if len(parts) < 2 {
+				return "", errors.New("That path names the NAS but no share or folder on it")
+			}
+			p = filepath.Join(append([]string{mountOf(parts[1])}, parts[2:]...)...)
+		}
+	}
+	p = cleanPath(p)
+	if !filepath.IsAbs(p) {
+		return "", errors.New("Paste the full path of the folder, starting from the NAS")
+	}
+	if !allowed(p) {
+		return "", errors.New("Only folders on the NAS can be used")
+	}
+	for _, r := range browseRoots {
+		if rel, err := filepath.Rel(r, p); err == nil && !strings.Contains(rel, string(filepath.Separator)) {
+			return "", errors.New("That's a whole share. Paste the folder that holds the rhyme videos")
+		}
+	}
+	if !isDir(p) {
+		if share, ok := shareRoot(p); ok && !isDir(share) {
+			return "", fmt.Errorf("The %s share isn't connected on the Mac mini", filepath.Base(share))
+		}
+		return "", errors.New("There's no folder at that path on the NAS")
+	}
+	return p, nil
+}
+
+// shareRoot: /Volumes/DATA for anything under it. ok is false outside /Volumes.
+func shareRoot(p string) (string, bool) {
+	rel, err := filepath.Rel(mountsDir, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.Join(mountsDir, strings.Split(rel, string(filepath.Separator))[0]), true
 }
 
 func within(base, p string) bool {
@@ -350,6 +470,12 @@ func resolveVideo(ref string) string {
 		p = introOutro().Intro
 	case ref == "outro":
 		p = introOutro().Outro
+	case strings.HasPrefix(ref, "rhyme:") && filepath.IsAbs(filepath.FromSlash(ref[6:])):
+		// a rhyme from a pasted folder: only a video, only on the NAS
+		p = filepath.Clean(filepath.FromSlash(ref[6:]))
+		if !allowed(p) || !videoExts[strings.ToLower(filepath.Ext(p))] {
+			return ""
+		}
 	case strings.HasPrefix(ref, "rhyme:"):
 		base := cleanPath(c.RhymesFolder)
 		if base == "" {
@@ -471,6 +597,22 @@ func routes() *http.ServeMux {
 		go warmThumbs(items)
 		writeJSON(w, map[string]any{"items": items, "langs": langs, "next_names": nextNames(langs)}, 200)
 	})
+	// a pasted folder: every video in it (and its subfolders), all in one language
+	m.HandleFunc("/api/folder", func(w http.ResponseWriter, r *http.Request) {
+		dir, err := localDir(r.URL.Query().Get("path"))
+		if err != nil {
+			writeJSON(w, map[string]any{"error": err.Error()}, 400)
+			return
+		}
+		lang := strings.TrimSpace(badChars.ReplaceAllString(r.URL.Query().Get("lang"), " "))
+		if lang == "" {
+			lang = filepath.Base(dir)
+		}
+		items := scanRhymes(dir, lang)
+		go warmThumbs(items)
+		writeJSON(w, map[string]any{"path": dir, "lang": lang, "items": items, "truncated": len(items) >= maxScan,
+			"next_name": nextNames([]Lang{{Name: lang}})[lang]}, 200)
+	})
 	m.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		p := resolveVideo(r.URL.Query().Get("ref"))
 		if p == "" {
@@ -538,6 +680,9 @@ func main() {
 			i++
 			addr = os.Args[i]
 		}
+	}
+	if runtime.GOOS == "darwin" {
+		browseRoots = []string{mountsDir}
 	}
 	os.MkdirAll(appDir, 0755)
 	cfgPath = filepath.Join(appDir, "config.json")

@@ -1,9 +1,9 @@
 {
-  "rhymes_folder": "/Volumes/RHYMES",
+  "rhymes_folder": "/Volumes/DATA/Animations/Rhymes",
   "intro": "",
   "outro": "",
-  "intro_outro_folder": "/Volumes/RHYMES/Intro & Outro",
-  "output_folder": "/Volumes/RHYMES/Comps Outs",
+  "intro_outro_folder": "/Volumes/DATA/Animations/Rhymes/Intro & Outro",
+  "output_folder": "/Volumes/DATA/Animations/Rhymes/Comps Outs",
   "ffmpeg_path": "",
   "resolution": "1920x1080",
   "fps": "30",

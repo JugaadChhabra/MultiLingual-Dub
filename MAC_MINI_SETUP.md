@@ -12,7 +12,7 @@ Office Mac mini
 ├── Docker Desktop → Content Hub         port 8080, what people open
 └── Comp engine (background service)     only Content Hub talks to it
       ├── uses the Mac's hardware video encoder
-      └── reads the rhymes from the NAS share (/Volumes/RHYMES)
+      └── reads the rhymes from the NAS (/Volumes/DATA/Animations/Rhymes)
 ```
 
 ---
@@ -28,10 +28,10 @@ On the Mac mini, signed in as the user that will run Content Hub:
    ```
 3. **Docker Desktop** for Mac (Apple silicon). Open it once. In Settings → General,
    turn on **Start Docker Desktop when you sign in**.
-4. **The rhymes share.** In Finder: Go → Connect to Server → `smb://<NAS address>/RHYMES`.
-   Tick **Remember this password in my keychain**. It appears as `/Volumes/RHYMES`.
+4. **The rhymes share.** In Finder: Go → Connect to Server → `smb://10.1.1.3/DATA` (the same share video jobs are saved to).
+   Tick **Remember this password in my keychain**. It appears as `/Volumes/DATA`; the rhymes are in `/Volumes/DATA/Animations/Rhymes`.
    - So it comes back after a restart: System Settings → General → Login Items →
-     **+** → pick the RHYMES volume.
+     **+** → pick the DATA volume.
    - If the share has a different name, note it for step 4 below.
 5. **Survive power cuts.** The Comp engine and the share both need someone logged in.
    - System Settings → Users & Groups → **Automatically log in as** this user.
@@ -89,17 +89,16 @@ The first install writes a starting settings file:
 ~/Library/Application Support/CompCreator/config.json
 ```
 
-Open it and check the three folders. Use the real share name if it isn't `RHYMES`:
+Open it and check two folders: where the intro and outro are, and where finished comps
+are saved. Both are on the DATA share, next to the video jobs' character folders:
 
 ```json
-"rhymes_folder":      "/Volumes/RHYMES",
-"intro_outro_folder": "/Volumes/RHYMES/Intro & Outro",
-"output_folder":      "/Volumes/RHYMES/Comps Outs",
+"intro_outro_folder": "/Volumes/DATA/Animations/Rhymes/Intro & Outro",
+"output_folder":      "/Volumes/DATA/Animations/Rhymes/Comps Outs",
 ```
 
-The library is laid out the same as on the old Windows PC: one folder per language
-(`Hindi/`, `Gujarati/`, …), an `Intro & Outro/` folder, and comps saved into
-`Comps Outs/<Language>/` with a `<name> - Timestamps.txt` beside each.
+Comps are saved into `Comps Outs/<Language>/`, with a `<name> - Timestamps.txt` beside each.
+The rhymes themselves aren't set here: people paste a NAS folder on the Compilations page (step 5).
 
 After editing, restart the engine:
 
@@ -109,7 +108,9 @@ launchctl kickstart -k gui/$(id -u)/com.contenthub.compcreator
 
 ## 5. Check it works
 
-1. Open `http://localhost:8080/comps` on the mini. You should see the language tabs and rhyme thumbnails.
+1. Open `http://localhost:8080/comps` on the mini. Paste a folder of rhyme videos from the NAS
+   (e.g. `\\10.1.1.3\DATA\Animations\Rhymes\Hindi`, or `/Volumes/DATA/...` from a Mac) and click
+   **Add folder**. Its thumbnails appear, and the folder is remembered in that browser.
 2. Pick two short rhymes and click **Create comp**.
 3. It shows **Making**, then **Saving**, then **Ready**. Click **Open** to watch it and copy the chapters.
 4. Check that the file is in `Comps Outs/<Language>/` on the NAS.
@@ -120,7 +121,8 @@ launchctl kickstart -k gui/$(id -u)/com.contenthub.compcreator
 | You see | Do this |
 |---|---|
 | Compilations says **"can't be made right now"** | The engine isn't running. Look at `~/Library/Logs/CompCreator/engine.log`, then restart it with the `launchctl kickstart` line from step 4. |
-| **"The rhymes library isn't reachable"** | The NAS share isn't mounted. Reconnect it in Finder (step 1.4), then click Try again. |
+| **"The NAS isn't reachable"** or **"The DATA share isn't connected"** | The share isn't mounted on the mini. Reconnect it in Finder (step 1.4), then click Try again. |
+| A pasted folder says **"no folder at that path"** but it's there | Recent macOS blocks background programs from network drives. System Settings → Privacy & Security → Full Disk Access → **+** → ⌘⇧G → `~/Library/Application Support/CompCreator/` → `CompCreator`, then restart the engine (step 4). |
 | **"ffmpeg is missing"** | `brew install ffmpeg`, then restart the engine. |
 | Setup says **"cannot reach host.docker.internal:8765"** | Docker can't see the engine. Re-run `bash comp_gen/macos/install.sh`. If it persists, ask for the `--addr` change (the engine then listens beyond the Mac itself). |
 | A comp shows **Not on NAS** | It was made, but the copy to the NAS failed (usually the share dropped). Reconnect the share, then click **Save to NAS again**. Nothing is re-encoded. |

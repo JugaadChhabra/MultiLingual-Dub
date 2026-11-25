@@ -86,9 +86,9 @@ func pick(dir string, strict bool) (intro, outro string) {
 		return s
 	}
 	bi, bo := -1, -1
-	walkVideos(dir, func(full, rel string) {
+	walkVideos(dir, func(full, rel string) bool {
 		if strict && !relHasMatch(rel, reIntro) && !relHasMatch(rel, reOutro) {
-			return
+			return true
 		}
 		isI, isO := classify(rel)
 		if isI && score(rel) > bi {
@@ -97,6 +97,7 @@ func pick(dir string, strict bool) (intro, outro string) {
 		if isO && score(rel) > bo {
 			outro, bo = full, score(rel)
 		}
+		return true
 	})
 	return
 }
@@ -162,7 +163,8 @@ func skipDir(p, name string) bool {
 	return isFile(filepath.Join(p, "CompCreator.exe")) || isFile(filepath.Join(p, "CompCreator"))
 }
 
-func walkVideos(folder string, fn func(full, rel string)) {
+// walkVideos calls fn for every video under folder; fn returns false to stop.
+func walkVideos(folder string, fn func(full, rel string) bool) {
 	filepath.WalkDir(folder, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -175,7 +177,9 @@ func walkVideos(folder string, fn func(full, rel string)) {
 		}
 		if videoExts[strings.ToLower(filepath.Ext(d.Name()))] {
 			rel, _ := filepath.Rel(folder, p)
-			fn(p, filepath.ToSlash(rel))
+			if !fn(p, filepath.ToSlash(rel)) {
+				return filepath.SkipAll
+			}
 		}
 		return nil
 	})

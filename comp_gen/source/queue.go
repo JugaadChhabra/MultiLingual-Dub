@@ -352,11 +352,22 @@ func finish(j *QJob, state, msg string) {
 	go schedule()
 }
 
-// shareOK: the rhymes library is reachable, which on the Mac mini means the NAS
-// share is mounted. Comps are refused, and filing waits, while it is not.
-func shareOK() bool { return isDir(cleanPath(loadConfig().RhymesFolder)) }
+// shareOK: the NAS that comps are filed to is mounted (/Volumes/DATA for an output
+// folder under it). Outside /Volumes, the output folder's parent must exist. Comps
+// are refused, and filing waits, while it is not.
+func shareOK() bool {
+	c := loadConfig()
+	p := cleanPath(c.OutputFolder)
+	if p == "" {
+		return isDir(cleanPath(c.RhymesFolder))
+	}
+	if root, ok := shareRoot(p); ok {
+		return isDir(root)
+	}
+	return isDir(filepath.Dir(p))
+}
 
-const shareDown = "The rhymes library isn't reachable - is the NAS share mounted on the Mac mini?"
+const shareDown = "The NAS isn't reachable - is the share mounted on the Mac mini?"
 
 // fileJob copies the encoded comp to the NAS (output folder/<Language>/), next to
 // its "<name> - Timestamps.txt". It writes to "<name>.mp4.part" and renames, so a

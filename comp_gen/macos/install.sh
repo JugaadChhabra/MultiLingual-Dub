@@ -35,7 +35,8 @@ else
 fi
 
 # 2. The binary
-mkdir -p "$DATA" "$LOGS"
+# LaunchAgents doesn't exist yet for a user that has never had one.
+mkdir -p "$DATA" "$LOGS" "$(dirname "$PLIST")"
 if [ $# -ge 1 ]; then
   [ -f "$1" ] || fail "no binary at $1"
   cp "$1" "$DATA/CompCreator.new"

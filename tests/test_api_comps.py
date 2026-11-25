@@ -37,6 +37,9 @@ def engine(monkeypatch):
             return httpx.Response(200, content=video, headers={"Content-Type": "video/mp4"})
         if path == "/thumb":
             return httpx.Response(404)
+        if path == "/api/folder":
+            return httpx.Response(200, json={"path": "/Volumes/DATA/Animations/Rhymes/Hindi",
+                                             "lang": request.url.params.get("lang"), "items": []})
         return httpx.Response(500)
 
     monkeypatch.setenv("COMP_ENGINE_URL", "http://engine.test")
@@ -53,6 +56,16 @@ def test_queue_and_add_reach_the_engine(engine) -> None:
     assert r.status_code == 200 and r.json()["id"] == 7
     assert str(engine[-1].url) == "http://engine.test/api/queue/add"
     assert json.loads(engine[-1].content)["refs"] == ["intro", "rhyme:Hindi/A.mp4"]
+
+
+def test_pasted_folder_path_reaches_the_engine_intact(engine) -> None:
+    """A Windows path's backslashes and spaces survive the proxy as query params."""
+    pasted = r"\\10.1.1.3\DATA\Animations\Rhymes\Hindi Batch"
+    r = TestClient(api.app).get("/comps/api/folder", params={"path": pasted, "lang": "Hindi"})
+
+    assert r.status_code == 200 and r.json()["lang"] == "Hindi"
+    assert engine[-1].url.path == "/api/folder"
+    assert engine[-1].url.params["path"] == pasted
 
 
 def test_engine_errors_keep_their_status(engine) -> None:

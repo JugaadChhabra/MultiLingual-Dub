@@ -8,12 +8,15 @@
    as a banner when it is wrong; a finished comp's player, chapters, download
    and NAS path live together in one drawer rather than as four buttons a row.
 
-   One draft per language — picks, order, name — kept in localStorage. */
+   The rhymes come from folders people paste (a NAS path, copied from Finder or
+   File Explorer). Folders are remembered in this browser, like the video pane's
+   prompt categories, with one draft — picks, order, name — per folder. */
 (() => {
   "use strict";
   const U = window.UI, $ = U.$, esc = U.esc;
 
-  const DRAFT_KEY = "autodub_comps_draft", OPTS_KEY = "autodub_comps_opts", LANG_KEY = "autodub_comps_lang";
+  const DRAFT_KEY = "autodub_comps_drafts", OPTS_KEY = "autodub_comps_opts";
+  const FOLDERS_KEY = "autodub_comps_folders", ACTIVE_KEY = "autodub_comps_folder";
   const POLL_BUSY = 2000, POLL_IDLE = 15000, INFO_PARALLEL = 4, RECENT = 3;
   const PRESETS = {
     "1080": { resolution: "1920x1080", fps: "30" },
@@ -28,7 +31,9 @@
 
   const els = {
     pane: $("#pane-comps"), banners: $("#compsBanners"), live: $("#compsLive"),
-    langs: $("#cLangs"), search: $("#cSearch"), grid: $("#cGrid"),
+    folders: $("#cFolders"), add: $("#cAdd"), addPath: $("#cAddPath"), addLang: $("#cAddLang"),
+    addGo: $("#cAddGo"), addCancel: $("#cAddCancel"), addErr: $("#cAddErr"), addEcho: $("#cAddLangEcho"),
+    libbar: $("#cLibbar"), search: $("#cSearch"), grid: $("#cGrid"),
     name: $("#cName"), seq: $("#cSeq"), ioNote: $("#cIoNote"), reset: $("#cReset"),
     preset: $("#cPreset"), transition: $("#cTransition"), quality: $("#cQuality"), cut: $("#cCut"),
     run: $("#cRun"), msg: $("#cMsg"),
@@ -38,15 +43,20 @@
   };
 
   // ── state ────────────────────────────────────────────────────────────────
-  let cfg = null, items = [], langs = [], nextNames = {}, jobs = [], loaded = false, engineUp = true, showAll = false;
-  let lang = load(LANG_KEY, null), query = "", lastClicked = null, openJob = null;
+  let cfg = null, items = [], nextName = "", jobs = [], loaded = false, engineUp = true, showAll = false;
+  let folders = load(FOLDERS_KEY, []), active = load(ACTIVE_KEY, null), query = "", lastClicked = null, openJob = null;
+  if (!Array.isArray(folders)) folders = [];
+  if (!folders.some((f) => f.path === active)) active = folders.length ? folders[0].path : null;
   const info = new Map(), det = new Map(); // ref -> engine /api/info, /api/detect
   const drafts = load(DRAFT_KEY, {});
   const opts = Object.assign({ preset: "1080", transition: "fade", quality: "balanced", cut: "auto" }, load(OPTS_KEY, {}));
 
   function load(key, dflt) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? dflt; } catch (_) { return dflt; } }
   function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (_) {} }
-  const draft = () => (drafts[lang || ""] ||= { sel: [], name: "" });
+  const folder = () => folders.find((f) => f.path === active) || null;
+  const lang = () => (folder() ? folder().lang : "");
+  const draft = () => (drafts[active || ""] ||= { sel: [], name: "" });
+  const saveFolders = () => { save(FOLDERS_KEY, folders); save(ACTIVE_KEY, active); };
   const saveDraft = () => save(DRAFT_KEY, drafts);
   const bare = (name) => String(name || "").replace(/\.mp4$/i, "");
 
@@ -120,40 +130,93 @@
     }
   }
 
-  // ── the rhymes ──────────────────────────────────────────────────────────
-  async function loadLibrary() {
+  // ── the rhymes: one pasted folder at a time ─────────────────────────────
+  const folderQuery = (path, lng) => `folder?path=${encodeURIComponent(path)}&lang=${encodeURIComponent(lng || "")}`;
+  let loadSeq = 0;
+  async function loadFolder() {
+    const f = folder(), seq = ++loadSeq;
+    U.clearBanners(els.banners, "warn");
+    if (!f) { items = []; nextName = ""; loaded = true; renderFolders(); showAdd(true); switchFolder(null); return; }
     els.grid.setAttribute("aria-busy", "true");
     try {
-      const p = await api("rhymes");
-      items = p.items || []; langs = p.langs || []; nextNames = p.next_names || {};
-      U.clearBanners(els.banners, "warn");
+      const p = await api(folderQuery(f.path, f.lang));
+      if (seq !== loadSeq) return; // another folder was picked meanwhile
+      applyListing(p);
     } catch (e) {
+      if (seq !== loadSeq) return;
       if (e.status === 503) return engineDown(e);
-      items = []; langs = [];
-      U.banner(els.banners, { kind: "warn", id: "library", title: "The rhymes couldn't be listed",
-        detail: esc(e.message), actions: [{ label: "Try again", onClick: () => loadLibrary() }] });
-    } finally { els.grid.removeAttribute("aria-busy"); }
-    if (!langs.some((l) => l.name === lang)) lang = langs.length ? langs[0].name : null;
-    // drop picks whose file has gone from the library
-    const have = new Set(items.map((i) => i.rel));
-    Object.values(drafts).forEach((d) => { d.sel = (d.sel || []).filter((r) => have.has(r)); });
+      items = [];
+      U.banner(els.banners, { kind: "warn", id: "folder", title: `“${esc(f.lang)}” couldn't be opened`,
+        detail: esc(e.message), actions: [{ label: "Try again", onClick: () => loadFolder() }] });
+    } finally { if (seq === loadSeq) els.grid.removeAttribute("aria-busy"); }
     loaded = true;
-    renderLangs(); switchLang(lang);
+    renderFolders(); switchFolder(active);
+  }
+  function applyListing(p) {
+    items = p.items || []; nextName = p.next_name || "";
+    // drop picks whose file has gone from the folder
+    const have = new Set(items.map((i) => i.rel)), d = draft();
+    d.sel = (d.sel || []).filter((r) => have.has(r));
+    if (p.truncated) U.banner(els.banners, { kind: "warn", id: "folder", title: `Only the first ${items.length} videos are shown`,
+      detail: "That folder holds a lot of videos. Paste a folder further down, such as one language." });
   }
 
-  function renderLangs() {
-    els.langs.innerHTML = langs.map((l) =>
-      `<button type="button" data-lang="${esc(l.name)}" aria-pressed="${l.name === lang}">${esc(l.name || "Other")}` +
-      `<span class="n">${l.count}</span></button>`).join("");
-    els.langs.hidden = langs.length < 2;
+  function renderFolders() {
+    const dup = (f) => folders.some((g) => g !== f && g.lang.toLowerCase() === f.lang.toLowerCase());
+    const tail = (p) => p.split("/").filter(Boolean).pop() || p;
+    els.folders.innerHTML = folders.map((f) => {
+      const on = f.path === active, label = dup(f) ? `${f.lang} · ${tail(f.path)}` : f.lang;
+      return `<div class="chipwrap${on ? " on" : ""}" data-path="${esc(f.path)}">` +
+        `<button type="button" class="token chip" data-act="pick" aria-pressed="${on}" title="${esc(f.path)}">${esc(label)}` +
+        `<span class="n">${on && loaded ? items.length : ""}</span></button>` +
+        `<button type="button" class="pen" data-act="forget" aria-label="Forget ${esc(label)}" title="Forget this folder (the videos stay on the NAS)">${U.icon("close")}</button></div>`;
+    }).join("") + `<button type="button" class="token add" data-act="add">${U.icon("add")} Add folder</button>`;
+    els.libbar.hidden = !folders.length;
   }
 
-  function switchLang(name) {
-    lang = name; save(LANG_KEY, lang);
-    els.langs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  function showAdd(open) {
+    els.add.hidden = !open;
+    els.addErr.hidden = true;
+    els.addCancel.hidden = !folders.length; // nothing to go back to
+    if (open) { els.addPath.value = ""; els.addLang.value = ""; langTouched = false; echoLang(); els.addPath.focus(); }
+  }
+  // The language is the last folder in the path unless someone types their own.
+  let langTouched = false;
+  const guessLang = (p) => (p.split(/[\\/]+/).filter(Boolean).pop() || "").replace(/%20/g, " ");
+  function echoLang() { els.addEcho.textContent = els.addLang.value.trim() || "Language"; }
+  async function addFolder() {
+    const path = els.addPath.value.trim(), lng = els.addLang.value.trim();
+    if (!path) { els.addErr.textContent = "Paste the path of a folder on the NAS."; els.addErr.hidden = false; return; }
+    els.addGo.disabled = true; els.addErr.hidden = true;
+    try {
+      const p = await api(folderQuery(path, lng));
+      const known = folders.find((f) => f.path === p.path);
+      if (known) known.lang = p.lang; else folders.push({ path: p.path, lang: p.lang });
+      active = p.path; saveFolders();
+      loadSeq++; applyListing(p); loaded = true;
+      showAdd(false); renderFolders(); switchFolder(active);
+      U.toast(`Added “${p.lang}”`, { kind: "ok", detail: `${p.items.length} video${p.items.length === 1 ? "" : "s"} found.` });
+    } catch (e) {
+      if (e.status === 503) engineDown(e);
+      els.addErr.textContent = e.status === 503 ? "The Comp engine isn't answering." : e.message;
+      els.addErr.hidden = false;
+    } finally { els.addGo.disabled = false; }
+  }
+  function forget(path) {
+    const f = folders.find((x) => x.path === path); if (!f) return;
+    folders = folders.filter((x) => x !== f);
+    delete drafts[path]; saveDraft();
+    if (active === path) active = folders.length ? folders[0].path : null;
+    saveFolders();
+    U.toast(`Forgot “${f.lang}”`, { detail: "The videos are still on the NAS. Add the folder again any time." });
+    loadFolder();
+  }
+
+  function switchFolder(path) {
+    active = path; saveFolders();
     const d = draft();
     els.name.value = d.name || "";
-    els.name.placeholder = nextNames[lang || ""] || "Name this comp";
+    els.name.placeholder = nextName || "Name this comp";
     lastClicked = null;
     d.sel.forEach((rel) => wantInfo("rhyme:" + rel, true));
     renderGrid(); renderSeq();
@@ -161,7 +224,7 @@
 
   const visibleItems = () => {
     const q = query.trim().toLowerCase();
-    return items.filter((i) => (i.lang || "") === (lang || "") && (!q || i.name.toLowerCase().includes(q)));
+    return items.filter((i) => !q || i.name.toLowerCase().includes(q));
   };
 
   let io = null;
@@ -170,8 +233,9 @@
     if (!loaded) { els.grid.innerHTML = ""; return; }
     if (!list.length) {
       els.grid.innerHTML = `<div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=3#film"/></svg>` +
-        `<div class="t">${items.length ? "No rhymes match" : "No rhymes yet"}</div>` +
-        `<div class="s">${items.length ? "Try another search." : "Rhyme videos go in a language folder on the NAS share."}</div></div>`;
+        `<div class="t">${items.length ? "No rhymes match" : active ? "No videos in this folder" : "Add a folder of rhymes"}</div>` +
+        `<div class="s">${items.length ? "Try another search." : active ? "Check the path, or add another folder."
+          : "Paste the path of a folder on the NAS that holds the rhyme videos. It's remembered here for next time."}</div></div>`;
       return;
     }
     els.grid.innerHTML = list.map((it) => {
@@ -257,7 +321,7 @@
     const sel = draft().sel, { t, unknown } = totalSeconds();
     let why = "", warn = "";
     if (!engineUp) why = "The Comp engine isn't answering.";
-    else if (cfg && !cfg.status.share_ok) why = "The rhymes library isn't reachable.";
+    else if (cfg && !cfg.status.share_ok) why = "The NAS isn't reachable.";
     else if (!sel.length) why = "";
     else {
       const short = sel.filter((rel) => { const l = rhymeLen(rel); return l != null && l < 10; });
@@ -281,7 +345,7 @@
     els.run.disabled = true;
     try {
       await api("queue/add", { refs, options: {
-        lang: lang || "", name, resolution: p.resolution, fps: p.fps, transition: opts.transition,
+        lang: lang(), name, resolution: p.resolution, fps: p.fps, transition: opts.transition,
         fade_seconds: 0.5, quality: opts.quality, cut_inner: opts.cut,
       } });
       U.toast(`Making “${name}”`, { kind: "ok", detail: "It's saved to the NAS when it's done. You can start the next one now." });
@@ -289,8 +353,8 @@
       d.sel = []; d.name = "";
       // the next suggestion, without waiting on a library re-list
       const next = name.replace(/(\d+)$/, (m) => String(Number(m) + 1));
-      if (next !== name) nextNames[lang || ""] = next;
-      saveDraft(); switchLang(lang);
+      if (next !== name) nextName = next;
+      saveDraft(); switchFolder(active);
       pollSoon(300);
     } catch (e) {
       if (e.status === 503) engineDown(e);
@@ -319,7 +383,7 @@
       }
       prevState.set(j.id, j.state);
     });
-    if (filed && loaded) loadLibrary(); // "used" counts and the next name moved
+    if (filed && loaded) loadFolder(); // "used" counts and the next name moved
     renderRecent();
     const busy = jobs.some((j) => ACTIVE.has(j.state));
     els.live.hidden = !busy;
@@ -383,7 +447,7 @@
   });
 
   // ── a finished comp: one drawer for everything you do with it ───────────
-  // "/Volumes/RHYMES/Comps Outs/Hindi/x.mp4" -> "RHYMES/Comps Outs/Hindi/x.mp4": what someone
+  // "/Volumes/DATA/Animations/Rhymes/Comps Outs/Hindi/x.mp4" -> "DATA/Animations/…": what someone
   // browsing the share from their own machine sees.
   const sharePath = (p) => (p || "").replace(/^\/Volumes\//, "");
   const ov = U.overlay(els.drawer, els.scrim, { beforeClose: () => { els.dVideo.pause(); } });
@@ -407,7 +471,20 @@
   els.dClose.addEventListener("click", () => ov.close());
 
   // ── wiring ───────────────────────────────────────────────────────────────
-  els.langs.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) switchLang(b.dataset.lang); });
+  els.folders.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const path = b.closest(".chipwrap") && b.closest(".chipwrap").dataset.path;
+    if (b.dataset.act === "add") showAdd(els.add.hidden);
+    else if (b.dataset.act === "forget") forget(path);
+    else if (path !== active) { active = path; saveFolders(); query = ""; els.search.value = ""; loadFolder(); }
+  });
+  els.add.addEventListener("submit", (e) => { e.preventDefault(); addFolder(); });
+  els.addCancel.addEventListener("click", () => showAdd(false));
+  els.addPath.addEventListener("input", () => {
+    if (!langTouched) els.addLang.value = guessLang(els.addPath.value.trim());
+    echoLang(); els.addErr.hidden = true;
+  });
+  els.addLang.addEventListener("input", () => { langTouched = Boolean(els.addLang.value.trim()); echoLang(); });
   els.search.addEventListener("input", () => { query = els.search.value; renderGrid(); });
   els.grid.addEventListener("click", (e) => { const t = e.target.closest(".rtile"); if (t) toggle(t.dataset.rel, e.shiftKey); });
   els.grid.addEventListener("error", (e) => { if (e.target.tagName === "IMG") e.target.classList.add("gone"); }, true);
@@ -466,8 +543,8 @@
     const s = cfg.status;
     if (!s.ffmpeg) U.banner(els.banners, { kind: "error", id: "ffmpeg", title: "ffmpeg is missing on the Mac mini",
       detail: "Install it there with <code>brew install ffmpeg</code>, then restart the Comp engine." });
-    else if (!s.share_ok) U.banner(els.banners, { kind: "warn", id: "share", title: "The rhymes library isn't reachable",
-      detail: "Check the NAS share is mounted on the Mac mini, then try again.",
+    else if (!s.share_ok) U.banner(els.banners, { kind: "warn", id: "share", title: "The NAS isn't reachable",
+      detail: "Comps can't be saved until the DATA share is connected on the Mac mini. Connect it, then try again.",
       actions: [{ label: "Try again", onClick: () => boot() }] });
   }
 
@@ -478,13 +555,13 @@
     renderProblems();
     if (cfg.status.intro_ok) wantInfo("intro");
     if (cfg.status.outro_ok) wantInfo("outro");
-    await loadLibrary();
+    await loadFolder();
     pollQueue();
   }
 
   window.PaneComps = {
-    // Every visit re-reads the library, so new rhymes show up without a refresh button.
-    activate() { if (!cfg) boot(); else loadLibrary(); },
+    // Every visit re-reads the folder, so new rhymes show up without a refresh button.
+    activate() { if (!cfg) boot(); else loadFolder(); },
   };
   // keep the sidebar's live dot honest even before the pane is opened
   pollQueue();

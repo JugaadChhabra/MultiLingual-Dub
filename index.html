@@ -6,7 +6,7 @@
 <link rel="icon" type="image/png" href="/static/logo.png?v=1" />
 <link rel="apple-touch-icon" href="/static/logo.png?v=1" />
 <title>Content Hub</title>
-<link rel="stylesheet" href="/static/app.css?v=20" />
+<link rel="stylesheet" href="/static/app.css?v=21" />
 </head>
 <body>
 <!-- Icons are Remix Icon symbols from /static/icons.svg, always currentColor.
@@ -442,7 +442,7 @@
         <header class="phead">
           <div class="tx">
             <h1>Compilations</h1>
-            <div class="sub">Pick rhymes, put them in order, and get one YouTube video with its chapters.</div>
+            <div class="sub">Add a folder of rhyme videos from the NAS, pick rhymes, put them in order, and get one YouTube video with its chapters.</div>
           </div>
         </header>
 
@@ -458,8 +458,19 @@
 
         <div class="ccols">
           <section aria-label="Rhymes">
-            <div class="libbar">
-              <div class="seg" id="cLangs" role="group" aria-label="Language"></div>
+            <div class="cfolders">
+              <div class="tokens" id="cFolders" role="group" aria-label="Rhyme folders"></div>
+              <form class="cadd" id="cAdd" hidden>
+                <input class="fld" id="cAddPath" autocomplete="off" spellcheck="false" aria-label="Folder on the NAS"
+                  placeholder="Paste a folder from the NAS, like \\10.1.1.3\DATA\Animations\Rhymes\Hindi" />
+                <input class="fld" id="cAddLang" autocomplete="off" aria-label="Language" placeholder="Language" />
+                <button class="btn p" type="submit" id="cAddGo">Add folder</button>
+                <button class="btn q" type="button" id="cAddCancel">Cancel</button>
+                <div class="hint" id="cAddHint">Comps made from it are saved in Comps Outs/<span id="cAddLangEcho">Language</span> on the NAS.</div>
+                <div class="err" id="cAddErr" role="alert" hidden></div>
+              </form>
+            </div>
+            <div class="libbar" id="cLibbar">
               <input class="fld grow" id="cSearch" type="search" placeholder="Search rhymes" aria-label="Search rhymes" />
             </div>
             <div class="rgrid" id="cGrid"></div>
@@ -620,7 +631,7 @@
 <script src="/static/video/boot.js?v=1"></script>
 <script src="/static/pane-story.js?v=4"></script>
 <script src="/static/pane-library.js?v=4"></script>
-<script src="/static/pane-comps.js?v=2"></script>
+<script src="/static/pane-comps.js?v=3"></script>
 <script src="/static/shell.js?v=8"></script>
   <div class="toasts" role="status" aria-live="polite"></div>
 </body>

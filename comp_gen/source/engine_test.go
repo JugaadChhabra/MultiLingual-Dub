@@ -20,6 +20,7 @@ func setup(t *testing.T) (lib, out string) {
 	os.MkdirAll(workDir, 0755)
 	lib, out = filepath.Join(appDir, "lib"), filepath.Join(appDir, "nas", "Comps Outs")
 	os.MkdirAll(filepath.Join(lib, "Hindi"), 0755)
+	os.MkdirAll(filepath.Dir(out), 0755) // the NAS share, mounted
 	c := defaults()
 	c.RhymesFolder, c.OutputFolder = lib, out
 	saveConfig(c)
@@ -128,8 +129,8 @@ func TestFilingDoesNotOverwriteAComp(t *testing.T) {
 }
 
 func TestFilingWaitsWhenShareIsDown(t *testing.T) {
-	lib, out := setup(t)
-	os.RemoveAll(lib) // share unmounted
+	_, out := setup(t)
+	os.RemoveAll(filepath.Dir(out)) // share unmounted
 	local := filepath.Join(workDir, "1", "C.mp4")
 	os.MkdirAll(filepath.Dir(local), 0755)
 	os.WriteFile(local, []byte("x"), 0644)
@@ -191,5 +192,91 @@ func TestNextNames(t *testing.T) {
 	got := nextNames([]Lang{{Name: "Hindi"}, {Name: "Gujarati"}})
 	if got["Hindi"] != "Hindi Rhymes Compilation 7" || got["Gujarati"] != "Gujarati Rhymes Compilation 1" {
 		t.Errorf("nextNames = %v", got)
+	}
+}
+
+// fakeMounts stands in for /Volumes: a NAS share "DATA" mounted twice, so macOS
+// named it DATA-1, holding Animations/Rhymes/Hindi.
+func fakeMounts(t *testing.T) (vol, hindi string) {
+	t.Helper()
+	vol = filepath.Join(t.TempDir(), "Volumes")
+	hindi = filepath.Join(vol, "DATA-1", "Animations", "Rhymes", "Hindi")
+	os.MkdirAll(filepath.Join(hindi, "Batch 2"), 0755)
+	oldM, oldR := mountsDir, browseRoots
+	mountsDir, browseRoots = vol, []string{vol}
+	t.Cleanup(func() { mountsDir, browseRoots = oldM, oldR })
+	return
+}
+
+func TestLocalDirAcceptsHowPeopleCopyNasPaths(t *testing.T) {
+	setup(t)
+	_, hindi := fakeMounts(t)
+	for _, in := range []string{
+		`\\10.1.1.3\DATA\Animations\Rhymes\Hindi`,
+		`"\\NAS\data\Animations\Rhymes\Hindi\"`,
+		"smb://10.1.1.3/DATA/Animations/Rhymes/Hindi",
+		"smb://10.1.1.3/DATA/Animations/Rhymes/Hindi/Batch%202/..",
+		"  " + hindi + "  ",
+	} {
+		if got, err := localDir(in); err != nil || got != hindi {
+			t.Errorf("localDir(%q) = %q, %v; want %q", in, got, err, hindi)
+		}
+	}
+	for in, want := range map[string]string{
+		`E:\RHYMES\Hindi`:                         "drive letter",
+		`\\10.1.1.3\DATA`:                         "whole share",
+		`\\10.1.1.3\PHOTOS\Rhymes`:                "PHOTOS share isn't connected",
+		`\\10.1.1.3\DATA\Animations\Rhymes\Tamil`: "no folder",
+		"/etc": "Only folders on the NAS",
+		"":     "Paste",
+	} {
+		if _, err := localDir(in); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("localDir(%q) error = %v; want one mentioning %q", in, err, want)
+		}
+	}
+}
+
+func TestPastedFolderListsAndResolvesOnlyNasVideos(t *testing.T) {
+	setup(t)
+	_, hindi := fakeMounts(t)
+	for _, f := range []string{"Machli_Hindi.mp4", "Batch 2/Chanda Mama.mov", "Intro.mp4", "notes.txt"} {
+		os.WriteFile(filepath.Join(hindi, f), []byte("x"), 0644)
+	}
+	items := scanRhymes(hindi, "Hindi")
+	if len(items) != 2 {
+		t.Fatalf("got %d rhymes, want 2 (intro and non-videos skipped): %+v", len(items), items)
+	}
+	for _, it := range items {
+		if !filepath.IsAbs(it.Rel) || it.Lang != "Hindi" {
+			t.Errorf("rhyme %+v: want an absolute ref in Hindi", it)
+		}
+		if resolveVideo("rhyme:"+it.Rel) == "" {
+			t.Errorf("resolveVideo(%q) found nothing", it.Rel)
+		}
+	}
+	if items[0].Folder != "Batch 2" && items[1].Folder != "Batch 2" {
+		t.Errorf("subfolder rhyme lost its folder: %+v", items)
+	}
+	outside := filepath.Join(t.TempDir(), "x.mp4")
+	os.WriteFile(outside, []byte("x"), 0644)
+	for _, ref := range []string{"rhyme:" + outside, "rhyme:" + filepath.Join(hindi, "notes.txt")} {
+		if p := resolveVideo(ref); p != "" {
+			t.Errorf("resolveVideo(%q) = %q; want refused", ref, p)
+		}
+	}
+}
+
+func TestShareOKFollowsTheOutputShare(t *testing.T) {
+	setup(t)
+	vol, _ := fakeMounts(t)
+	c := loadConfig()
+	c.OutputFolder = filepath.Join(vol, "DATA-1", "Animations", "Rhymes", "Comps Outs") // not created yet: fine
+	saveConfig(c)
+	if !shareOK() {
+		t.Error("share mounted, output folder not made yet: want ok")
+	}
+	os.RemoveAll(filepath.Join(vol, "DATA-1"))
+	if shareOK() {
+		t.Error("share unmounted: want not ok")
 	}
 }
