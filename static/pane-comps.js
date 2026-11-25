@@ -9,7 +9,8 @@
    and NAS path live together in one drawer rather than as four buttons a row.
 
    The rhymes come from folders people paste (a NAS path, copied from Finder or
-   File Explorer). Folders are remembered in this browser, like the video pane's
+   File Explorer, or a folder on the Mac mini itself; see the engine's localDir).
+   Folders are remembered in this browser, like the video pane's
    prompt categories, with one draft — picks, order, name — per folder. */
 (() => {
   "use strict";
@@ -169,7 +170,7 @@
       return `<div class="chipwrap${on ? " on" : ""}" data-path="${esc(f.path)}">` +
         `<button type="button" class="token chip" data-act="pick" aria-pressed="${on}" title="${esc(f.path)}">${esc(label)}` +
         `<span class="n">${on && loaded ? items.length : ""}</span></button>` +
-        `<button type="button" class="pen" data-act="forget" aria-label="Forget ${esc(label)}" title="Forget this folder (the videos stay on the NAS)">${U.icon("close")}</button></div>`;
+        `<button type="button" class="pen" data-act="forget" aria-label="Forget ${esc(label)}" title="Forget this folder (the videos stay where they are)">${U.icon("close")}</button></div>`;
     }).join("") + `<button type="button" class="token add" data-act="add">${U.icon("add")} Add folder</button>`;
     els.libbar.hidden = !folders.length;
   }
@@ -186,7 +187,7 @@
   function echoLang() { els.addEcho.textContent = els.addLang.value.trim() || "Language"; }
   async function addFolder() {
     const path = els.addPath.value.trim(), lng = els.addLang.value.trim();
-    if (!path) { els.addErr.textContent = "Paste the path of a folder on the NAS."; els.addErr.hidden = false; return; }
+    if (!path) { els.addErr.textContent = "Paste the path of a folder on the NAS or the Mac mini."; els.addErr.hidden = false; return; }
     els.addGo.disabled = true; els.addErr.hidden = true;
     try {
       const p = await api(folderQuery(path, lng));
@@ -208,7 +209,7 @@
     delete drafts[path]; saveDraft();
     if (active === path) active = folders.length ? folders[0].path : null;
     saveFolders();
-    U.toast(`Forgot “${f.lang}”`, { detail: "The videos are still on the NAS. Add the folder again any time." });
+    U.toast(`Forgot “${f.lang}”`, { detail: "The videos are still where they were. Add the folder again any time." });
     loadFolder();
   }
 
@@ -235,7 +236,7 @@
       els.grid.innerHTML = `<div class="empty"><svg class="ri g" aria-hidden="true"><use href="/static/icons.svg?v=3#film"/></svg>` +
         `<div class="t">${items.length ? "No rhymes match" : active ? "No videos in this folder" : "Add a folder of rhymes"}</div>` +
         `<div class="s">${items.length ? "Try another search." : active ? "Check the path, or add another folder."
-          : "Paste the path of a folder on the NAS that holds the rhyme videos. It's remembered here for next time."}</div></div>`;
+          : "Paste the path of a folder on the NAS or the Mac mini that holds the rhyme videos. It's remembered here for next time."}</div></div>`;
       return;
     }
     els.grid.innerHTML = list.map((it) => {
