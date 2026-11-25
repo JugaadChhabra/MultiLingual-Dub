@@ -91,7 +91,7 @@ are saved. Both are on the DATA share, next to the video jobs' character folders
 ```
 
 Comps are saved into `Comps Outs/<Language>/`, with a `<name> - Timestamps.txt` beside each.
-The rhymes themselves aren't set here: people paste a NAS folder on the Compilations page (step 5).
+The rhymes themselves aren't set here: people paste a folder on the Compilations page (step 5), either on the NAS or on the Mac mini itself inside the engine account's home folder (e.g. `~/Movies/Rhymes`). Comps are always saved to Comps Outs on the NAS.
 
 After editing, restart the engine:
 
@@ -115,7 +115,7 @@ launchctl kickstart -k gui/$(id -u)/com.contenthub.compcreator
 |---|---|
 | Compilations says **"can't be made right now"** | The engine isn't running. Look at `~/Library/Logs/CompCreator/engine.log`, then restart it with the `launchctl kickstart` line from step 4. |
 | **"The NAS isn't reachable"** or **"The DATA share isn't connected"** | The share isn't mounted on the mini. Reconnect it in Finder (step 1.4), then click Try again. |
-| A pasted folder says **"no folder at that path"** but it's there | Recent macOS blocks background programs from network drives. System Settings → Privacy & Security → Full Disk Access → **+** → ⌘⇧G → `~/Library/Application Support/CompCreator/` → `CompCreator`, then restart the engine (step 4). |
+| A pasted folder says **"no folder at that path"** but it's there | Recent macOS blocks background programs from network drives and from Desktop, Documents and Downloads. System Settings → Privacy & Security → Full Disk Access → **+** → ⌘⇧G → `~/Library/Application Support/CompCreator/` → `CompCreator`, then restart the engine (step 4). |
 | **"ffmpeg is missing"** | `brew install ffmpeg`, then restart the engine. |
 | Setup says **"cannot reach host.docker.internal:8765"** | Docker can't see the engine. Run `bash setup-mac-mini.sh` again. If it persists, ask for the `--addr` change (the engine then listens beyond the Mac itself). |
 | A comp shows **Not on NAS** | It was made, but the copy to the NAS failed (usually the share dropped). Reconnect the share, then click **Save to NAS again**. Nothing is re-encoded. |

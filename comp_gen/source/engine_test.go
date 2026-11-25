@@ -216,6 +216,10 @@ func TestLocalDirAcceptsHowPeopleCopyNasPaths(t *testing.T) {
 		`"\\NAS\data\Animations\Rhymes\Hindi\"`,
 		"smb://10.1.1.3/DATA/Animations/Rhymes/Hindi",
 		"smb://10.1.1.3/DATA/Animations/Rhymes/Hindi/Batch%202/..",
+		"smb://NAS._smb._tcp.local/DATA/Animations/Rhymes/Hindi",
+		"mb://NAS._smb._tcp.local/DATA/Animations/Rhymes/Hindi", // "s" lost while copying
+		"afp://NAS.local/DATA/Animations/Rhymes/Hindi",
+		"file://" + strings.ReplaceAll(hindi, " ", "%20"),
 		"  " + hindi + "  ",
 	} {
 		if got, err := localDir(in); err != nil || got != hindi {
@@ -278,5 +282,32 @@ func TestShareOKFollowsTheOutputShare(t *testing.T) {
 	os.RemoveAll(filepath.Join(vol, "DATA-1"))
 	if shareOK() {
 		t.Error("share unmounted: want not ok")
+	}
+}
+
+func TestLocalDirAcceptsFoldersOnTheMacMini(t *testing.T) {
+	setup(t)
+	vol, _ := fakeMounts(t)
+	home := filepath.Join(t.TempDir(), "Users", "studio")
+	movies := filepath.Join(home, "Movies", "Hindi Rhymes")
+	os.MkdirAll(movies, 0755)
+	oldH := homeDir
+	homeDir, browseRoots = home, []string{vol, home}
+	t.Cleanup(func() { homeDir = oldH })
+
+	for _, in := range []string{movies, "~/Movies/Hindi Rhymes", "file://" + strings.ReplaceAll(movies, " ", "%20")} {
+		if got, err := localDir(in); err != nil || got != movies {
+			t.Errorf("localDir(%q) = %q, %v; want %q", in, got, err, movies)
+		}
+	}
+	for in, want := range map[string]string{
+		home:                   "whole home folder",
+		"~":                    "whole home folder",
+		"~/Movies/Tamil":       "no folder at that path on the Mac mini",
+		"/Users/someone/Hindi": "Only folders on the NAS or in the Mac mini's home folder",
+	} {
+		if _, err := localDir(in); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("localDir(%q) error = %v; want one mentioning %q", in, err, want)
+		}
 	}
 }

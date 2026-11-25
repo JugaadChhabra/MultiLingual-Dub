@@ -384,13 +384,17 @@ func scanRhymes(folder, lang string) []Rhyme {
 
 // ---------------------------------------------------------------- pasted folders
 // mountsDir is where macOS mounts NAS shares. browseRoots are where a pasted
-// folder may be: on the Mac mini, the mounted drives and shares. Empty means
-// anywhere (Windows, where the engine is only ever run by hand).
+// folder may be: on the Mac mini, the mounted drives and shares, and the home
+// folder of the account the engine runs as (videos kept on the mini itself).
+// Empty means anywhere (Windows, where the engine is only ever run by hand).
 var (
 	mountsDir   = "/Volumes"
+	homeDir     string
 	browseRoots []string
 	reDrive     = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
-	reMountDup  = regexp.MustCompile(`-\d+$`)
+	// smb://, afp://, cifs://, and a scheme clipped while copying ("mb://").
+	reURL      = regexp.MustCompile(`^[A-Za-z]{0,8}://`)
+	reMountDup = regexp.MustCompile(`-\d+$`)
 )
 
 func allowed(p string) bool {
@@ -433,14 +437,24 @@ func localDir(in string) (string, error) {
 		return "", errors.New("Paste the path of a folder on the NAS")
 	}
 	if runtime.GOOS != "windows" {
+		if homeDir != "" && (p == "~" || strings.HasPrefix(p, "~/")) {
+			p = filepath.Join(homeDir, p[1:])
+		}
 		low := strings.ToLower(p)
 		unc := ""
 		switch {
-		case strings.HasPrefix(low, "smb://"):
-			if u, err := url.PathUnescape(p[6:]); err == nil {
+		case strings.HasPrefix(low, "file://"): // Finder's "Copy as Pathname" in some apps
+			if u, err := url.PathUnescape(p[7:]); err == nil {
+				p = u
+			} else {
+				p = p[7:]
+			}
+		case reURL.MatchString(p):
+			rest := reURL.ReplaceAllString(p, "")
+			if u, err := url.PathUnescape(rest); err == nil {
 				unc = u
 			} else {
-				unc = p[6:]
+				unc = rest
 			}
 		case strings.HasPrefix(p, `\\`), strings.HasPrefix(p, "//"):
 			unc = p
@@ -460,18 +474,22 @@ func localDir(in string) (string, error) {
 		return "", errors.New("Paste the full path of the folder, starting from the NAS")
 	}
 	if !allowed(p) {
-		return "", errors.New("Only folders on the NAS can be used")
+		return "", errors.New("Only folders on the NAS or in the Mac mini's home folder can be used")
 	}
-	for _, r := range browseRoots {
-		if rel, err := filepath.Rel(r, p); err == nil && !strings.Contains(rel, string(filepath.Separator)) {
-			return "", errors.New("That's a whole share. Paste the folder that holds the rhyme videos")
-		}
+	if rel, err := filepath.Rel(mountsDir, p); err == nil && !strings.Contains(rel, string(filepath.Separator)) {
+		return "", errors.New("That's a whole share. Paste the folder that holds the rhyme videos")
+	}
+	if homeDir != "" && filepath.Clean(p) == filepath.Clean(homeDir) {
+		return "", errors.New("That's the whole home folder. Paste the folder that holds the rhyme videos")
 	}
 	if !isDir(p) {
-		if share, ok := shareRoot(p); ok && !isDir(share) {
-			return "", fmt.Errorf("The %s share isn't connected on the Mac mini", filepath.Base(share))
+		if share, ok := shareRoot(p); ok {
+			if !isDir(share) {
+				return "", fmt.Errorf("The %s share isn't connected on the Mac mini", filepath.Base(share))
+			}
+			return "", errors.New("There's no folder at that path on the NAS")
 		}
-		return "", errors.New("There's no folder at that path on the NAS")
+		return "", errors.New("There's no folder at that path on the Mac mini. A folder on your own computer can't be used - copy the videos to the NAS or the Mac mini first")
 	}
 	return p, nil
 }
@@ -499,7 +517,7 @@ func resolveVideo(ref string) string {
 	case ref == "outro":
 		p = introOutro().Outro
 	case strings.HasPrefix(ref, "rhyme:") && filepath.IsAbs(filepath.FromSlash(ref[6:])):
-		// a rhyme from a pasted folder: only a video, only on the NAS
+		// a rhyme from a pasted folder: only a video, only on the NAS or in the home folder
 		p = filepath.Clean(filepath.FromSlash(ref[6:]))
 		if !allowed(p) || !videoExts[strings.ToLower(filepath.Ext(p))] {
 			return ""
@@ -711,6 +729,10 @@ func main() {
 	}
 	if runtime.GOOS == "darwin" {
 		browseRoots = []string{mountsDir}
+		if h, err := os.UserHomeDir(); err == nil && h != "/" {
+			homeDir = h
+			browseRoots = append(browseRoots, h)
+		}
 	}
 	os.MkdirAll(appDir, 0755)
 	cfgPath = filepath.Join(appDir, "config.json")
