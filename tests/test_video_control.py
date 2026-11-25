@@ -123,7 +123,14 @@ def test_a_paused_batch_starts_no_new_row_until_resumed(tmp_path: Path) -> None:
         await renderer.rendering.wait()
         control.pause()
         renderer.release.set()   # the row HeyGen already has finishes anyway
-        for _ in range(50):
+        # Wait for that row to finish rather than a fixed number of loop ticks:
+        # filing it runs in a thread, which on a slow CI runner outlasts any count.
+        for _ in range(200):
+            held = await store.get("b")
+            if held.rows[0].status == "completed":
+                break
+            await asyncio.sleep(0.01)
+        for _ in range(50):      # give a wrongly started row time to show itself
             await asyncio.sleep(0)
         held = await store.get("b")
         control.resume()
