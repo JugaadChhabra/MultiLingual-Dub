@@ -4,6 +4,7 @@
 #
 # Put this script in one folder on the Mac mini together with:
 #   docker-compose.yml, .env, Start Content Hub.command, Stop Content Hub.command
+# Nothing else: the Comp engine comes out of the Content Hub image (step 7).
 # then run:   bash setup-mac-mini.sh
 #
 # Content Hub only opens port 8080. Midas uses 8000, 8001, 3000, 6006 and
@@ -161,15 +162,20 @@ fi
 
 # ---------------------------------------------------------------------------
 step "7. Comp engine (Compilations)"
-# Runs outside Docker, as a LaunchAgent: see comp_gen/macos/install.sh. Optional:
-# without it, only the Compilations pane is unavailable.
-if [ -f "$HERE/comp_gen/macos/install.sh" ]; then
-  bash "$HERE/comp_gen/macos/install.sh" || warn "Comp engine install did not finish (the reason is above). Everything else is running."
-elif curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:8765/health"; then
-  ok "Comp engine already running on this Mac"
+# Runs outside Docker, as a LaunchAgent (it needs the Mac's video encoder and
+# the NAS share mounted in Finder), but ships inside the Content Hub image: copy
+# it out of the image just pulled and install it. Optional: without it, only
+# the Compilations pane is unavailable.
+IMAGE="$(docker compose config --images 2>/dev/null | head -1)"
+ENGINE_TMP="$(mktemp -d)"
+CID="$(docker create "$IMAGE" 2>/dev/null)"
+if [ -n "$CID" ] && docker cp "$CID:/app/comp_engine/." "$ENGINE_TMP/" >/dev/null 2>&1 && [ -f "$ENGINE_TMP/CompCreator" ]; then
+  bash "$ENGINE_TMP/install.sh" "$ENGINE_TMP/CompCreator" || warn "Comp engine install did not finish (the reason is above). Everything else is running."
 else
-  warn "Comp engine not installed. To enable Compilations, copy the repo's comp_gen/ folder next to this script and run it again."
+  warn "this image has no Comp engine in it (built before it was added?). Compilations will be unavailable."
 fi
+[ -n "$CID" ] && docker rm "$CID" >/dev/null 2>&1
+rm -rf "$ENGINE_TMP"
 if curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:8765/health"; then
   if docker compose exec -T autodub python -c "import httpx,sys; sys.exit(httpx.get('http://host.docker.internal:8765/health', timeout=3).status_code != 200)" 2>/dev/null; then
     ok "Content Hub can reach the Comp engine"

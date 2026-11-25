@@ -34,5 +34,8 @@ README.md
 tests/
 *.md
 
-# Comp Creator runs natively on the host, not in this image
-comp_gen/
+# Comp Creator runs natively on the host. Only its source and Mac installer go
+# in, for the compengine build stage; the Windows build and settings stay out.
+comp_gen/*
+!comp_gen/source
+!comp_gen/macos

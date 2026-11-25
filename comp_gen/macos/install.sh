@@ -3,9 +3,11 @@
 # headless, listening on 127.0.0.1:8765. Content Hub talks to it from there.
 # Safe to run again: it is also how you update to a newer build.
 #
-#   bash comp_gen/macos/install.sh            # builds from comp_gen/source (needs Go)
-#   bash install.sh /path/to/CompCreator      # or installs a binary built elsewhere:
-#        cd comp_gen/source && GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o CompCreator .
+# On the Mac mini you don't run this yourself: setup-mac-mini.sh copies it and a
+# ready-built engine out of the Content Hub image and runs
+#   bash install.sh /path/to/CompCreator
+# From a checkout of the repo (development), with no argument it builds from
+# comp_gen/source instead, which needs Go.
 #
 # It runs as a LaunchAgent (your login session), not a system daemon, because the
 # NAS share is mounted per user in Finder: a daemon would not see /Volumes/<share>.
@@ -96,6 +98,7 @@ EOF
 launchctl bootstrap "gui/$(id -u)" "$PLIST" || fail "launchctl could not load $PLIST"
 ok "service loaded ($LABEL)"
 
+rm -f /tmp/cc_cfg.json
 for _ in $(seq 1 20); do
   curl -fs --max-time 2 "http://$ADDR/api/config" -o /tmp/cc_cfg.json && break
   sleep 1

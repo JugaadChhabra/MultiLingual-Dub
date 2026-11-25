@@ -22,9 +22,9 @@ Office Mac mini
 On the Mac mini, signed in as the user that will run Content Hub:
 
 1. **Homebrew.** If `brew` isn't installed, install it from https://brew.sh.
-2. **ffmpeg and Go** (Go builds the Comp engine):
+2. **ffmpeg** (the Comp engine uses it to make comps):
    ```bash
-   brew install ffmpeg go
+   brew install ffmpeg
    ```
 3. **Docker Desktop** for Mac (Apple silicon). Open it once. In Settings → General,
    turn on **Start Docker Desktop when you sign in**.
@@ -40,26 +40,18 @@ On the Mac mini, signed in as the user that will run Content Hub:
 
 ## 2. Put the files on the Mac mini
 
-You need one folder (for example `~/content-hub`) holding:
+Content Hub is deployed as its Docker image, and the Comp engine ships inside that
+image too, so the mini never gets the code. One folder holds just:
 
-| From the repo | |
+| File | |
 |---|---|
-| `docker-compose.yml` | |
-| `setup-mac-mini.sh` | |
-| `Start Content Hub.command`, `Stop Content Hub.command` | |
-| `comp_gen/` (the whole folder) | the Comp engine; the `.exe` files are not needed |
-| `.env` | copied from your laptop, never from git: it holds the API keys |
+| `docker-compose.yml` | which image to run, on which port |
+| `setup-mac-mini.sh` | starts or updates everything |
+| `Start Content Hub.command`, `Stop Content Hub.command` | double-click start and stop |
+| `.env` | API keys and NAS settings, copied from your laptop |
 
-The easiest way to get them is to clone the repo there and copy `.env` into it:
-
-```bash
-git clone https://github.com/JugaadChhabra/MultiLingual-Dub.git ~/content-hub
-cp /path/to/.env ~/content-hub/.env
-```
-
-**If Content Hub already runs on the mini from another folder**, don't make a second one.
-Copy the new `docker-compose.yml`, `setup-mac-mini.sh` and `comp_gen/` into that folder instead,
-and run step 3 there. Two folders would be two Docker projects fighting over port 8080.
+Copy them from the repo once. You only copy them again if one of these four files changes.
+Docker also creates `output/` there for Content Hub's data.
 
 ## 3. Run the setup script
 
@@ -73,7 +65,8 @@ bash setup-mac-mini.sh
 
 It checks the files, Docker, and port conflicts with other apps on the mini (e.g. Midas).
 It refuses to restart Content Hub while jobs are running. Then it pulls and starts
-Content Hub and installs the Comp engine. Read the end of its output:
+Content Hub, copies the Comp engine out of the same image and installs it as a
+background service. Read the end of its output:
 
 - `[ok] Comp engine ... answering on http://127.0.0.1:8765`
 - `[ok] Content Hub can reach the Comp engine`: the Compilations page will work.
@@ -124,15 +117,15 @@ launchctl kickstart -k gui/$(id -u)/com.contenthub.compcreator
 | **"The NAS isn't reachable"** or **"The DATA share isn't connected"** | The share isn't mounted on the mini. Reconnect it in Finder (step 1.4), then click Try again. |
 | A pasted folder says **"no folder at that path"** but it's there | Recent macOS blocks background programs from network drives. System Settings → Privacy & Security → Full Disk Access → **+** → ⌘⇧G → `~/Library/Application Support/CompCreator/` → `CompCreator`, then restart the engine (step 4). |
 | **"ffmpeg is missing"** | `brew install ffmpeg`, then restart the engine. |
-| Setup says **"cannot reach host.docker.internal:8765"** | Docker can't see the engine. Re-run `bash comp_gen/macos/install.sh`. If it persists, ask for the `--addr` change (the engine then listens beyond the Mac itself). |
+| Setup says **"cannot reach host.docker.internal:8765"** | Docker can't see the engine. Run `bash setup-mac-mini.sh` again. If it persists, ask for the `--addr` change (the engine then listens beyond the Mac itself). |
 | A comp shows **Not on NAS** | It was made, but the copy to the NAS failed (usually the share dropped). Reconnect the share, then click **Save to NAS again**. Nothing is re-encoded. |
 | Port 8080 conflict, or another project with the same name | The setup script says which. Usually Content Hub is already running from another folder: see the note in step 2. |
 
 ## Updating later
 
-- **Content Hub:** push to `main`, wait for the build, then run `bash setup-mac-mini.sh` again.
-- **Comp engine:** after pulling changes to `comp_gen/`, run `bash comp_gen/macos/install.sh`.
-  It refuses while a comp is being made. Your `config.json` is kept.
+Push to `main`, wait for the build, then on the mini run `bash setup-mac-mini.sh`.
+That updates Content Hub and the Comp engine together. It won't restart while jobs or
+comps are running, and the engine's `config.json` is kept.
 
 ## Where things are
 
@@ -144,4 +137,4 @@ launchctl kickstart -k gui/$(id -u)/com.contenthub.compcreator
 | Comp engine log | `~/Library/Logs/CompCreator/engine.log` |
 | Comps being made (local copies, deleted 48 h after saving to the NAS) | `~/Library/Application Support/CompCreator/work/` |
 | Stop the Comp engine | `launchctl bootout gui/$(id -u)/com.contenthub.compcreator` |
-| Start it again | `bash comp_gen/macos/install.sh` |
+| Start it again | `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.contenthub.compcreator.plist` |
